@@ -17,19 +17,9 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.Response;
 
-import com.ibm.cics.cip.bankliberty.datainterfaces.GetCompany;
-import com.ibm.cics.server.AbendException;
-import com.ibm.cics.server.InvalidProgramIdException;
-import com.ibm.cics.server.InvalidRequestException;
-import com.ibm.cics.server.InvalidSystemIdException;
-import com.ibm.cics.server.LengthErrorException;
-import com.ibm.cics.server.NotAuthorisedException;
-import com.ibm.cics.server.Program;
-import com.ibm.cics.server.RolledBackException;
-
-import com.ibm.cics.server.TerminalException;
-
-import com.ibm.json.java.JSONObject;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 /**
  * This class is used to get the Company Name
@@ -52,6 +42,32 @@ public class CompanyNameResource
 
 	private static final String ERROR_MSG_SUFFIX = " linking to program GETCOMPY";
 
+	/**
+	 * Shared, thread-safe Jackson mapper used to build and serialize the
+	 * {@code /companyName} JSON response envelope. Replaces the WebSphere
+	 * Liberty JSON API used by the legacy implementation, which has been
+	 * decommissioned for the standalone Java target; Jackson
+	 * ({@code jackson-databind}) is the JSON binding going forward.
+	 */
+	private static final ObjectMapper mapper = new ObjectMapper();
+
+	/**
+	 * The bank's company name returned by the reference-data lookup.
+	 *
+	 * <p>COBOL source: {@code GETCOMPY.cbl} L38 &mdash;
+	 * {@code move 'CICS Bank Sample Application' to COMPANY-NAME}. The same
+	 * literal is modeled as {@code COMPANY_NAME} in the new bank-core
+	 * {@code BankConstants}. The legacy implementation obtained this value
+	 * through a jCICS program link to {@code GETCOMPY} followed by a JZOS
+	 * fixed-record parse (which {@code .trim()}-ed the 40-character
+	 * {@code PIC X(40)} field); both the CICS link and the JZOS record class
+	 * have been decommissioned for the standalone Java target, so the exact,
+	 * already-trimmed value is populated directly. This preserves the
+	 * {@code {"companyName":"CICS Bank Sample Application"}} response
+	 * byte-for-byte with zero network calls.</p>
+	 */
+	private static final String COMPANY_NAME = "CICS Bank Sample Application";
+
 
 	public CompanyNameResource()
 	{
@@ -64,55 +80,66 @@ public class CompanyNameResource
 	public Response getCompanyName()
 	{
 		logger.entering(this.getClass().getName(), GET_COMPANY_NAME);
-		// We cache the company name as a static variable. If not set, we jCICS
-		// LINK to a COBOL program to go get it
+		// We cache the company name as a static variable. If not set, we
+		// populate it from bank-core's reference data. The legacy
+		// implementation obtained this value through a jCICS LINK to the COBOL
+		// GETCOMPY program followed by a JZOS fixed-record parse; both the CICS
+		// program link and the JZOS-backed record class have been
+		// decommissioned for the standalone Java target, so the value is taken
+		// directly from the well-known reference-data constant (bank-core
+		// BankConstants.COMPANY_NAME), which is the exact, already-trimmed
+		// string COBOL GETCOMPY returned. This is a pure in-process lookup, so
+		// the CICS link exceptions the legacy code caught can no longer occur.
 		if (companyNameString == null)
 		{
-			Program getCompy = new Program();
-			getCompy.setName("GETCOMPY");
-
-			byte[] companyNameBytes = new byte[40];
-
-			try
-			{
-				getCompy.link(companyNameBytes);
-				GetCompany myGetCompanyData = new GetCompany(companyNameBytes);
-				CompanyNameResource.setCompanyName(
-						myGetCompanyData.getCompanyName().trim());
-			}
-			catch (InvalidRequestException | LengthErrorException
-					| InvalidSystemIdException | NotAuthorisedException
-					| InvalidProgramIdException | RolledBackException
-					| TerminalException e)
-			{
-				Response myResponse = Response.status(500).entity(
-						ERROR_MSG_PREFIX + e.toString() + ERROR_MSG_SUFFIX)
-						.build();
-				logger.warning(
-						ERROR_MSG_PREFIX + e.toString() + ERROR_MSG_SUFFIX);
-				logger.exiting(this.getClass().getName(), GET_COMPANY_NAME,
-						myResponse);
-				return myResponse;
-			}
-			catch (AbendException e)
-			{
-				logger.severe(
-						"CompanyNameResource.getCompanyName() has experienced abend "
-								+ e.toString() + ERROR_MSG_SUFFIX);
-				Response myResponse = Response.status(500).entity(
-						ERROR_MSG_PREFIX + e.toString() + ERROR_MSG_SUFFIX)
-						.build();
-				logger.exiting(this.getClass().getName(), GET_COMPANY_NAME,
-						myResponse);
-				return myResponse;
-			}
-
+			CompanyNameResource.setCompanyName(COMPANY_NAME);
 		}
 
-		JSONObject response = new JSONObject();
+		// Preserve the original failure semantics: the legacy code returned
+		// HTTP 500 when it could not obtain the company name from GETCOMPY. If
+		// the reference-data value is unavailable for any reason, surface the
+		// same status code and Response shape rather than emitting an empty
+		// envelope.
+		if (companyNameString == null)
+		{
+			String errorMessage = ERROR_MSG_PREFIX + "company name unavailable"
+					+ ERROR_MSG_SUFFIX;
+			logger.severe(errorMessage);
+			Response myResponse = Response.status(500).entity(errorMessage)
+					.build();
+			logger.exiting(this.getClass().getName(), GET_COMPANY_NAME,
+					myResponse);
+			return myResponse;
+		}
+
+		// Build the frozen single-field response envelope
+		// {"companyName":"..."} with Jackson (ObjectNode) in place of the
+		// decommissioned WebSphere JSON API. The field name and value are
+		// unchanged.
+		ObjectNode response = mapper.createObjectNode();
 		response.put("companyName", companyNameString);
 
-		Response myResponse = Response.status(200).entity(response.toString())
+		String responseString;
+		try
+		{
+			responseString = mapper.writeValueAsString(response);
+		}
+		catch (JsonProcessingException e)
+		{
+			// Serialization is the only checked failure that can now occur on
+			// this code path; handle it with the preserved 500-style error
+			// path so the HTTP status code and Response shape are unchanged.
+			String errorMessage = ERROR_MSG_PREFIX + e.toString()
+					+ ERROR_MSG_SUFFIX;
+			logger.warning(errorMessage);
+			Response myResponse = Response.status(500).entity(errorMessage)
+					.build();
+			logger.exiting(this.getClass().getName(), GET_COMPANY_NAME,
+					myResponse);
+			return myResponse;
+		}
+
+		Response myResponse = Response.status(200).entity(responseString)
 				.build();
 		logger.exiting(this.getClass().getName(), GET_COMPANY_NAME, myResponse);
 
