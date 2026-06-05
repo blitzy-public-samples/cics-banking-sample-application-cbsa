@@ -3,7 +3,10 @@
 /*                                                                        */
 package com.ibm.cics.cip.bank.core.dto.createcustomer;
 
+import com.ibm.cics.cip.bank.core.domain.Title;
+
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 /**
@@ -48,14 +51,17 @@ import jakarta.validation.constraints.Size;
  *   <li>{@code custAddress} &rarr; {@code COMM-ADDRESS PIC X(160)} &rarr;
  *       {@link Size}{@code (max = 161)} (same deliberate +1);</li>
  *   <li>{@code custDob} &rarr; {@code COMM-DATE-OF-BIRTH PIC 9(8)} &rarr;
- *       {@link Size}{@code (min = 8, max = 8)} (the compact 8-character
- *       {@code DDMMYYYY} form produced by {@link #setCustDob(String)}).</li>
+ *       {@link Size}{@code (min = 8, max = 8)} plus an eight-digit
+ *       {@link Pattern} (the compact 8-character {@code DDMMYYYY} form produced
+ *       by {@link #setCustDob(String)}).</li>
  * </ul>
  *
  * <p>Behavioural parity with the COBOL specification of record is the contract;
- * the {@code isValidTitle()} honorific check and the deliberate {@code +1}
- * validation widths are legacy parity details that are reproduced here rather
- * than "improved".</p>
+ * the {@code isValidTitle()} honorific check delegates to
+ * {@link Title#isValidTitle(String)} so a blank title is accepted exactly as the
+ * COBOL {@code CRECUST} {@code EVALUATE} accepts it, and the deliberate
+ * {@code +1} validation widths are legacy parity details preserved rather than
+ * "improved".</p>
  */
 public class CreateCustomerForm
 {
@@ -96,12 +102,15 @@ public class CreateCustomerForm
 	 * date-time type so that the fixed 8-character display form is preserved
 	 * exactly. The HTML date input arrives as a 10-character ISO
 	 * {@code YYYY-MM-DD} string and {@link #setCustDob(String)} reorders it into
-	 * the 8-character {@code DDMMYYYY} form. Annotated {@link NotNull} and
-	 * {@link Size}{@code (min = 8, max = 8)} so only the compact 8-character form
-	 * passes validation.</p>
+	 * the 8-character {@code DDMMYYYY} form. Annotated {@link NotNull},
+	 * {@link Size}{@code (min = 8, max = 8)}, and a {@link Pattern} of eight
+	 * digits so only a compact 8-character all-digits value passes validation,
+	 * matching the numeric COBOL {@code PIC 9(8)} field and rejecting non-date
+	 * input rather than fabricating a valid-length date from arbitrary text.</p>
 	 */
 	@NotNull
 	@Size(min = 8, max = 8)
+	@Pattern(regexp = "\\d{8}")
 	private String custDob;
 
 	/**
@@ -143,16 +152,18 @@ public class CreateCustomerForm
 	}
 
 	/**
-	 * Sets the customer name, preserving the legacy empty-string handling: an
-	 * empty string is kept as an empty string (it is not blank-trimmed away) and
-	 * any other value is assigned unchanged. Ported verbatim from the legacy
-	 * customer-services form.
+	 * Sets the customer name by direct, null-safe assignment. The value is stored
+	 * exactly as supplied (an empty string is kept as an empty string and is not
+	 * blank-trimmed); a {@code null} is assigned unchanged rather than triggering
+	 * an {@code equals} comparison, so a missing name is reported by the
+	 * field-level {@link NotNull} constraint during Bean Validation instead of
+	 * throwing a {@link NullPointerException} from the setter.
 	 *
 	 * @param custName the customer name
 	 */
-	public void setCustName(@NotNull String custName)
+	public void setCustName(String custName)
 	{
-		this.custName = custName.equals("") ? "" : custName;
+		this.custName = custName;
 	}
 
 	/**
@@ -164,16 +175,18 @@ public class CreateCustomerForm
 	}
 
 	/**
-	 * Sets the customer address, preserving the legacy empty-string handling: an
-	 * empty string is kept as an empty string (it is not blank-trimmed away) and
-	 * any other value is assigned unchanged. Ported verbatim from the legacy
-	 * customer-services form.
+	 * Sets the customer address by direct, null-safe assignment. The value is
+	 * stored exactly as supplied (an empty string is kept as an empty string and
+	 * is not blank-trimmed); a {@code null} is assigned unchanged rather than
+	 * triggering an {@code equals} comparison, so a missing address is reported by
+	 * the field-level {@link NotNull} constraint during Bean Validation instead of
+	 * throwing a {@link NullPointerException} from the setter.
 	 *
 	 * @param custAddress the customer postal address
 	 */
-	public void setCustAddress(@NotNull String custAddress)
+	public void setCustAddress(String custAddress)
 	{
-		this.custAddress = custAddress.equals("") ? "" : custAddress;
+		this.custAddress = custAddress;
 	}
 
 	/**
@@ -191,11 +204,14 @@ public class CreateCustomerForm
 	 * <p>The reorder reproduces the legacy substring logic verbatim: day +
 	 * month + year, i.e.
 	 * {@code substring(8, 10) + substring(5, 7) + substring(0, 4)}. For example
-	 * {@code "1990-05-15"} becomes {@code "15051990"}. Any value that is not
-	 * exactly 10 characters long &mdash; including {@code null} or a value that
-	 * is already in the compact 8-character form &mdash; is assigned as-is,
-	 * which both avoids a {@link StringIndexOutOfBoundsException} and lets an
-	 * already-{@code DDMMYYYY} value pass through unchanged.</p>
+	 * {@code "1990-05-15"} becomes {@code "15051990"}. Only a well-formed ISO
+	 * {@code YYYY-MM-DD} value (ten characters of digit-digit-digit-digit,
+	 * hyphen, digit-digit, hyphen, digit-digit) is reordered; any other value
+	 * &mdash; including {@code null}, an already-compact 8-character
+	 * {@code DDMMYYYY} value, or arbitrary text &mdash; is assigned as-is, which
+	 * avoids a {@link StringIndexOutOfBoundsException} and never fabricates a
+	 * valid-length date from non-date input (the eight-digit {@link Pattern}
+	 * constraint then rejects any stored value that is not all digits).</p>
 	 *
 	 * @param custDob the date of birth, either as a 10-character
 	 *                {@code YYYY-MM-DD} string (which is reordered) or already in
@@ -203,55 +219,61 @@ public class CreateCustomerForm
 	 */
 	public void setCustDob(String custDob)
 	{
-		if (custDob != null && custDob.length() == 10)
+		if (custDob != null && custDob.matches("\\d{4}-\\d{2}-\\d{2}"))
 		{
-			// Reorder ISO YYYY-MM-DD (length 10) into the compact COBOL
+			// Reorder a well-formed ISO YYYY-MM-DD value into the compact COBOL
 			// DDMMYYYY display form: day (8,10) + month (5,7) + year (0,4).
 			this.custDob = custDob.substring(8, 10) + custDob.substring(5, 7)
 					+ custDob.substring(0, 4);
 		}
 		else
 		{
-			// Not the expected 10-character ISO form (e.g. null or an
-			// already-compact 8-character DDMMYYYY value): assign as-is.
+			// Not a well-formed ISO date (e.g. null, an already-compact
+			// 8-character DDMMYYYY value, or arbitrary text): assign as-is so the
+			// setter neither throws nor fabricates a valid-length DOB from
+			// non-date input. Bean Validation then reports any invalid value.
 			this.custDob = custDob;
 		}
 	}
 
 	/**
-	 * Reports whether the customer name begins with a recognised honorific
-	 * title and carries enough name components to be well-formed.
+	 * Reports whether the honorific title embedded in the customer name is
+	 * acceptable to the COBOL {@code CRECUST} title check (feature F-006, fail
+	 * code {@code 'T'}).
 	 *
-	 * <p>Ported verbatim from the legacy customer-services form; it supports the
-	 * title-validation rule that {@code CRECUST} applies (feature F-006, fail
-	 * code {@code 'T'}). The check returns {@code true} only when the name is
-	 * non-{@code null}, has at least three space-separated components
-	 * (title + given name + family name), and the first component is one of the
-	 * recognised honorifics: {@code Mr}, {@code Mrs}, {@code Miss}, {@code Ms},
-	 * {@code Dr}, {@code Professor}, {@code Drs}, {@code Lord}, {@code Sir}, or
-	 * {@code Lady}. The comparison is case-sensitive, matching the COBOL
-	 * {@code EVALUATE} of mixed-case literals.</p>
+	 * <p>The first space-delimited token of {@link #custName} is treated as the
+	 * title, mirroring the COBOL
+	 * {@code UNSTRING COMM-NAME DELIMITED BY SPACE INTO WS-UNSTR-TITLE}, and is
+	 * validated by delegating to the authoritative
+	 * {@link Title#isValidTitle(String)} helper. Consistent with the COBOL
+	 * {@code EVALUATE} &mdash; whose {@code WHEN '         '} branch accepts a
+	 * missing title &mdash; a {@code null} or blank name (and therefore a
+	 * {@code null}/blank title token) is treated as <strong>valid</strong>; a
+	 * non-blank token is accepted only when it matches one of the recognised
+	 * titles case-sensitively. The earlier requirement for at least three name
+	 * components was a UI-only heuristic with no COBOL counterpart and is
+	 * deliberately not reproduced, so this helper now agrees exactly with
+	 * {@link Title#isValidTitle(String)} and with the {@code CRECUST}
+	 * specification of record.</p>
 	 *
-	 * @return {@code true} if the first name component is a recognised honorific
-	 *         and the name has at least three components; {@code false} otherwise
+	 * @return {@code true} if the title token is blank/{@code null} or a
+	 *         recognised title; {@code false} otherwise
 	 */
 	public boolean isValidTitle()
 	{
-		if (this.custName == null)
+		// Extract the first space-delimited token of the customer name, mirroring
+		// the COBOL UNSTRING COMM-NAME DELIMITED BY SPACE INTO WS-UNSTR-TITLE,
+		// then delegate to the authoritative Title.isValidTitle helper. A null or
+		// blank name yields a null/blank token, which Title.isValidTitle accepts
+		// as valid (the COBOL WHEN '         ' branch that allows a missing title).
+		String title = null;
+		if (this.custName != null)
 		{
-			return false;
+			int firstSpace = this.custName.indexOf(' ');
+			title = (firstSpace >= 0) ? this.custName.substring(0, firstSpace)
+					: this.custName;
 		}
-		String[] elements = custName.split(" ");
-		if (elements.length < 3)
-		{
-			return false;
-		}
-		String title = elements[0];
-		return title.contentEquals("Mr") || title.contentEquals("Mrs")
-				|| title.contentEquals("Miss") || title.contentEquals("Ms")
-				|| title.contentEquals("Dr") || title.contentEquals("Professor")
-				|| title.contentEquals("Drs") || title.contentEquals("Lord")
-				|| title.contentEquals("Sir") || title.contentEquals("Lady");
+		return Title.isValidTitle(title);
 	}
 
 	/**

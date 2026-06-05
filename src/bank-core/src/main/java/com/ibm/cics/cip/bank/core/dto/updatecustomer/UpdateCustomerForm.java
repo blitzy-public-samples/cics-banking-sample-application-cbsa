@@ -4,6 +4,7 @@
 package com.ibm.cics.cip.bank.core.dto.updatecustomer;
 
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 /**
@@ -113,9 +114,15 @@ public class UpdateCustomerForm
 	 * {@link String} rather than a calendar date-time type: the HTML date input
 	 * arrives as {@code YYYY-MM-DD} and {@link #setCustDoB(String)} reorders it to
 	 * the COBOL {@code DDMMYYYY} display form. Any conversion to / from a calendar
-	 * date type is the responsibility of the service / mapper, not this
-	 * form.</p>
+	 * date type is the responsibility of the service / mapper, not this form.</p>
+	 *
+	 * <p>Defaults to the empty string and is constrained by a lenient
+	 * {@link Pattern} that accepts either the empty string (the unset default,
+	 * since {@code UPDCUST} never updates this field) or a compact 8-digit
+	 * {@code DDMMYYYY} value, so a malformed value is rejected by Bean Validation
+	 * rather than silently stored.</p>
 	 */
+	@Pattern(regexp = "(\\d{8})?")
 	private String custDoB = "";
 
 	/**
@@ -197,24 +204,44 @@ public class UpdateCustomerForm
 
 	/**
 	 * Sets the date of birth, reordering an ISO {@code YYYY-MM-DD} input into the
-	 * COBOL {@code DDMMYYYY} display form. Reproduces the legacy setter verbatim:
-	 * an empty-string argument is a no-op that leaves the current value unchanged,
-	 * and any non-empty value is rebuilt as
-	 * {@code substring(8,10) + substring(5,7) + substring(0,4)} (day + month +
-	 * year). For example {@code "2023-05-15"} becomes {@code "15052023"}.
+	 * COBOL {@code DDMMYYYY} display form.
 	 *
-	 * @param custDoB the date of birth as {@code YYYY-MM-DD}, or the empty string
-	 *                to leave the current value unchanged
+	 * <p>The empty-string no-op of the legacy setter is preserved and made
+	 * null-safe: a {@code null} or empty argument leaves the current value
+	 * unchanged rather than throwing a {@link NullPointerException}. A
+	 * 10-character value is rebuilt as
+	 * {@code substring(8,10) + substring(5,7) + substring(0,4)} (day + month +
+	 * year) &mdash; for example {@code "2023-05-15"} becomes {@code "15052023"}.
+	 * Any other non-empty value (for example a short or malformed string) is
+	 * assigned as-is rather than indexed into, which avoids a
+	 * {@link StringIndexOutOfBoundsException}; the lenient {@link Pattern}
+	 * constraint then rejects any stored value that is neither empty nor eight
+	 * digits.</p>
+	 *
+	 * @param custDoB the date of birth as {@code YYYY-MM-DD}, or {@code null} /
+	 *                the empty string to leave the current value unchanged
 	 */
 	public void setCustDoB(String custDoB)
 	{
-		if (custDoB.equals(""))
+		if (custDoB == null || custDoB.isEmpty())
 		{
+			// Null or empty: legacy no-op that leaves the current value
+			// unchanged, guarded against null so the setter never throws before
+			// Bean Validation runs.
 			return;
 		}
-		this.custDoB = "";
-		this.custDoB += custDoB.substring(8, 10) + custDoB.substring(5, 7)
-				+ custDoB.substring(0, 4);
+		if (custDoB.length() == 10)
+		{
+			this.custDoB = custDoB.substring(8, 10) + custDoB.substring(5, 7)
+					+ custDoB.substring(0, 4);
+		}
+		else
+		{
+			// Not the expected 10-character ISO form: assign as-is rather than
+			// indexing into a shorter string (which would throw
+			// StringIndexOutOfBoundsException). Bean Validation then reports it.
+			this.custDoB = custDoB;
+		}
 	}
 
 	/**

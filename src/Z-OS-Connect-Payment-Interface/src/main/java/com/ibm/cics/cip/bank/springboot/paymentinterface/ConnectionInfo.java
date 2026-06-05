@@ -32,7 +32,11 @@ public static String getAddressAndPort() {
     }
 
     public static int getPort() {
-        port = Integer.parseInt(System.getProperty("CBSA_ZOSCONN_PORT", "8080"));
+        try {
+            port = Integer.parseInt(System.getProperty("CBSA_ZOSCONN_PORT", "8080"));
+        } catch (NumberFormatException e) {
+            port = 8080;
+        }
         return port;
     }
 
