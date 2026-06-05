@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright IBM Corp. 2023 -->
+<!--
+  Maven build descriptor for the standalone bank-core module.
+
+  This module is the pure-Java, Spring Boot reimplementation of the CBSA
+  (Bank Sample Application) COBOL banking core. It runs on Spring Boot 3.5.11
+  (Java 17) with embedded Tomcat and is backed by PostgreSQL via Spring Data
+  JPA / Hibernate, with Flyway managing the relational schema.
+
+  It is a clean, mainframe-free module: it deliberately carries none of the
+  legacy IBM mainframe libraries or bundle-packaging plugins, and it builds a
+  plain runnable JAR. Every dependency version is resolved by the Spring Boot
+  parent BOM (no explicit <version> element on the starters, the PostgreSQL
+  driver, or the Flyway artifacts).
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+
+
+	<parent>
+		<groupId>org.springframework.boot</groupId>
+		<artifactId>spring-boot-starter-parent</artifactId>
+		<version>3.5.11</version>
+		<relativePath /> <!-- lookup parent from repository -->
+	</parent>
+
+
+	<groupId>com.ibm.cics.cip.bank</groupId>
+	<artifactId>bank-core</artifactId>
+	<version>1.0</version>
+	<packaging>jar</packaging>
+	<name>bank-core</name>
+	<description>Standalone Spring Boot reimplementation of the CBSA COBOL banking core, backed by PostgreSQL</description>
+
+
+	<properties>
+		<java.version>17</java.version>
+	</properties>
+
+
+	<dependencies>
+
+		<!-- REST controllers + embedded Tomcat (replaces the legacy Liberty / z/OS Connect runtime). -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-web</artifactId>
+		</dependency>
+
+		<!-- Spring Data JPA + Hibernate (replaces the legacy file-control / embedded Db2 SQL data path). -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-data-jpa</artifactId>
+		</dependency>
+
+		<!-- Jakarta Bean Validation (BMS field rules -> annotations, F-021). -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-validation</artifactId>
+		</dependency>
+
+		<!-- PostgreSQL JDBC driver (replaces VSAM / Db2). Runtime-only: not needed at compile time. -->
+		<dependency>
+			<groupId>org.postgresql</groupId>
+			<artifactId>postgresql</artifactId>
+			<scope>runtime</scope>
+		</dependency>
+
+		<!-- Schema-migration engine (net-new; materializes the relational schema). -->
+		<dependency>
+			<groupId>org.flywaydb</groupId>
+			<artifactId>flyway-core</artifactId>
+		</dependency>
+
+		<!-- Flyway PostgreSQL support module. -->
+		<dependency>
+			<groupId>org.flywaydb</groupId>
+			<artifactId>flyway-database-postgresql</artifactId>
+		</dependency>
+
+		<!-- JUnit 5, Mockito, Spring Test (service parity + controller contract tests). -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+
+	</dependencies>
+
+
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.springframework.boot</groupId>
+				<artifactId>spring-boot-maven-plugin</artifactId>
+			</plugin>
+		</plugins>
+	</build>
+</project>
