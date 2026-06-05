@@ -23,13 +23,6 @@
 	<dependencies>
 
 		<dependency>
-		        <groupId>com.ibm.jzos</groupId>
-		        <artifactId>ibm.jzos</artifactId>
-		        <version>4.0.0.0</version>
-		        <scope>provided</scope>
-	        </dependency>
-
-		<dependency>
 			<groupId>com.beust</groupId>
 			<artifactId>jcommander</artifactId>
 			<version>1.82</version>
