@@ -25,13 +25,6 @@
 	<dependencies>
 
 		<dependency>
-		        <groupId>com.ibm.jzos</groupId>
-		        <artifactId>ibm.jzos</artifactId>
-		        <version>4.0.0.0</version>
-		        <scope>provided</scope>
-	        </dependency>
-
-		<dependency>
 			<groupId>com.beust</groupId>
 			<artifactId>jcommander</artifactId>
 			<version>1.82</version>
@@ -177,21 +170,6 @@
 			<plugin>
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
-			</plugin>
-			<plugin>
-				<groupId>com.ibm.cics</groupId>
-				<artifactId>cics-bundle-maven-plugin</artifactId>
-				<version>1.0.8</version>
-				<executions>
-					<execution>
-						<goals>
-							<goal>bundle-war</goal>
-						</goals>
-						<configuration>
-							<jvmserver>CBSAWLP</jvmserver>
-						</configuration>
-					</execution>
-				</executions>
 			</plugin>
 		</plugins>
 	</build>
