@@ -46,6 +46,8 @@ The interfaces are designed to exploit the underlying banking functionality, whi
 > - Transfer funds
 > - Open new accounts etc. etc.
 
+There is also a new **standalone Java core** (`src/bank-core`): a modern, pure-Java reimplementation of the COBOL banking business logic, built on Spring Boot 3.5.11 and Java 17 and backed by PostgreSQL (no CICS, z/OS, or z/OS Connect runtime is required). It recasts the COBOL programs and record copybooks as a layered Spring application (REST controllers, services, Spring Data JPA repositories and a PostgreSQL database) and preserves the same RESTful API contract, so the Carbon React UI and the Customer Services and Payment interfaces can be re-pointed to it with only a base-URL change.
+
 ## Architecture
 ![Payment and CS architecture diagram2](./doc/images/Architecture/Payment_and_Customer_Services_UI_CBSA_architecture_diagram2.jpg)
 
@@ -60,6 +62,14 @@ The interfaces are designed to exploit the underlying banking functionality, whi
 - Various VSAM files (set up and configured during the installation process)
 - A z/OS Connect server (if the RESTful API or the Customer Services or Payment interfaces are required)
 - A Maven wrapper is used to build the Java components. This is included for your convenience.
+
+### Standalone Java core (src/bank-core)
+The standalone Java core module (`src/bank-core`) has a different, much lighter runtime profile than the mainframe offering above. It requires only:
+- Java 17
+- The bundled Maven wrapper (included for your convenience)
+- A PostgreSQL database named `cbsa` (username/password `cbsa`); the connection string is `jdbc:postgresql://${DB_HOST:localhost}:5432/cbsa`, where the `DB_HOST` environment variable defaults to `localhost`
+
+It does **not** require CICS TS, Db2, VSAM, a Liberty JVM server, or z/OS Connect.
 
 
 
@@ -79,6 +89,14 @@ Installation of CBSA is split into 3 parts :
   1. The base COBOL(BMS) installation, this is mandatory and should be installed first. See the [base COBOL installation documentation.](https://github.com/cicsdev/cics-banking-sample-application-cbsa/tree/main/etc/install/base/doc/README.md)
   2. The Carbon React UI installation, this is optional, requires a JVM server to be running in the CICS region (this gets set up as part of installation process). See [the Carbon React UI installation documentation.](https://github.com/cicsdev/cics-banking-sample-application-cbsa/tree/main/etc/install/carbonReactUI/doc/CBSA_Carbon_React_UI_installation_deployment_guide.md)
   3. The Customer Service and Payment interface installation (also optional). See [deploying the Payment and Customer Services documentation.](https://github.com/cicsdev/cics-banking-sample-application-cbsa/tree/main/etc/install/springBootUI/doc/CBSA_Deploying_the_Payment_Customer_Services_Springboot_apps.md)
+
+### Standalone Java core (src/bank-core)
+The standalone Java core module participates in the root Maven reactor, so the standard build produces it automatically:
+
+  1. Build everything (including bank-core): `./mvnw clean package`
+  2. Run the module on its own: `./mvnw -pl src/bank-core spring-boot:run`
+
+Before running, make sure a local PostgreSQL database named `cbsa` (username/password `cbsa`) is available; the schema is created automatically by Flyway migrations on first start-up.
 
 ## Usage
 Various user guides are provided:
