@@ -124,7 +124,8 @@ public class AccountService
 
 		// 2. Enforce the per-customer account maximum (CREACC fail '8').
 		long existingAccounts = accountRepository
-				.countByCustomerNumber(paddedCustomerNumber);
+				.countByIdSortCodeAndCustomerNumber(BankConstants.SORT_CODE,
+						paddedCustomerNumber);
 		if (existingAccounts >= BankConstants.MAX_ACCOUNTS_PER_CUSTOMER)
 		{
 			throw new BusinessRuleException(FAIL_TOO_MANY_ACCOUNTS,

@@ -291,8 +291,8 @@ public class CustomerService
 		// Cascade-delete the customer's accounts (DELCUS DELETE-ACCOUNTS); each
 		// AccountService.deleteAccount call runs in this same transaction.
 		List<Account> accounts = accountRepository
-				.findByCustomerNumberOrderByIdAccountNumberAsc(
-						paddedCustomerNumber);
+				.findByIdSortCodeAndCustomerNumberOrderByIdAccountNumberAsc(
+						BankConstants.SORT_CODE, paddedCustomerNumber);
 		for (Account account : accounts)
 		{
 			accountService.deleteAccount(
