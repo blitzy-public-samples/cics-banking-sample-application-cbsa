@@ -137,3 +137,66 @@ for installation instructions and:
 
 for the Customer Services and Payment user guides, and the RESTful API
 guide.
+
+## The standalone Java core (`src/bank-core`):
+
+In addition to the mainframe-hosted offerings described above, CBSA now
+includes a standalone, pure-Java reimplementation of the COBOL banking
+business logic. This module lives at `src/bank-core` (Java package
+`com.ibm.cics.cip.bank.core`), is built on Spring Boot 3.5.11 running on
+Java 17, and is backed by a PostgreSQL database.
+
+Unlike the base/COBOL offering and the UI layers described above, the
+standalone Java core requires no mainframe infrastructure at runtime. It
+needs:
+
+-   No CICS Transaction Server
+
+-   No Db2 or VSAM
+
+-   No z/OS Connect server
+
+-   No Liberty JVM server
+
+The COBOL programs remain the authoritative behavioural specification;
+`src/bank-core` reproduces their behaviour, validation rules and fail
+codes in idiomatic Java.
+
+### Architecture of the standalone Java core:
+
+The module follows a conventional layered Spring Boot architecture:
+
+-   REST controllers that honour the frozen ten-endpoint API contract
+
+-   `@Service` beans (one per COBOL business program) that hold the
+    banking business logic
+
+-   Spring Data JPA repositories that handle persistence
+
+-   A single PostgreSQL database
+
+The five core record layouts are modelled as five database tables:
+ACCOUNT, CUSTOMER, PROCTRAN, ACCTCTRL and CUSTCTRL.
+
+Because the REST contract is reproduced verbatim, the existing Carbon
+React UI and the Spring Boot Payment and Customer Services interfaces
+integrate with the standalone Java core through a base-URL re-point only
+- no user interface or application code needs to be redesigned or
+rewritten.
+
+### Building and running the standalone Java core:
+
+The `src/bank-core` module participates in the root Maven reactor, so a
+standard build from the repository root includes it:
+
+> ./mvnw clean package
+
+To run the module on its own, use:
+
+> ./mvnw -pl src/bank-core spring-boot:run
+
+The module connects to a PostgreSQL database named `cbsa` (using the
+username and password `cbsa`), with the database host taken from the
+`DB_HOST` environment variable and defaulting to `localhost`. The
+database schema is created automatically at start-up by Flyway
+migrations, so no manual schema setup is required.
