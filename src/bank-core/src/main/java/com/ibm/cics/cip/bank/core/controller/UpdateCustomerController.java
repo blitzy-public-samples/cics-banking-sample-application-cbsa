@@ -11,10 +11,9 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.ibm.cics.cip.bank.core.dto.DtoFormat;
-import com.ibm.cics.cip.bank.core.dto.updatecustomer.UpdcustJson;
+import com.ibm.cics.cip.bank.core.dto.updatecustomer.UpdateCustomerForm;
 import com.ibm.cics.cip.bank.core.dto.updatecustomer.UpdateCustomerJson;
-import com.ibm.cics.cip.bank.core.entity.Customer;
+import com.ibm.cics.cip.bank.core.dto.updatecustomer.UpdcustJson;
 import com.ibm.cics.cip.bank.core.exception.BusinessRuleException;
 import com.ibm.cics.cip.bank.core.service.CustomerService;
 
@@ -43,9 +42,6 @@ public class UpdateCustomerController
 	/** Logger for request/outcome diagnostics. */
 	private static final Logger LOG = LoggerFactory
 			.getLogger(UpdateCustomerController.class);
-
-	/** Success flag value. */
-	private static final String FLAG_SUCCESS = "Y";
 
 	/** Failure flag value. */
 	private static final String FLAG_FAILURE = "N";
@@ -76,15 +72,17 @@ public class UpdateCustomerController
 			@RequestBody UpdateCustomerJson request)
 	{
 		UpdcustJson in = request.getUpdcust();
-		long customerNumber = Long.parseLong(in.getCommCustno().trim());
 
 		try
 		{
-			Customer updated = customerService.updateCustomer(customerNumber,
-					in.getCommName(), in.getCommAddress());
+			UpdateCustomerForm form = new UpdateCustomerForm();
+			form.setCustNumber(in.getCommCustno());
+			form.setCustName(in.getCommName());
+			form.setCustAddress(in.getCommAddress());
+			UpdateCustomerJson response = customerService.updateCustomer(form);
 			LOG.info("Customer updated: {}",
-					updated.getId().getCustomerNumber());
-			return ResponseEntity.ok(success(updated));
+					response.getUpdcust().getCommCustno());
+			return ResponseEntity.ok(response);
 		}
 		catch (BusinessRuleException ex)
 		{
@@ -92,31 +90,6 @@ public class UpdateCustomerController
 					ex.getFailCode());
 			return ResponseEntity.ok(failure(in, ex.getFailCode()));
 		}
-	}
-
-	/**
-	 * Builds the success envelope echoing the persisted customer.
-	 *
-	 * @param customer the persisted customer
-	 * @return the populated success envelope
-	 */
-	private UpdateCustomerJson success(Customer customer)
-	{
-		UpdcustJson out = new UpdcustJson();
-		out.setCommSortcode(customer.getId().getSortCode());
-		out.setCommCustno(customer.getId().getCustomerNumber());
-		out.setCommName(customer.getName());
-		out.setCommAddress(customer.getAddress());
-		out.setCommDateOfBirth(DtoFormat.dateToInt(customer.getDateOfBirth()));
-		out.setCommCreditScore(customer.getCreditScore() == null ? 0
-				: customer.getCreditScore().intValue());
-		out.setCommCreditScoreReviewDate(
-				DtoFormat.dateToInt(customer.getCsReviewDate()));
-		out.setCommUpdateSuccess(FLAG_SUCCESS);
-		out.setCommUpdateFailCode("");
-		UpdateCustomerJson wrapper = new UpdateCustomerJson();
-		wrapper.setUpdcust(out);
-		return wrapper;
 	}
 
 	/**

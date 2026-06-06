@@ -12,10 +12,8 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.ibm.cics.cip.bank.core.constants.BankConstants;
-import com.ibm.cics.cip.bank.core.dto.DtoFormat;
 import com.ibm.cics.cip.bank.core.dto.deletecustomer.DelcusJson;
 import com.ibm.cics.cip.bank.core.dto.deletecustomer.DeleteCustomerJson;
-import com.ibm.cics.cip.bank.core.entity.Customer;
 import com.ibm.cics.cip.bank.core.exception.BusinessRuleException;
 import com.ibm.cics.cip.bank.core.service.CustomerService;
 
@@ -46,14 +44,8 @@ public class DeleteCustomerController
 	private static final Logger LOG = LoggerFactory
 			.getLogger(DeleteCustomerController.class);
 
-	/** Single-character fail code denoting success (wire value {@code "0"}). */
-	private static final String FAIL_NONE = "0";
-
 	/** Single-character fail code denoting &quot;customer not found&quot; (wire value {@code "1"}). */
 	private static final String FAIL_NOT_FOUND = "1";
-
-	/** Success flag value. */
-	private static final String FLAG_SUCCESS = "Y";
 
 	/** Failure flag value. */
 	private static final String FLAG_FAILURE = "N";
@@ -84,10 +76,11 @@ public class DeleteCustomerController
 	{
 		try
 		{
-			Customer deleted = customerService.deleteCustomer(customerNumber);
+			DeleteCustomerJson response = customerService
+					.deleteCustomer(customerNumber);
 			LOG.info("Customer deleted: {}",
-					deleted.getId().getCustomerNumber());
-			return ResponseEntity.ok(success(deleted));
+					response.getDelCus().getCommCustno());
+			return ResponseEntity.ok(response);
 		}
 		catch (BusinessRuleException ex)
 		{
@@ -95,30 +88,6 @@ public class DeleteCustomerController
 					ex.getFailCode());
 			return ResponseEntity.ok(failure(customerNumber));
 		}
-	}
-
-	/**
-	 * Builds the success envelope echoing the deleted customer snapshot.
-	 *
-	 * @param customer the deleted customer (detached snapshot)
-	 * @return the populated success envelope
-	 */
-	private DeleteCustomerJson success(Customer customer)
-	{
-		DelcusJson out = new DelcusJson();
-		out.setCommSortcode(customer.getId().getSortCode());
-		out.setCommCustno(customer.getId().getCustomerNumber());
-		out.setCommName(customer.getName());
-		out.setCommAddress(customer.getAddress());
-		out.setCommDateOfBirth(
-				DtoFormat.dateToString(customer.getDateOfBirth()));
-		out.setCommCsReviewDate(
-				DtoFormat.dateToString(customer.getCsReviewDate()));
-		out.setCommCreditScore(customer.getCreditScore() == null ? 0
-				: customer.getCreditScore().intValue());
-		out.setCommDelFailCode(FAIL_NONE);
-		out.setCommDelSuccess(FLAG_SUCCESS);
-		return new DeleteCustomerJson(out);
 	}
 
 	/**

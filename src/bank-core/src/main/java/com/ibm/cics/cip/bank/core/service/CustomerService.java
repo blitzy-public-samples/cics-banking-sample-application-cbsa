@@ -3,65 +3,117 @@
 /*                                                                        */
 package com.ibm.cics.cip.bank.core.service;
 
+import java.time.DateTimeException;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.ibm.cics.cip.bank.core.constants.BankConstants;
 import com.ibm.cics.cip.bank.core.domain.Title;
+import com.ibm.cics.cip.bank.core.dto.common.CommKey;
+import com.ibm.cics.cip.bank.core.dto.createcustomer.CreateCustomerForm;
+import com.ibm.cics.cip.bank.core.dto.createcustomer.CreateCustomerJson;
+import com.ibm.cics.cip.bank.core.dto.createcustomer.CrecustJson;
+import com.ibm.cics.cip.bank.core.dto.customerenquiry.CustomerEnquiryJson;
+import com.ibm.cics.cip.bank.core.dto.customerenquiry.InqCustDob;
+import com.ibm.cics.cip.bank.core.dto.customerenquiry.InqCustReviewDate;
+import com.ibm.cics.cip.bank.core.dto.customerenquiry.InqCustZJson;
+import com.ibm.cics.cip.bank.core.dto.deletecustomer.DelcusJson;
+import com.ibm.cics.cip.bank.core.dto.deletecustomer.DeleteCustomerJson;
+import com.ibm.cics.cip.bank.core.dto.updatecustomer.UpdateCustomerForm;
+import com.ibm.cics.cip.bank.core.dto.updatecustomer.UpdateCustomerJson;
+import com.ibm.cics.cip.bank.core.dto.updatecustomer.UpdcustJson;
 import com.ibm.cics.cip.bank.core.entity.Account;
 import com.ibm.cics.cip.bank.core.entity.Customer;
 import com.ibm.cics.cip.bank.core.entity.CustomerId;
 import com.ibm.cics.cip.bank.core.exception.BusinessRuleException;
 import com.ibm.cics.cip.bank.core.repository.AccountRepository;
+import com.ibm.cics.cip.bank.core.repository.CustomerControlRepository;
 import com.ibm.cics.cip.bank.core.repository.CustomerRepository;
-import com.ibm.cics.cip.bank.core.util.BankFormat;
 
 /**
- * Customer business service, reproducing the behaviour of the COBOL customer
- * programs {@code CRECUST} (create), {@code UPDCUST} (update) and
- * {@code DELCUS} (delete) exactly &mdash; including their validation order,
- * single-character fail codes and PROCTRAN audit semantics.
+ * Authoritative customer business service, reproducing the behaviour of four
+ * COBOL customer programs exactly &mdash; {@code CRECUST} (create, F-006),
+ * {@code INQCUST} (inquire, F-008), {@code UPDCUST} (update, F-011) and
+ * {@code DELCUS} (delete, F-014). The COBOL is the specification of record:
+ * every single-character fail code, every validation step, and every ordering
+ * rule is preserved verbatim (behavioural parity, not enhancement &mdash; AAP
+ * &sect;0.7).
  *
- * <p>Every public method is {@link Transactional @Transactional} with the
- * default {@link Propagation#REQUIRED REQUIRED} propagation, so the customer
- * mutation and the PROCTRAN audit append it triggers form one atomic unit of
- * work (review finding F-TXN-1). Validation failures are signalled with an
- * unchecked {@link BusinessRuleException} carrying the COBOL fail code, which
- * both rolls the transaction back and is translated onto the response envelope
- * by the controller advice.</p>
+ * <h2>Transaction semantics (CICS SYNCPOINT/ROLLBACK)</h2>
+ * <p>The three mutating operations are
+ * {@link Transactional @Transactional}{@code (propagation = REQUIRED,
+ * isolation = READ_COMMITTED)} so the customer mutation and the PROCTRAN audit
+ * append it triggers form one atomic unit of work; a thrown
+ * {@link BusinessRuleException} (unchecked) rolls the whole transaction back,
+ * which is what makes identity allocation gap-free (a consumed counter is
+ * restored on rollback &mdash; ADR-003). The read-only {@link #inquireCustomer}
+ * is {@code @Transactional(readOnly = true)}.</p>
  *
- * <p><strong>Create ({@code CRECUST}).</strong> The flow validates the title
- * token, performs the asynchronous five-agency credit check, validates the date
- * of birth, allocates the next customer number from the control row and inserts
- * the customer, then appends an {@code OCC} PROCTRAN row &mdash; in that order,
- * so any failure rolls back the number allocation. The credit check fans out
- * five concurrent {@link CreditAgencyService#requestCreditScore()} calls, waits
- * up to three seconds, and averages the scores that replied in time (never a
- * hard-coded zero); if none reply it fails with code {@code 'C'}. The
- * credit-score review date is today plus a random 1&ndash;21 days.</p>
+ * <h2>Operation summary</h2>
+ * <ul>
+ *   <li><strong>Create ({@code CRECUST}).</strong> Validate the title token
+ *       (fail {@code 'T'}), run the asynchronous five-agency credit check (fail
+ *       {@code 'C'} if none reply within three seconds), validate the date of
+ *       birth (fail {@code 'O'}/{@code 'Z'}/{@code 'Y'}), allocate the next
+ *       customer number from the control row (fail {@code '3'}), insert the
+ *       customer, then append an {@code OCC} PROCTRAN row &mdash; in that order,
+ *       so any failure rolls back the number allocation. The credit-score
+ *       review date is today plus a random 1&ndash;21 days.</li>
+ *   <li><strong>Inquire ({@code INQCUST}).</strong> The sentinels
+ *       {@code 0000000000} (random customer) and {@code 9999999999} (highest
+ *       customer) are resolved from the {@code CUSTCTRL} control row, never with
+ *       a {@code MAX()} table scan (F-008). A miss sets the response success
+ *       flag to {@code 'N'} with fail code {@code '1'} (INQCUST does not
+ *       abend).</li>
+ *   <li><strong>Update ({@code UPDCUST}).</strong> Validate the title first
+ *       (fail {@code 'T'}), read the customer (fail {@code '1'} not found,
+ *       {@code '2'} read error), then change <em>only</em> the name and/or
+ *       address subject to the blank rules (fail {@code '4'} when both are
+ *       blank), and save (fail {@code '3'}). The date of birth, credit score
+ *       and review date are never touched and <em>no</em> PROCTRAN row is
+ *       written.</li>
+ *   <li><strong>Delete ({@code DELCUS}).</strong> Read the customer (fail
+ *       {@code '1'} not found), cascade-delete each owned account via
+ *       {@link AccountService} (which captures the terminal balance and appends
+ *       its own {@code ODA} row), remove the customer row, then append an
+ *       {@code ODC} PROCTRAN row &mdash; all in one transaction. The customer
+ *       counter is <em>not</em> decremented, exactly as {@code DELCUS.cbl}
+ *       leaves {@code NUMBER-OF-CUSTOMERS} untouched.</li>
+ * </ul>
  *
- * <p><strong>Update ({@code UPDCUST}).</strong> Only the name and address are
- * changed; balances and other fields are untouched and <em>no</em> PROCTRAN row
- * is written.</p>
+ * <h2>PROCTRAN append mechanism</h2>
+ * <p>Audit rows are appended through the shared
+ * {@link ProcessedTransactionAppender} sibling service rather than by building
+ * {@code ProcessedTransaction} rows here directly. The appender allocates the
+ * unique twelve-digit reference as {@code findMaxReference(sortCode) + 1} under
+ * a pessimistic lock on the control row and formats the COBOL-faithful 40-byte
+ * description and the {@code OCC}/{@code ODC} type codes; it is
+ * {@code @Transactional(MANDATORY)} so it joins this service's transaction.
+ * This is the mechanism every sibling service uses and reproduces the COBOL
+ * {@code WRITE-PROCTRAN} sections faithfully (the create path uses {@code OCC}
+ * per {@code CRECUST.cbl} line 1223, the delete path {@code ODC} per
+ * {@code DELCUS.cbl} line 632).</p>
  *
- * <p><strong>Delete ({@code DELCUS}).</strong> The customer's accounts are
- * deleted first (each via {@link AccountService#deleteAccount(long)}, which
- * appends its own {@code ODA} audit row and decrements the account counter),
- * then the customer row is removed, an {@code ODC} PROCTRAN row is appended and
- * the customer counter is decremented &mdash; all inside the one transaction.</p>
+ * <h2>Frozen wire contract (F-019)</h2>
+ * <p>Each operation returns the fully populated success envelope DTO; failures
+ * are signalled by throwing {@link BusinessRuleException}, which the
+ * controllers translate into their endpoint-specific failure envelopes so the
+ * JSON contract is preserved byte-for-byte.</p>
  */
 @Service
 public class CustomerService
@@ -77,26 +129,11 @@ public class CustomerService
 	/** Maximum acceptable age in years, matching {@code CRECUST} ({@code > 150}). */
 	private static final int MAX_AGE_YEARS = 150;
 
-	/** Inclusive lower bound of the random credit-score review window (days). */
-	private static final int REVIEW_DAYS_MIN = 1;
-
 	/** Inclusive upper bound of the random credit-score review window (days). */
 	private static final int REVIEW_DAYS_MAX = 21;
 
-	/** Fail code: invalid customer title. */
-	private static final String FAIL_INVALID_TITLE = "T";
-
-	/** Fail code: date of birth out of range (year too early or age over 150). */
-	private static final String FAIL_DOB_RANGE = "O";
-
-	/** Fail code: date of birth in the future. */
-	private static final String FAIL_DOB_FUTURE = "Y";
-
-	/** Fail code: customer not found. */
-	private static final String FAIL_NOT_FOUND = "1";
-
-	/** Fail code: nothing to update (both name and address blank). */
-	private static final String FAIL_NOTHING_TO_UPDATE = "4";
+	/** Width of the compact {@code DDMMYYYY} date-of-birth string. */
+	private static final int DOB_STRING_WIDTH = 8;
 
 	/**
 	 * Number of credit agencies queried in parallel during create, reproducing
@@ -111,13 +148,60 @@ public class CustomerService
 	 */
 	private static final int CREDIT_CHECK_DEADLINE_SECONDS = 3;
 
-	/**
-	 * Fail code raised when not a single credit agency replies inside the
-	 * deadline (the {@code CRECUST} {@code 'C'} path).
-	 */
+	/** INQCUST sentinel: pick a random existing customer (COBOL {@code 0000000000}). */
+	private static final long SENTINEL_RANDOM = 0L;
+
+	/** INQCUST sentinel: return the highest customer (COBOL {@code 9999999999}). */
+	private static final long SENTINEL_HIGHEST = 9_999_999_999L;
+
+	/** Bounded number of random picks attempted for the {@code 0000000000} sentinel. */
+	private static final int RANDOM_PICK_MAX_RETRIES = 10;
+
+	/** Fail code: invalid customer title (CRECUST / UPDCUST). */
+	private static final String FAIL_INVALID_TITLE = "T";
+
+	/** Fail code: no credit agency replied within the deadline (CRECUST). */
 	private static final String FAIL_NO_AGENCY = "C";
 
+	/** Fail code: date of birth out of range (year too early or age over 150). */
+	private static final String FAIL_DOB_RANGE = "O";
+
+	/** Fail code: date of birth is not a valid calendar date (CRECUST). */
+	private static final String FAIL_DOB_INVALID = "Z";
+
+	/** Fail code: date of birth is in the future (CRECUST). */
+	private static final String FAIL_DOB_FUTURE = "Y";
+
+	/** Fail code: customer number could not be allocated/persisted (CRECUST/UPDCUST). */
+	private static final String FAIL_PERSIST = "3";
+
+	/** Fail code: customer not found (INQCUST / UPDCUST / DELCUS). */
+	private static final String FAIL_NOT_FOUND = "1";
+
+	/** Fail code: error reading the customer record (UPDCUST). */
+	private static final String FAIL_READ_ERROR = "2";
+
+	/** Fail code: nothing to update (both name and address blank, UPDCUST). */
+	private static final String FAIL_NOTHING_TO_UPDATE = "4";
+
+	/** Eye-catcher echoed in the create-customer response envelope. */
+	private static final String CUSTOMER_EYECATCHER = "CUST";
+
+	/** Response success flag value (COBOL {@code 'Y'}). */
+	private static final String FLAG_SUCCESS = "Y";
+
+	/** Response failure flag value (COBOL {@code 'N'}). */
+	private static final String FLAG_FAILURE = "N";
+
+	/** Empty fail code surfaced on a successful create (consumer treats non-empty as failure). */
+	private static final String SUCCESS_FAIL_CODE = "";
+
+	/** Inquiry fail code surfaced on success (COBOL leaves the fail code blank). */
+	private static final String INQUIRY_SUCCESS_FAIL_CODE = " ";
+
 	private final CustomerRepository customerRepository;
+
+	private final CustomerControlRepository customerControlRepository;
 
 	private final AccountRepository accountRepository;
 
@@ -130,24 +214,45 @@ public class CustomerService
 	private final ProcessedTransactionAppender proctranAppender;
 
 	/**
-	 * Constructs the customer service with its collaborators.
+	 * Source of randomness for the credit-score review-date offset (today +
+	 * 1&ndash;21 days) and for the {@code INQCUST} {@code 0000000000}
+	 * random-customer sentinel pick.
+	 */
+	private final Random random = new Random();
+
+	/**
+	 * Constructs the customer service with its collaborators (constructor
+	 * injection only &mdash; no field injection).
 	 *
-	 * @param customerRepository  repository for {@link Customer} persistence
-	 * @param accountRepository   repository used to find a customer's accounts
-	 *                            for the delete cascade
-	 * @param accountService      account service used to delete each owned
-	 *                            account (with its own audit row) in the cascade
-	 * @param identityService     allocator/releaser of customer numbers
-	 * @param creditAgencyService asynchronous credit-score provider
-	 * @param proctranAppender    atomic PROCTRAN audit-row appender
+	 * <p>The {@link AccountService} edge is the single permitted service-to-service
+	 * dependency (used by the {@code DELCUS} cascade). {@code AccountService} does
+	 * not inject {@code CustomerService} in return (it performs its own customer
+	 * existence check through {@link CustomerRepository}), so no Spring
+	 * construction cycle exists and no {@code @Lazy} indirection is required.</p>
+	 *
+	 * @param customerRepository        repository for {@link Customer} persistence
+	 * @param customerControlRepository repository used to read the
+	 *                                  {@code CUSTCTRL} control row for INQCUST
+	 *                                  sentinel resolution
+	 * @param accountRepository         repository used to list a customer's
+	 *                                  accounts for the delete cascade
+	 * @param accountService            account service used to delete each owned
+	 *                                  account (with its own audit row) in the
+	 *                                  cascade
+	 * @param identityService           allocator of customer numbers (control-row
+	 *                                  counter, gap-free)
+	 * @param creditAgencyService       asynchronous credit-score provider
+	 * @param proctranAppender          atomic PROCTRAN audit-row appender
 	 */
 	public CustomerService(CustomerRepository customerRepository,
+			CustomerControlRepository customerControlRepository,
 			AccountRepository accountRepository, AccountService accountService,
 			IdentityService identityService,
 			CreditAgencyService creditAgencyService,
 			ProcessedTransactionAppender proctranAppender)
 	{
 		this.customerRepository = customerRepository;
+		this.customerControlRepository = customerControlRepository;
 		this.accountRepository = accountRepository;
 		this.accountService = accountService;
 		this.identityService = identityService;
@@ -156,127 +261,277 @@ public class CustomerService
 	}
 
 	/**
-	 * Creates a customer, reproducing {@code CRECUST}.
+	 * Creates a customer, reproducing {@code CRECUST} (F-006).
 	 *
-	 * @param name        the customer name (its first token must be a valid
-	 *                    {@link Title}, or blank)
-	 * @param address     the customer address
-	 * @param dateOfBirth the customer date of birth
-	 * @return the persisted {@link Customer}, including the allocated number,
-	 *         averaged credit score and review date
-	 * @throws BusinessRuleException with the relevant fail code on a validation
-	 *                               failure ({@code T}, {@code C}, {@code O} or
-	 *                               {@code Y})
+	 * <p>The validation steps run <strong>before</strong> the customer number is
+	 * allocated, so a thrown {@link BusinessRuleException} rolls back the
+	 * transaction and restores the control-row counter (gap-free identity,
+	 * ADR-003). The order is: title &rarr; credit check &rarr; date-of-birth
+	 * &rarr; allocate &rarr; persist customer &rarr; append {@code OCC} PROCTRAN
+	 * row &rarr; populate response.</p>
+	 *
+	 * @param form the create-customer request form supplying the customer name
+	 *             (its first token must be a valid {@link Title} or blank), the
+	 *             address, and the date of birth as a compact {@code DDMMYYYY}
+	 *             string
+	 * @return the fully populated {@link CreateCustomerJson} success envelope
+	 * @throws BusinessRuleException {@code 'T'} invalid title, {@code 'C'} no
+	 *                               credit-agency reply, {@code 'O'} birth year
+	 *                               before {@value #MIN_BIRTH_YEAR} or age over
+	 *                               {@value #MAX_AGE_YEARS}, {@code 'Z'} invalid
+	 *                               calendar date, {@code 'Y'} date of birth in
+	 *                               the future, or {@code '3'} if the number
+	 *                               could not be allocated
 	 */
-	@Transactional
-	public Customer createCustomer(String name, String address,
-			LocalDate dateOfBirth)
+	@Transactional(propagation = Propagation.REQUIRED,
+			isolation = Isolation.READ_COMMITTED)
+	public CreateCustomerJson createCustomer(CreateCustomerForm form)
 	{
-		// 1. Title validation (CRECUST: fail 'T').
-		String title = firstToken(name);
-		if (!Title.isValidTitle(title))
+		String name = form.getCustName();
+		String address = form.getCustAddress();
+
+		// 1. Title validation (CRECUST: fail 'T'). A blank title is valid.
+		if (!Title.isValidTitle(firstToken(name)))
 		{
 			throw new BusinessRuleException(FAIL_INVALID_TITLE,
-					"Invalid customer title: " + title);
+					"Invalid customer title: " + firstToken(name));
 		}
 
-		// 2. Asynchronous five-agency credit check (CRECUST CREDIT-CHECK; throws
-		//    'C' if no agency replied within the deadline).
+		// 2. Asynchronous five-agency credit check (CRECUST: fail 'C' if none
+		//    reply within the deadline) and the random credit-score review date.
 		int creditScore = performCreditCheck();
 		LocalDate reviewDate = LocalDate.now()
-				.plusDays(ThreadLocalRandom.current()
-						.nextInt(REVIEW_DAYS_MIN, REVIEW_DAYS_MAX + 1));
+				.plusDays(1L + random.nextInt(REVIEW_DAYS_MAX));
 
-		// 3. Date-of-birth validation (CRECUST DATE-OF-BIRTH-CHECK).
-		validateDateOfBirth(dateOfBirth);
+		// 3. Date-of-birth validation (CRECUST DATE-OF-BIRTH-CHECK:
+		//    'O' year < 1601, 'Z' invalid calendar date, 'O' age > 150,
+		//    'Y' future), evaluated in the exact COBOL order.
+		LocalDate dateOfBirth = validateAndParseDateOfBirth(form.getCustDob());
 
-		// 4. Allocate the next customer number under the control-row lock.
-		long customerNumber = identityService
-				.allocateCustomerNumber(BankConstants.SORT_CODE);
+		// 4. Allocate the next customer number under the control-row lock
+		//    (CRECUST: counter failure collapses to fail '3').
+		long customerNumber;
+		try
+		{
+			customerNumber = identityService.allocateCustomerNumber();
+		}
+		catch (DataAccessException ex)
+		{
+			throw new BusinessRuleException(FAIL_PERSIST,
+					"Unable to allocate a customer number", ex);
+		}
 
-		// 5. Insert the customer.
+		// 5. Insert the customer, then append the create-customer audit row
+		//    (OCC) atomically through the shared appender.
 		Customer customer = new Customer();
 		customer.setId(new CustomerId(BankConstants.SORT_CODE,
-				BankFormat.customerNumber(customerNumber)));
+				pad10(customerNumber)));
 		customer.setName(name);
 		customer.setAddress(address);
 		customer.setDateOfBirth(dateOfBirth);
 		customer.setCreditScore((short) creditScore);
 		customer.setCsReviewDate(reviewDate);
-		Customer saved = customerRepository.save(customer);
-
-		// 6. Append the create-customer audit row (OCC) atomically.
+		try
+		{
+			customerRepository.save(customer);
+		}
+		catch (DataAccessException ex)
+		{
+			throw new BusinessRuleException(FAIL_PERSIST,
+					"Unable to persist the new customer", ex);
+		}
 		proctranAppender.appendCustomerCreate(BankConstants.SORT_CODE,
 				customerNumber, name, dateOfBirth);
 
-		return saved;
+		LOG.info("Customer created: {}", pad10(customerNumber));
+
+		// 6. Populate the create-customer success envelope.
+		return buildCreateResponse(customerNumber, name, address, dateOfBirth,
+				creditScore, reviewDate);
 	}
 
 	/**
-	 * Updates a customer's name and/or address, reproducing {@code UPDCUST}. No
-	 * PROCTRAN row is written and no other field is changed.
+	 * Inquires on a customer, reproducing {@code INQCUST} (F-008).
 	 *
-	 * @param customerNumber the customer number to update
-	 * @param name           the new name, or blank to leave unchanged
-	 * @param address        the new address, or blank to leave unchanged
-	 * @return the updated {@link Customer}
-	 * @throws BusinessRuleException {@code 1} if the customer does not exist,
-	 *                               {@code T} if a supplied name has an invalid
-	 *                               title, or {@code 4} if both name and address
-	 *                               are blank
+	 * <p>The two sentinels are resolved from the {@code CUSTCTRL} control row,
+	 * never with a {@code MAX()} table scan:</p>
+	 * <ul>
+	 *   <li>{@code 0000000000} &rarr; a random existing customer strictly within
+	 *       the populated range (bounded retries, then a guaranteed fall back to
+	 *       the highest customer);</li>
+	 *   <li>{@code 9999999999} &rarr; the highest customer
+	 *       ({@code LAST-CUSTOMER-NUMBER});</li>
+	 *   <li>any other value &rarr; a direct key lookup.</li>
+	 * </ul>
+	 *
+	 * <p>A miss is not an abend: the response carries success flag {@code 'N'}
+	 * and fail code {@code '1'}, matching the COBOL
+	 * {@code INQCUST-INQ-SUCCESS = 'N'} convention.</p>
+	 *
+	 * @param customerNumber the customer number, or a sentinel
+	 * @return the populated {@link CustomerEnquiryJson} envelope (success or
+	 *         not-found)
 	 */
-	@Transactional
-	public Customer updateCustomer(long customerNumber, String name,
-			String address)
+	@Transactional(readOnly = true)
+	public CustomerEnquiryJson inquireCustomer(long customerNumber)
 	{
-		Customer customer = customerRepository
-				.findById(new CustomerId(BankConstants.SORT_CODE,
-						BankFormat.customerNumber(customerNumber)))
-				.orElseThrow(() -> new BusinessRuleException(FAIL_NOT_FOUND,
-						"Customer not found: " + customerNumber));
+		Customer customer;
+		if (customerNumber == SENTINEL_RANDOM)
+		{
+			customer = pickRandomCustomer();
+		}
+		else if (customerNumber == SENTINEL_HIGHEST)
+		{
+			long highest = highestCustomerNumber();
+			customer = (highest <= 0L) ? null
+					: customerRepository
+							.findById(new CustomerId(BankConstants.SORT_CODE,
+									pad10(highest)))
+							.orElse(null);
+		}
+		else
+		{
+			customer = customerRepository
+					.findById(new CustomerId(BankConstants.SORT_CODE,
+							pad10(customerNumber)))
+					.orElse(null);
+		}
+		return buildEnquiryResponse(customerNumber, customer);
+	}
 
-		boolean nameProvided = isProvided(name);
-		boolean addressProvided = isProvided(address);
+	/**
+	 * Updates a customer's name and/or address, reproducing {@code UPDCUST}
+	 * (F-011). The operation is deliberately restricted: it changes only the
+	 * name and address, never the date of birth, credit score or review date,
+	 * and it writes <em>no</em> PROCTRAN row (an update is not a financial
+	 * movement).
+	 *
+	 * <p>The steps follow the exact {@code UPDCUST.cbl} order: validate the title
+	 * first (fail {@code 'T'}), read the customer (fail {@code '1'} not found,
+	 * {@code '2'} read error), apply the blank rules (fail {@code '4'} when both
+	 * name and address are blank), then rewrite (fail {@code '3'}).</p>
+	 *
+	 * <p>Blank rules, matching {@code UPDCUST} exactly &mdash; a field is
+	 * &quot;provided&quot; when it is non-empty and does not start with a
+	 * space:</p>
+	 * <ul>
+	 *   <li>both name and address blank &rarr; fail {@code '4'};</li>
+	 *   <li>name blank, address provided &rarr; update the address only;</li>
+	 *   <li>address blank, name provided &rarr; update the name only;</li>
+	 *   <li>both provided &rarr; update both.</li>
+	 * </ul>
+	 *
+	 * @param form the update-customer request form supplying the customer number
+	 *             and the new name and/or address
+	 * @return the populated {@link UpdateCustomerJson} success envelope
+	 * @throws BusinessRuleException {@code 'T'} invalid title, {@code '1'}
+	 *                               customer not found, {@code '2'} read error,
+	 *                               {@code '4'} neither name nor address
+	 *                               supplied, or {@code '3'} on a persistence
+	 *                               failure
+	 */
+	@Transactional(propagation = Propagation.REQUIRED,
+			isolation = Isolation.READ_COMMITTED)
+	public UpdateCustomerJson updateCustomer(UpdateCustomerForm form)
+	{
+		long customerNumber = parseCustomerNumber(form.getCustNumber());
+		String newName = form.getCustName();
+		String newAddress = form.getCustAddress();
+
+		// 1. Title validation first (UPDCUST order). A blank name yields a blank
+		//    title token, which is valid.
+		if (!Title.isValidTitle(firstToken(newName)))
+		{
+			throw new BusinessRuleException(FAIL_INVALID_TITLE,
+					"Invalid customer title: " + firstToken(newName));
+		}
+
+		// 2. Read the customer: not found -> '1', read error -> '2'.
+		Customer customer;
+		try
+		{
+			customer = customerRepository
+					.findById(new CustomerId(BankConstants.SORT_CODE,
+							pad10(customerNumber)))
+					.orElse(null);
+		}
+		catch (DataAccessException ex)
+		{
+			throw new BusinessRuleException(FAIL_READ_ERROR,
+					"Error reading customer " + customerNumber, ex);
+		}
+		if (customer == null)
+		{
+			throw new BusinessRuleException(FAIL_NOT_FOUND,
+					"Customer not found: " + customerNumber);
+		}
+
+		// 3. Blank rules (UPDCUST): reject when both are blank, otherwise update
+		//    whichever field(s) were supplied.
+		boolean nameProvided = isProvided(newName);
+		boolean addressProvided = isProvided(newAddress);
 		if (!nameProvided && !addressProvided)
 		{
 			throw new BusinessRuleException(FAIL_NOTHING_TO_UPDATE,
 					"Neither name nor address supplied for update");
 		}
-
 		if (nameProvided)
 		{
-			if (!Title.isValidTitle(firstToken(name)))
-			{
-				throw new BusinessRuleException(FAIL_INVALID_TITLE,
-						"Invalid customer title: " + firstToken(name));
-			}
-			customer.setName(name);
+			customer.setName(newName);
 		}
 		if (addressProvided)
 		{
-			customer.setAddress(address);
+			customer.setAddress(newAddress);
 		}
-		// UPDCUST writes no PROCTRAN record for an update.
-		return customerRepository.save(customer);
+
+		// 4. Rewrite the customer (UPDCUST: fail '3' on a REWRITE error).
+		//    No PROCTRAN row is written; DOB / credit score / review date are
+		//    never touched.
+		Customer saved;
+		try
+		{
+			saved = customerRepository.save(customer);
+		}
+		catch (DataAccessException ex)
+		{
+			throw new BusinessRuleException(FAIL_PERSIST,
+					"Error updating customer " + customerNumber, ex);
+		}
+
+		LOG.info("Customer updated: {}", saved.getId().getCustomerNumber());
+
+		// 5. Populate the update-customer success envelope.
+		return buildUpdateResponse(saved);
 	}
 
 	/**
-	 * Deletes a customer and all of its accounts, reproducing {@code DELCUS}.
+	 * Deletes a customer and all of its accounts, reproducing {@code DELCUS}
+	 * (F-014).
 	 *
-	 * <p>Each owned account is deleted first via
-	 * {@link AccountService#deleteAccount(long)} (appending an {@code ODA} row
-	 * and decrementing the account counter), then the customer row is removed,
-	 * an {@code ODC} audit row is appended and the customer counter is
-	 * decremented &mdash; all atomically.</p>
+	 * <p>The steps follow the exact {@code DELCUS.cbl} order: read the customer
+	 * (fail {@code '1'} if missing), capture its details for the audit row and
+	 * the response <em>before</em> deletion, cascade-delete each owned account
+	 * via {@link AccountService#deleteAccount(com.ibm.cics.cip.bank.core.entity.AccountId)}
+	 * (which captures the terminal balance and appends its own {@code ODA}
+	 * record), remove the customer row, then append an {@code ODC} PROCTRAN row.
+	 * The customer counter is deliberately <em>not</em> decremented &mdash;
+	 * {@code DELCUS.cbl} leaves {@code NUMBER-OF-CUSTOMERS} unchanged, preserving
+	 * the high-water mark for gap-free allocation.</p>
+	 *
+	 * <p>Every step runs in this one transaction, so a failure after deletions
+	 * have begun rolls all of them back together (the COBOL abended for the same
+	 * reason), keeping the customer, accounts and PROCTRAN audit in step.</p>
 	 *
 	 * @param customerNumber the customer number to delete
-	 * @return a detached snapshot of the deleted {@link Customer}
-	 * @throws BusinessRuleException {@code 1} if the customer does not exist
+	 * @return the populated {@link DeleteCustomerJson} success envelope capturing
+	 *         the deleted customer's details
+	 * @throws BusinessRuleException {@code '1'} if the customer does not exist
 	 */
-	@Transactional
-	public Customer deleteCustomer(long customerNumber)
+	@Transactional(propagation = Propagation.REQUIRED,
+			isolation = Isolation.READ_COMMITTED)
+	public DeleteCustomerJson deleteCustomer(long customerNumber)
 	{
-		String paddedCustomerNumber = BankFormat.customerNumber(customerNumber);
+		String paddedCustomerNumber = pad10(customerNumber);
 		Customer customer = customerRepository
 				.findById(new CustomerId(BankConstants.SORT_CODE,
 						paddedCustomerNumber))
@@ -285,72 +540,66 @@ public class CustomerService
 
 		// Snapshot the customer details for the audit row and the response
 		// before the row is removed.
+		String sortCode = customer.getId().getSortCode();
+		String custno = customer.getId().getCustomerNumber();
 		String name = customer.getName();
+		String address = customer.getAddress();
 		LocalDate dateOfBirth = customer.getDateOfBirth();
+		LocalDate reviewDate = customer.getCsReviewDate();
+		Short creditScore = customer.getCreditScore();
 
 		// Cascade-delete the customer's accounts (DELCUS DELETE-ACCOUNTS); each
-		// AccountService.deleteAccount call runs in this same transaction.
+		// AccountService.deleteAccount call runs in this same transaction and
+		// appends its own ODA audit row. Exceptions propagate so the whole unit
+		// of work rolls back together.
 		List<Account> accounts = accountRepository
 				.findByIdSortCodeAndCustomerNumberOrderByIdAccountNumberAsc(
 						BankConstants.SORT_CODE, paddedCustomerNumber);
 		for (Account account : accounts)
 		{
-			accountService.deleteAccount(
-					Long.parseLong(account.getId().getAccountNumber().trim()));
+			accountService.deleteAccount(account.getId());
 		}
 
-		// Remove the customer row.
+		// Remove the customer row, then append the delete-customer audit row
+		// (ODC) atomically. The customer counter is NOT decremented.
 		customerRepository.delete(customer);
-
-		// Append the delete-customer audit row (ODC) atomically.
 		proctranAppender.appendCustomerDelete(BankConstants.SORT_CODE,
 				customerNumber, name, dateOfBirth);
 
-		// Decrement the customer counter (high-water mark is preserved).
-		identityService.releaseCustomer(BankConstants.SORT_CODE);
+		LOG.info("Customer deleted: {}", custno);
 
-		return customer;
+		// Populate the delete-customer success envelope from the snapshot.
+		return buildDeleteResponse(sortCode, custno, name, address, dateOfBirth,
+				reviewDate, creditScore);
 	}
 
-	/**
-	 * Looks up a customer by number without modifying it. Provided for callers
-	 * (such as {@link AccountService}) that must confirm a customer exists.
-	 *
-	 * @param customerNumber the customer number
-	 * @return the {@link Customer}, if present
-	 */
-	@Transactional(readOnly = true)
-	public Optional<Customer> findCustomer(long customerNumber)
-	{
-		return customerRepository.findById(new CustomerId(
-				BankConstants.SORT_CODE,
-				BankFormat.customerNumber(customerNumber)));
-	}
+	// ------------------------------------------------------------------ //
+	// Credit check (CRECUST credit-agency fan-out, F-017)                //
+	// ------------------------------------------------------------------ //
 
 	/**
 	 * Runs the asynchronous five-agency credit check and returns the averaged
-	 * score, reproducing the {@code CRECUST} credit-check section (feature
-	 * F-017).
+	 * score, reproducing the {@code CRECUST} credit-check section (F-017).
 	 *
 	 * <p>{@value #NUMBER_OF_AGENCIES} concurrent
 	 * {@link CreditAgencyService#requestCreditScore()} tasks are fanned out onto
 	 * the dedicated credit-agency executor; the method then waits up to
 	 * {@value #CREDIT_CHECK_DEADLINE_SECONDS} seconds for them to complete (the
 	 * COBOL {@code EXEC CICS DELAY FOR SECONDS(3)}). The scores of the agencies
-	 * that finished within the deadline are averaged using truncating integer
+	 * that finished within the deadline are averaged with truncating integer
 	 * division, exactly matching the COBOL
 	 * {@code COMPUTE WS-ACTUAL-CS-SCR = WS-TOTAL-CS-SCR / WS-RETRIEVED-CNT}. A
-	 * deadline timeout is expected and benign &mdash; it simply means one or more
-	 * agencies did not reply, so whatever did arrive is averaged. An agency that
-	 * completed exceptionally (for example, interrupted mid-delay) is not
-	 * counted. If <em>no</em> agency replied in time the create fails with code
-	 * {@value #FAIL_NO_AGENCY}.</p>
+	 * deadline timeout is expected and benign &mdash; whatever replied is
+	 * averaged. An agency that completed exceptionally is not counted. If
+	 * <em>no</em> agency replied in time the create fails with code
+	 * {@value #FAIL_NO_AGENCY} (the canonical no-credit-data outcome onto which
+	 * the COBOL CICS-infrastructure fail codes collapse).</p>
 	 *
 	 * @return the averaged credit score (1&ndash;999) of the agencies that
 	 *         replied within the deadline
-	 * @throws BusinessRuleException with fail code {@value #FAIL_NO_AGENCY} if no
-	 *                               agency replied within the deadline, or if the
-	 *                               wait was interrupted
+	 * @throws BusinessRuleException {@value #FAIL_NO_AGENCY} if no agency replied
+	 *                               within the deadline, or if the wait was
+	 *                               interrupted
 	 */
 	private int performCreditCheck()
 	{
@@ -416,24 +665,62 @@ public class CustomerService
 		return (int) (total / retrieved);
 	}
 
+	// ------------------------------------------------------------------ //
+	// Date-of-birth validation (CRECUST DATE-OF-BIRTH-CHECK)             //
+	// ------------------------------------------------------------------ //
+
 	/**
-	 * Validates a date of birth exactly as {@code CRECUST} does.
+	 * Validates and parses the compact {@code DDMMYYYY} date-of-birth string
+	 * exactly as {@code CRECUST} does, in the COBOL evaluation order: year before
+	 * {@value #MIN_BIRTH_YEAR} &rarr; {@code 'O'}; not a valid calendar date
+	 * &rarr; {@code 'Z'}; age over {@value #MAX_AGE_YEARS} &rarr; {@code 'O'};
+	 * date in the future &rarr; {@code 'Y'}. A null, wrong-length or non-numeric
+	 * value is treated as an invalid date ({@code 'Z'}).
 	 *
-	 * @param dateOfBirth the date of birth to validate
-	 * @throws BusinessRuleException {@code O} if the year is before
-	 *                               {@value #MIN_BIRTH_YEAR} or the age exceeds
-	 *                               {@value #MAX_AGE_YEARS}, or {@code Y} if the
-	 *                               date is in the future
+	 * @param dobString the date of birth as a {@code DDMMYYYY} string
+	 * @return the parsed, validated {@link LocalDate}
+	 * @throws BusinessRuleException {@code 'O'}, {@code 'Z'} or {@code 'Y'} per
+	 *                               the rules above
 	 */
-	private void validateDateOfBirth(LocalDate dateOfBirth)
+	private LocalDate validateAndParseDateOfBirth(String dobString)
 	{
-		if (dateOfBirth == null || dateOfBirth.getYear() < MIN_BIRTH_YEAR)
+		if (dobString == null)
+		{
+			throw new BusinessRuleException(FAIL_DOB_INVALID,
+					"Date of birth is not a valid date");
+		}
+		String trimmed = dobString.trim();
+		if (trimmed.length() != DOB_STRING_WIDTH
+				|| !trimmed.chars().allMatch(Character::isDigit))
+		{
+			throw new BusinessRuleException(FAIL_DOB_INVALID,
+					"Date of birth is not a valid eight-digit DDMMYYYY date");
+		}
+
+		int day = Integer.parseInt(trimmed.substring(0, 2));
+		int month = Integer.parseInt(trimmed.substring(2, 4));
+		int year = Integer.parseInt(trimmed.substring(4, 8));
+
+		// COBOL checks the year bound before validating the calendar date.
+		if (year < MIN_BIRTH_YEAR)
 		{
 			throw new BusinessRuleException(FAIL_DOB_RANGE,
 					"Date of birth year is before " + MIN_BIRTH_YEAR);
 		}
+
+		LocalDate dateOfBirth;
+		try
+		{
+			dateOfBirth = LocalDate.of(year, month, day);
+		}
+		catch (DateTimeException ex)
+		{
+			throw new BusinessRuleException(FAIL_DOB_INVALID,
+					"Date of birth is not a valid calendar date", ex);
+		}
+
 		LocalDate today = LocalDate.now();
-		if (today.getYear() - dateOfBirth.getYear() > MAX_AGE_YEARS)
+		if (today.getYear() - year > MAX_AGE_YEARS)
 		{
 			throw new BusinessRuleException(FAIL_DOB_RANGE,
 					"Customer age exceeds " + MAX_AGE_YEARS + " years");
@@ -442,6 +729,318 @@ public class CustomerService
 		{
 			throw new BusinessRuleException(FAIL_DOB_FUTURE,
 					"Date of birth is in the future");
+		}
+		return dateOfBirth;
+	}
+
+	// ------------------------------------------------------------------ //
+	// INQCUST sentinel resolution (control row, never MAX() scan)        //
+	// ------------------------------------------------------------------ //
+
+	/**
+	 * Resolves the {@code 0000000000} sentinel by picking a random existing
+	 * customer, reproducing the {@code INQCUST GENERATE-RANDOM-CUSTOMER} logic.
+	 *
+	 * <p>The upper bound is read from the {@code CUSTCTRL} control row
+	 * ({@code LAST-CUSTOMER-NUMBER}), never with a {@code MAX()} scan. Up to
+	 * {@value #RANDOM_PICK_MAX_RETRIES} random candidates in the populated range
+	 * are tried; if every candidate misses (the range can be sparse after
+	 * deletes) the highest customer &mdash; which is guaranteed to exist whenever
+	 * the bound is positive &mdash; is returned as a deterministic fall back.</p>
+	 *
+	 * @return a random existing {@link Customer}, or {@code null} if no customers
+	 *         exist
+	 */
+	private Customer pickRandomCustomer()
+	{
+		long highest = highestCustomerNumber();
+		if (highest <= 0L)
+		{
+			return null;
+		}
+		for (int attempt = 0; attempt < RANDOM_PICK_MAX_RETRIES; attempt++)
+		{
+			long candidate = 1L + (long) (random.nextDouble() * highest);
+			if (candidate >= highest)
+			{
+				candidate = highest;
+			}
+			Optional<Customer> found = customerRepository.findById(
+					new CustomerId(BankConstants.SORT_CODE, pad10(candidate)));
+			if (found.isPresent())
+			{
+				return found.get();
+			}
+		}
+		// Deterministic fall back: the highest customer always exists when the
+		// control-row bound is positive.
+		return customerRepository
+				.findById(new CustomerId(BankConstants.SORT_CODE,
+						pad10(highest)))
+				.orElse(null);
+	}
+
+	/**
+	 * Reads the highest allocated customer number from the {@code CUSTCTRL}
+	 * control row ({@code LAST-CUSTOMER-NUMBER}) without a {@code MAX()} scan.
+	 *
+	 * @return the highest customer number, or {@code 0} if the control row is
+	 *         absent or carries no value
+	 */
+	private long highestCustomerNumber()
+	{
+		return customerControlRepository.findById(BankConstants.SORT_CODE)
+				.map(control -> control.getLastCustomerNumber() == null ? 0L
+						: control.getLastCustomerNumber())
+				.orElse(0L);
+	}
+
+	// ------------------------------------------------------------------ //
+	// Response-envelope builders (frozen wire contract, F-019)           //
+	// ------------------------------------------------------------------ //
+
+	/**
+	 * Builds the create-customer success envelope, populating the inner
+	 * {@link CrecustJson} commarea exactly as the frozen contract requires.
+	 *
+	 * @param customerNumber the allocated customer number
+	 * @param name           the customer name
+	 * @param address        the customer address
+	 * @param dateOfBirth    the validated date of birth
+	 * @param creditScore    the averaged credit score
+	 * @param reviewDate     the credit-score review date
+	 * @return the populated {@link CreateCustomerJson} envelope
+	 */
+	private CreateCustomerJson buildCreateResponse(long customerNumber,
+			String name, String address, LocalDate dateOfBirth, int creditScore,
+			LocalDate reviewDate)
+	{
+		CrecustJson out = new CrecustJson();
+		out.setCommEyecatcher(CUSTOMER_EYECATCHER);
+		out.setCommKey(new CommKey(Integer.parseInt(BankConstants.SORT_CODE),
+				customerNumber));
+		out.setCommName(name);
+		out.setCommAddress(address);
+		out.setCommDateOfBirth(dateToString(dateOfBirth));
+		out.setCommCreditScore(creditScore);
+		out.setCommCsReviewDate(dateToString(reviewDate));
+		out.setCommSuccess(FLAG_SUCCESS);
+		out.setCommFailCode(SUCCESS_FAIL_CODE);
+		return new CreateCustomerJson(out);
+	}
+
+	/**
+	 * Builds the customer-enquiry envelope from a resolved customer, or a
+	 * not-found envelope ({@code 'N'} / {@code '1'}) when the lookup missed.
+	 *
+	 * @param requestedNumber the customer number that was requested (echoed on a
+	 *                        miss)
+	 * @param customer        the resolved customer, or {@code null}
+	 * @return the populated {@link CustomerEnquiryJson} envelope
+	 */
+	private CustomerEnquiryJson buildEnquiryResponse(long requestedNumber,
+			Customer customer)
+	{
+		InqCustZJson inq = new InqCustZJson();
+		if (customer == null)
+		{
+			inq.setInqCustScode(BankConstants.SORT_CODE);
+			inq.setInqCustCustno(pad10(requestedNumber));
+			inq.setInqCustInqSuccess(FLAG_FAILURE);
+			inq.setInqCustInqFailCd(FAIL_NOT_FOUND);
+		}
+		else
+		{
+			inq.setInqCustEye(CUSTOMER_EYECATCHER);
+			inq.setInqCustScode(customer.getId().getSortCode());
+			inq.setInqCustCustno(customer.getId().getCustomerNumber());
+			inq.setInqCustName(customer.getName());
+			inq.setInqCustAddress(customer.getAddress());
+			inq.setInqCustDob(toDobComponent(customer.getDateOfBirth()));
+			inq.setInqCustCreditScore(customer.getCreditScore() == null ? 0
+					: customer.getCreditScore().intValue());
+			inq.setInqCustCsReviewDate(
+					toReviewDateComponent(customer.getCsReviewDate()));
+			inq.setInqCustInqSuccess(FLAG_SUCCESS);
+			inq.setInqCustInqFailCd(INQUIRY_SUCCESS_FAIL_CODE);
+		}
+		CustomerEnquiryJson envelope = new CustomerEnquiryJson();
+		envelope.setInqCustZ(inq);
+		return envelope;
+	}
+
+	/**
+	 * Builds the update-customer success envelope echoing the persisted
+	 * customer.
+	 *
+	 * @param customer the persisted customer
+	 * @return the populated {@link UpdateCustomerJson} envelope
+	 */
+	private UpdateCustomerJson buildUpdateResponse(Customer customer)
+	{
+		UpdcustJson out = new UpdcustJson();
+		out.setCommSortcode(customer.getId().getSortCode());
+		out.setCommCustno(customer.getId().getCustomerNumber());
+		out.setCommName(customer.getName());
+		out.setCommAddress(customer.getAddress());
+		out.setCommDateOfBirth(dateToInt(customer.getDateOfBirth()));
+		out.setCommCreditScore(customer.getCreditScore() == null ? 0
+				: customer.getCreditScore().intValue());
+		out.setCommCreditScoreReviewDate(dateToInt(customer.getCsReviewDate()));
+		out.setCommUpdateSuccess(FLAG_SUCCESS);
+		out.setCommUpdateFailCode(SUCCESS_FAIL_CODE);
+		UpdateCustomerJson wrapper = new UpdateCustomerJson();
+		wrapper.setUpdcust(out);
+		return wrapper;
+	}
+
+	/**
+	 * Builds the delete-customer success envelope from the snapshot captured
+	 * before deletion.
+	 *
+	 * @param sortCode    the sort code
+	 * @param custno      the (zero-padded) customer number
+	 * @param name        the customer name
+	 * @param address     the customer address
+	 * @param dateOfBirth the date of birth
+	 * @param reviewDate  the credit-score review date
+	 * @param creditScore the credit score (may be {@code null})
+	 * @return the populated {@link DeleteCustomerJson} envelope
+	 */
+	private DeleteCustomerJson buildDeleteResponse(String sortCode,
+			String custno, String name, String address, LocalDate dateOfBirth,
+			LocalDate reviewDate, Short creditScore)
+	{
+		DelcusJson out = new DelcusJson();
+		out.setCommSortcode(sortCode);
+		out.setCommCustno(custno);
+		out.setCommName(name);
+		out.setCommAddress(address);
+		out.setCommDateOfBirth(dateToString(dateOfBirth));
+		out.setCommCsReviewDate(dateToString(reviewDate));
+		out.setCommCreditScore(
+				creditScore == null ? 0 : creditScore.intValue());
+		out.setCommDelFailCode("0");
+		out.setCommDelSuccess(FLAG_SUCCESS);
+		return new DeleteCustomerJson(out);
+	}
+
+	/**
+	 * Builds the nested date-of-birth component (day/month/year) for the enquiry
+	 * envelope; a {@code null} date yields a zero-valued component.
+	 *
+	 * @param date the date of birth, or {@code null}
+	 * @return the populated {@link InqCustDob}
+	 */
+	private InqCustDob toDobComponent(LocalDate date)
+	{
+		InqCustDob dob = new InqCustDob();
+		if (date != null)
+		{
+			dob.setInqCustDobDd(date.getDayOfMonth());
+			dob.setInqCustDobMm(date.getMonthValue());
+			dob.setInqCustDobYyyy(date.getYear());
+		}
+		return dob;
+	}
+
+	/**
+	 * Builds the nested credit-score review-date component (day/month/year) for
+	 * the enquiry envelope; a {@code null} date yields a zero-valued component.
+	 *
+	 * @param date the review date, or {@code null}
+	 * @return the populated {@link InqCustReviewDate}
+	 */
+	private InqCustReviewDate toReviewDateComponent(LocalDate date)
+	{
+		InqCustReviewDate review = new InqCustReviewDate();
+		if (date != null)
+		{
+			review.setInqCustCsReviewDd(date.getDayOfMonth());
+			review.setInqCustCsReviewMm(date.getMonthValue());
+			review.setInqCustCsReviewYyyy(date.getYear());
+		}
+		return review;
+	}
+
+	// ------------------------------------------------------------------ //
+	// Formatting / parsing helpers (inlined; no util import needed)      //
+	// ------------------------------------------------------------------ //
+
+	/**
+	 * Formats a customer number as a fixed-width, ten-character, left-zero-padded
+	 * string for the {@code CHAR(10)} entity key (matches
+	 * {@code BankFormat.customerNumber}).
+	 *
+	 * @param value the customer number
+	 * @return the ten-character, zero-padded string
+	 */
+	private String pad10(long value)
+	{
+		return String.format("%010d", value);
+	}
+
+	/**
+	 * Encodes a date as the eight-character {@code DDMMYYYY} string used by the
+	 * String-typed envelope date fields (matches {@code DtoFormat.dateToString};
+	 * a {@code null} date encodes as the absent sentinel {@code "0"}).
+	 *
+	 * @param date the date, or {@code null}
+	 * @return the {@code DDMMYYYY} string, or {@code "0"}
+	 */
+	private String dateToString(LocalDate date)
+	{
+		if (date == null)
+		{
+			return "0";
+		}
+		return String.format("%02d%02d%04d", date.getDayOfMonth(),
+				date.getMonthValue(), date.getYear());
+	}
+
+	/**
+	 * Encodes a date as the integer {@code DDMMYYYY} value used by the
+	 * {@code int}-typed update envelope date fields (matches
+	 * {@code DtoFormat.dateToInt}; a leading zero on the day is naturally
+	 * dropped, and a {@code null} date encodes as {@code 0}).
+	 *
+	 * @param date the date, or {@code null}
+	 * @return the {@code DDMMYYYY} integer, or {@code 0}
+	 */
+	private int dateToInt(LocalDate date)
+	{
+		if (date == null)
+		{
+			return 0;
+		}
+		return Integer.parseInt(dateToString(date));
+	}
+
+	/**
+	 * Parses a customer number supplied as a string (trimming surrounding
+	 * whitespace), reproducing the controller's {@code Long.parseLong} of the
+	 * commarea customer-number field.
+	 *
+	 * @param value the customer number string
+	 * @return the parsed customer number
+	 * @throws BusinessRuleException {@code '1'} if the value is null or not a
+	 *                               valid number (treated as not found)
+	 */
+	private long parseCustomerNumber(String value)
+	{
+		if (value == null)
+		{
+			throw new BusinessRuleException(FAIL_NOT_FOUND,
+					"Customer number not supplied");
+		}
+		try
+		{
+			return Long.parseLong(value.trim());
+		}
+		catch (NumberFormatException ex)
+		{
+			throw new BusinessRuleException(FAIL_NOT_FOUND,
+					"Invalid customer number: " + value, ex);
 		}
 	}
 
@@ -469,15 +1068,16 @@ public class CustomerService
 	}
 
 	/**
-	 * Reports whether a value is supplied (non-null and not blank).
+	 * Reports whether a field value is &quot;provided&quot; for the
+	 * {@code UPDCUST} blank rules: non-null, non-empty, and not starting with a
+	 * space (the COBOL {@code field = SPACES OR field(1:1) = ' '} test, negated).
 	 *
 	 * @param value the value to test
-	 * @return {@code true} if the value is non-null and contains a non-space
-	 *         character
+	 * @return {@code true} if the value is supplied
 	 */
 	private boolean isProvided(String value)
 	{
-		return value != null && !value.trim().isEmpty();
+		return value != null && !value.isEmpty() && value.charAt(0) != ' ';
 	}
 
 }
