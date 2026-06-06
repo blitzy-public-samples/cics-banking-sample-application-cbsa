@@ -76,7 +76,7 @@ public class UpdateAccountController
 	public ResponseEntity<UpdateAccountJson> updateAccount(
 			@RequestBody UpdateAccountJson request)
 	{
-		UpdaccJson in = request.getUpdacc();
+		UpdaccJson in = request.getUpdAcc();
 		long accountNumber = Long.parseLong(in.getCommAccno().trim());
 
 		try
