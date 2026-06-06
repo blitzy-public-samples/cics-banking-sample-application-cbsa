@@ -12,7 +12,17 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.springframework.aop.support.AopUtils;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Import;
+import org.springframework.scheduling.annotation.EnableAsync;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
+import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
+
+import com.ibm.cics.cip.bank.core.config.AsyncConfig;
 
 /**
  * Parity unit test for {@link CreditAgencyService} &mdash; the Java rendering of
@@ -316,6 +326,138 @@ class CreditAgencyServiceTest
 		{
 			// Reclaim the temporary pool threads regardless of assertion outcome.
 			pool.shutdownNow();
+		}
+	}
+
+	/**
+	 * Minimal Spring configuration that activates asynchronous-method support and
+	 * registers the two collaborators needed to prove the F-017 wiring: the
+	 * dedicated {@code creditAgencyExecutor} (imported from the production
+	 * {@link AsyncConfig}) and the {@link CreditAgencyService} bean itself.
+	 * {@link EnableAsync @EnableAsync} is what makes Spring wrap the service in an
+	 * asynchronous proxy, so it must be present for the wiring assertions below to
+	 * be meaningful.
+	 */
+	@Configuration
+	@EnableAsync
+	@Import({ AsyncConfig.class, CreditAgencyService.class })
+	static class AsyncWiringTestConfig
+	{
+	}
+
+	/**
+	 * Spring-context wiring tests (F-017) that complement the plain unit tests
+	 * above. Whereas those tests directly construct the bean &mdash; so
+	 * {@code @Async} is inert and the body runs synchronously &mdash; these load a
+	 * lightweight Spring context via {@link AsyncWiringTestConfig} and operate on
+	 * the <em>proxied</em> {@link CreditAgencyService} bean, asserting that the
+	 * asynchronous proxy is in place and that the dedicated
+	 * {@code creditAgencyExecutor} is configured for the five-way fan-out. This
+	 * closes the review gap: the production service is annotated
+	 * {@link org.springframework.scheduling.annotation.Async @Async}, so its
+	 * Spring proxy / executor wiring is exercised here, not just its deterministic
+	 * score bounds.
+	 */
+	@Nested
+	@SpringJUnitConfig(AsyncWiringTestConfig.class)
+	class AsyncWiringSpringTest
+	{
+
+		/**
+		 * The container-managed {@link CreditAgencyService}. Because
+		 * {@code @EnableAsync} is active, Spring injects an asynchronous proxy
+		 * rather than the raw bean.
+		 */
+		@Autowired
+		private CreditAgencyService proxiedService;
+
+		/**
+		 * The dedicated credit-agency executor contributed by {@link AsyncConfig},
+		 * autowired by its bean type to assert its fan-out configuration.
+		 */
+		@Autowired
+		private ThreadPoolTaskExecutor creditAgencyExecutor;
+
+		/**
+		 * Proxy wiring (F-017): with {@code @EnableAsync} active the injected
+		 * {@link CreditAgencyService} is a Spring AOP proxy, which is what routes
+		 * {@code requestCreditScore()} onto the asynchronous executor. Asserting
+		 * the bean is a proxy proves the asynchronous interception is actually in
+		 * place &mdash; something the plain unit tests above cannot show, by
+		 * construction.
+		 */
+		@Test
+		void serviceBeanIsAsyncProxy()
+		{
+			assertThat(AopUtils.isAopProxy(proxiedService)).isTrue();
+		}
+
+		/**
+		 * Executor wiring (F-017): the dedicated {@code creditAgencyExecutor} is
+		 * configured for the five-way agency fan-out &mdash; core pool size five
+		 * (so all five agencies start immediately within the three-second
+		 * deadline) and the documented {@code credit-agency-} thread-name prefix.
+		 */
+		@Test
+		void creditAgencyExecutorConfiguredForFiveWayFanOut()
+		{
+			assertThat(creditAgencyExecutor.getCorePoolSize())
+					.isEqualTo(AGENCY_FAN_OUT);
+			assertThat(creditAgencyExecutor.getThreadNamePrefix())
+					.isEqualTo("credit-agency-");
+		}
+
+		/**
+		 * End-to-end async completion (F-017): a call through the proxied bean
+		 * resolves &mdash; via the asynchronous executor rather than the calling
+		 * thread &mdash; to a credit score within the inclusive {@code [1, 999]}
+		 * boundary.
+		 *
+		 * @throws Exception if the future fails to resolve within the timeout
+		 */
+		@Test
+		void proxiedCallCompletesWithInRangeScore() throws Exception
+		{
+			Integer score = proxiedService.requestCreditScore()
+					.get(SINGLE_GET_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+
+			assertThat(score).isBetween(MIN_CREDIT_SCORE, MAX_CREDIT_SCORE);
+		}
+
+		/**
+		 * Fan-out wiring (F-017): five calls issued back-to-back through the
+		 * proxied bean are dispatched onto the {@code creditAgencyExecutor} and run
+		 * concurrently, so the whole batch resolves well inside the aggregate
+		 * deadline (rather than serially) and every score is in the inclusive
+		 * {@code [1, 999]} boundary. This exercises the real asynchronous fan-out
+		 * the legacy {@code CRECUST} drove over channel {@code CIPCREDCHANN}.
+		 *
+		 * @throws Exception if the batch fails to resolve within the aggregate
+		 *                   timeout
+		 */
+		@Test
+		void fiveConcurrentProxiedCallsCompleteInRange() throws Exception
+		{
+			List<CompletableFuture<Integer>> futures = new ArrayList<>(
+					AGENCY_FAN_OUT);
+			for (int i = 0; i < AGENCY_FAN_OUT; i++)
+			{
+				// @Async is live here, so each call returns immediately and runs
+				// on a creditAgencyExecutor thread; the five execute in parallel.
+				futures.add(proxiedService.requestCreditScore());
+			}
+
+			CompletableFuture
+					.allOf(futures.toArray(new CompletableFuture[0]))
+					.get(AGGREGATE_GET_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+
+			assertThat(futures).hasSize(AGENCY_FAN_OUT);
+			for (CompletableFuture<Integer> future : futures)
+			{
+				assertThat(future).isDone();
+				assertThat(future.join())
+						.isBetween(MIN_CREDIT_SCORE, MAX_CREDIT_SCORE);
+			}
 		}
 	}
 

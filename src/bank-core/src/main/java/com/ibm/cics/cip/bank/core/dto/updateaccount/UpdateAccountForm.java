@@ -3,10 +3,13 @@
 /*                                                                        */
 package com.ibm.cics.cip.bank.core.dto.updateaccount;
 
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 import java.math.BigDecimal;
@@ -62,12 +65,17 @@ public class UpdateAccountForm
 	 * Customer number that, together with {@link #acctNumber}, identifies the
 	 * account to update. Maps to {@code COMM-CUSTNO PIC X(10)} in
 	 * {@code UPDACC.cpy}. Held as a {@link String} so the display-numeric leading
-	 * zeros of the fixed-width identifier are preserved. Constrained to at most
-	 * ten characters ({@link Size}); the legacy form applied no constraint here,
-	 * so this is a light, safe tightening that does not reject any previously
-	 * accepted in-range value.
+	 * zeros of the fixed-width identifier are preserved. Required
+	 * ({@link NotNull}), at most ten characters ({@link Size}), and constrained
+	 * to one-to-ten digits only ({@link Pattern} {@code \d{1,10}}) so a
+	 * {@code null}, blank, alphabetic, or punctuated value is rejected at the
+	 * edge of the application. This matches the {@code COMM-CUSTNO} fixed-width
+	 * unsigned display-numeric semantics and mirrors the stricter constraints
+	 * already present on {@code CreateAccountForm} (feature F-021).
 	 */
+	@NotNull
 	@Size(max = 10)
+	@Pattern(regexp = "\\d{1,10}", message = "Customer number must be 1 to 10 digits")
 	private String custNumber;
 
 	/**
@@ -102,10 +110,14 @@ public class UpdateAccountForm
 	 * {@code multipleOf 0.01}). Modelled as a {@link BigDecimal} at scale 2 per
 	 * the money / rate rule (exact decimal arithmetic, not an imprecise IEEE-754
 	 * primitive), replacing the legacy {@code String}-plus-parse pattern; Spring
-	 * MVC binds the typed value directly. Required ({@link NotNull}) and
+	 * MVC binds the typed value directly. Required ({@link NotNull}), constrained
+	 * to the inclusive range {@code 0.00 .. 9999.99} ({@link DecimalMin} /
+	 * {@link DecimalMax}) because {@code PIC 9(4)V99} is unsigned, and
 	 * shape-checked by {@link Digits}{@code (integer = 4, fraction = 2)}.
 	 */
 	@NotNull
+	@DecimalMin(value = "0.00")
+	@DecimalMax(value = "9999.99")
 	@Digits(integer = 4, fraction = 2)
 	private BigDecimal acctInterestRate;
 
@@ -116,10 +128,14 @@ public class UpdateAccountForm
 	 * {@link Integer} (deliberately not {@code BigDecimal}, because the overdraft
 	 * limit is not money), replacing the legacy
 	 * {@code String}-plus-{@code Integer.parseInt} pattern. Required
-	 * ({@link NotNull}) and constrained non-negative by {@link Min}{@code (0)}.
+	 * ({@link NotNull}) and constrained to the inclusive range
+	 * {@code 0 .. 99999999} ({@link Min}{@code (0)} / {@link Max}{@code (99999999)}),
+	 * matching the {@code PIC 9(8)} width so a value wider than eight digits is
+	 * rejected.
 	 */
 	@NotNull
 	@Min(0)
+	@Max(99999999)
 	private Integer acctOverdraft;
 
 	/**

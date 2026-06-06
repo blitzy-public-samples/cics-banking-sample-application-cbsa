@@ -7,6 +7,7 @@ import java.util.stream.Collectors;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -89,6 +90,15 @@ public class GlobalExceptionHandler
 	 */
 	private static final String VALIDATION_FAILED_MESSAGE = "Validation failed.";
 
+	/**
+	 * User-safe message returned when a request body cannot be read or parsed
+	 * (for example malformed JSON, an unexpected end of input, a wrong content
+	 * type, or a value that cannot be bound to the target type). Deliberately
+	 * generic so it never echoes the offending payload, the parser's internal
+	 * detail, or any exception class name (avoiding CWE-209 information exposure).
+	 */
+	private static final String MALFORMED_BODY_MESSAGE = "Malformed request body.";
+
 	/** Separator used when aggregating multiple validation messages into one. */
 	private static final String MESSAGE_DELIMITER = "; ";
 
@@ -169,6 +179,37 @@ public class GlobalExceptionHandler
 			message = VALIDATION_FAILED_MESSAGE;
 		}
 		ErrorResponse body = new ErrorResponse(false, NO_FAIL_CODE, message);
+		return ResponseEntity.badRequest().body(body);
+	}
+
+	/**
+	 * Translates a failure to read or parse the HTTP request body &mdash; for
+	 * example malformed JSON, an unexpected end of input, a wrong content type,
+	 * or a value that cannot be bound to the target field type &mdash; into an
+	 * HTTP&nbsp;400 response.
+	 *
+	 * <p>Without this dedicated handler such failures would fall through to the
+	 * {@link #handleUnexpected(Exception) catch-all} and be reported as
+	 * HTTP&nbsp;500, mislabelling a client-side input mistake as a server fault.
+	 * Because the request never reached business logic, no COBOL business fail
+	 * code applies and the fail code is left empty (never invented), exactly as
+	 * for the Bean Validation handlers above. The body is a generic, sanitised
+	 * message that never echoes the offending payload or any parser/exception
+	 * internal, so no internal detail is leaked (CWE-209 safe).</p>
+	 *
+	 * @param ex the message-not-readable exception (intentionally not surfaced to
+	 *           the client)
+	 * @return an HTTP&nbsp;400 response with a generic, safe message
+	 */
+	@ExceptionHandler(HttpMessageNotReadableException.class)
+	public ResponseEntity<ErrorResponse> handleHttpMessageNotReadable(
+			HttpMessageNotReadableException ex)
+	{
+		// HTTP 400 (not 500): a malformed / unreadable body is a client input
+		// error, not a server fault. No business fail code applies; the body is
+		// sanitised so no payload or parser internal is exposed (CWE-209 safe).
+		ErrorResponse body = new ErrorResponse(false, NO_FAIL_CODE,
+				MALFORMED_BODY_MESSAGE);
 		return ResponseEntity.badRequest().body(body);
 	}
 
