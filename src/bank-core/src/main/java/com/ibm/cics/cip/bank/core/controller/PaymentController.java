@@ -178,13 +178,16 @@ public class PaymentController
 		}
 		catch (BusinessRuleException ex)
 		{
-			// PRIMARY envelope fidelity: re-render the SAME request envelope as a
-			// failure (COMM-SUCCESS='N' + the verbatim COBOL fail code) and answer
+			// PRIMARY envelope fidelity: re-render a PAYDBCR failure envelope
+			// (COMM-SUCCESS='N' + the verbatim COBOL fail code) and answer
 			// HTTP 200, instead of letting the generic GlobalExceptionHandler body
 			// break the PAYDBCR consumer. ex.getFailCode() is a String (the
 			// DBCRFUN codes "1"/"2"/"3"/"4" are numeric and parse cleanly).
-			renderFailure(request, ex.getFailCode());
-			return ResponseEntity.ok(request);
+			// renderFailure returns a guaranteed non-null envelope, so a null
+			// inbound request (which PaymentService maps to fail code '1') still
+			// yields a well-formed failure envelope rather than a NullPointerException.
+			PaymentJson failure = renderFailure(request, ex.getFailCode());
+			return ResponseEntity.ok(failure);
 		}
 	}
 
@@ -207,27 +210,46 @@ public class PaymentController
 	}
 
 	/**
-	 * Renders a failure outcome onto the original request envelope, preserving
-	 * every other field ({@code CommAccno}, {@code CommAmt}, {@code mSortC},
-	 * balances, {@code CommOrigin}) so the {@code PAYDBCR} envelope is echoed
-	 * back exactly. If the request carried no inner payload (a malformed
-	 * {@code {"PAYDBCR":null}} body, which the service rejects with fail
-	 * code&nbsp;{@code "1"}), a fresh {@link DbcrJson} is attached so the failure
-	 * envelope is always well formed.
+	 * Renders a failure outcome onto a {@code PAYDBCR} envelope, preserving every
+	 * other field of the original request ({@code CommAccno}, {@code CommAmt},
+	 * {@code mSortC}, balances, {@code CommOrigin}) so the envelope is echoed back
+	 * exactly, and returning a <strong>guaranteed non-null</strong> envelope.
+	 *
+	 * <p>Two defensive guards keep the failure envelope well formed:</p>
+	 * <ul>
+	 *   <li><strong>Null outer envelope.</strong> A literal {@code null} JSON
+	 *       body deserialises to a {@code null} {@link PaymentJson}, which
+	 *       {@link PaymentService#processPayment(PaymentJson)} maps to fail
+	 *       code&nbsp;{@code "1"}. This method then builds a fresh
+	 *       {@link PaymentJson} so the catch path never dereferences {@code null}
+	 *       (which would otherwise surface as a generic HTTP&nbsp;500 instead of a
+	 *       {@code PAYDBCR} failure envelope).</li>
+	 *   <li><strong>Null inner payload.</strong> A {@code {"PAYDBCR":null}} body
+	 *       (also mapped to fail code&nbsp;{@code "1"}) gets a fresh
+	 *       {@link DbcrJson} attached.</li>
+	 * </ul>
 	 *
 	 * @param request  the original request envelope to re-render as a failure
+	 *                 (may be {@code null})
 	 * @param failCode the verbatim COBOL fail code carried by the exception
+	 * @return a non-null {@link PaymentJson} failure envelope carrying
+	 *         {@code CommSuccess="N"} and the supplied fail code
 	 */
-	private void renderFailure(PaymentJson request, String failCode)
+	private PaymentJson renderFailure(PaymentJson request, String failCode)
 	{
-		DbcrJson payload = request.getPAYDBCR();
+		// Guard a null outer envelope (e.g. a literal "null" body that the service
+		// maps to fail code '1'): build a fresh envelope so the failure is always
+		// well formed and the catch path never throws a NullPointerException.
+		PaymentJson envelope = (request == null) ? new PaymentJson() : request;
+		DbcrJson payload = envelope.getPAYDBCR();
 		if (payload == null)
 		{
 			payload = new DbcrJson();
-			request.setPAYDBCR(payload);
+			envelope.setPAYDBCR(payload);
 		}
 		payload.setCommSuccess(FLAG_FAILURE);
 		payload.setCommFailCode(failCode);
+		return envelope;
 	}
 
 }

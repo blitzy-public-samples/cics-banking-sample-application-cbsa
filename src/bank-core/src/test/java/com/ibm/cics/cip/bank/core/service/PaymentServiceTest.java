@@ -633,4 +633,40 @@ class PaymentServiceTest
 		assertThat(proc.getTypeCode()).isEqualTo(TransactionType.PCR);
 	}
 
+	// ------------------------------------------------------------------
+	// Input-contract guard (case 13): an over-width external account number is
+	// REJECTED (never truncated), closing the wrong-account aliasing
+	// vulnerability at the service boundary (defence-in-depth behind the
+	// controller's @Valid @Size(max=8) cascade).
+	// ------------------------------------------------------------------
+
+	/**
+	 * Case 13 &mdash; an over-width external account number is REJECTED, not
+	 * truncated. The frozen {@code makepayment} contract fixes {@code CommAccno}
+	 * at {@code maxLength 8} ({@code COMM-ACCNO PIC X(8)}). A sixteen-character
+	 * value &mdash; whose rightmost eight characters are deliberately
+	 * {@code "00000123"}, the very account every other fixture uses &mdash; would,
+	 * under a naive trailing-character pad, have been silently reduced to that
+	 * suffix and moved money on a <em>different</em>, real account. The service
+	 * must instead fail with the safe account-not-found code {@code '1'} and
+	 * persist nothing. The locked account read is never even attempted for an
+	 * over-width key, so no aliasing can occur.
+	 */
+	@Test
+	@DisplayName("Over-width account number is rejected '1' and never aliased/persisted")
+	void overWidthAccountNumber_rejected_failCode1_noAliasing()
+	{
+		// 16 chars; trailing-8 would be "00000123" -> proves a truncating pad
+		// would have aliased the real account used by every other fixture.
+		assertThatThrownBy(() -> paymentService.processPayment(
+				request("9999999900000123", "100.00", PAYMENT_FACILITY)))
+				.isInstanceOf(BusinessRuleException.class)
+				.hasFieldOrPropertyWithValue("failCode", FAIL_ACCOUNT_NOT_FOUND);
+
+		// The over-width key is rejected BEFORE the locked read, so no account is
+		// ever looked up (no aliasing) and nothing is persisted.
+		verify(accountRepository, never()).findByIdForUpdate(any(AccountId.class));
+		assertNoPersistence();
+	}
+
 }

@@ -3,6 +3,10 @@
 /*                                                                        */
 package com.ibm.cics.cip.bank.core.dto.payment;
 
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Size;
+
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import com.ibm.cics.cip.bank.core.config.JacksonConfig;
@@ -51,6 +55,18 @@ import com.ibm.cics.cip.bank.core.config.JacksonConfig;
  * {@code Fill0}) are preserved verbatim with their legacy space-padded default
  * values so the envelope round-trips unchanged.</p>
  *
+ * <h2>Input validation against the frozen schema (F-019/F-021)</h2>
+ * <p>Each field carries the Jakarta Bean Validation constraint declared by the
+ * frozen {@code makepayment} swagger {@code CommOrigin} object: the four string
+ * members ({@code CommApplid}, {@code CommUserid}, {@code CommFacilityName},
+ * {@code CommNetwrkId}) are {@link Size @Size(max = 8)}; {@code CommFaciltype}
+ * is {@link Min @Min(-99999999)}/{@link Max @Max(99999999)} (the
+ * {@code S9(8) COMP} range); and {@code Fill0} is {@link Size @Size(max = 4)}.
+ * These are reached by the {@code @Valid} cascade on {@code DbcrJson}'s
+ * {@code commOrigin} field, so the whole {@code PAYDBCR} payload is validated
+ * before the {@code PaymentService} runs. The space-padded defaults all satisfy
+ * their constraints, so a round-tripped envelope never trips validation.</p>
+ *
  * @see JacksonConfig.EnvelopeNamingStrategy
  * @see DbcrJson
  */
@@ -64,6 +80,7 @@ public class OriginJson
 	 * constructor; populated by the organisation split.
 	 */
 	@JsonProperty("CommApplid")
+	@Size(max = 8)
 	private String commApplid;
 
 	/**
@@ -72,6 +89,7 @@ public class OriginJson
 	 * populated by the organisation split.
 	 */
 	@JsonProperty("CommUserid")
+	@Size(max = 8)
 	private String commUserid;
 
 	/**
@@ -79,6 +97,7 @@ public class OriginJson
 	 * spaces to match the legacy wire value.
 	 */
 	@JsonProperty("CommFacilityName")
+	@Size(max = 8)
 	private String commFacilityName = "        ";
 
 	/**
@@ -86,6 +105,7 @@ public class OriginJson
 	 * match the legacy wire value.
 	 */
 	@JsonProperty("CommNetwrkId")
+	@Size(max = 8)
 	private String commNetwrkId = "        ";
 
 	/**
@@ -95,6 +115,8 @@ public class OriginJson
 	 * {@code PaymentService}.
 	 */
 	@JsonProperty("CommFaciltype")
+	@Min(-99999999)
+	@Max(99999999)
 	private Integer commFaciltype = 496;
 
 	/**
@@ -102,6 +124,7 @@ public class OriginJson
 	 * the legacy wire value.
 	 */
 	@JsonProperty("Fill0")
+	@Size(max = 4)
 	private String fill0 = "    ";
 
 	/**

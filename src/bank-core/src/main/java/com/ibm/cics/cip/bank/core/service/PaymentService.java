@@ -210,9 +210,10 @@ public class PaymentService
 		}
 
 		// COMM-ACCNO PIC X(8): normalise to the fixed, zero-padded width used by
-		// the account key.
-		String accountNumber = padLeftZero(commarea.getCommAccno(),
-				ACCOUNT_NUMBER_WIDTH);
+		// the account key. An over-width value is REJECTED (never truncated) so a
+		// contract-invalid account number can never be aliased onto another
+		// account's key (financial-integrity guard; see normaliseAccountNumber).
+		String accountNumber = normaliseAccountNumber(commarea.getCommAccno());
 
 		// COMM-AMT is ALREADY signed (negative = debit, non-negative = credit);
 		// never re-negate it. Normalise to scale 2 for the money pipeline.
@@ -464,10 +465,67 @@ public class PaymentService
 	}
 
 	/**
+	 * Normalises the external {@code COMM-ACCNO} to the fixed COBOL account-key
+	 * width ({@code PIC X(8)}), preserving the leading-zero convention by
+	 * left-padding shorter values, but <strong>rejecting</strong> &mdash; never
+	 * truncating &mdash; an over-width value.
+	 *
+	 * <p>Unlike {@link #padLeftZero(String, int)} (used only for the internally
+	 * generated PROCTRAN reference), this method must never reduce an
+	 * <em>external</em> identifier to its trailing
+	 * {@value #ACCOUNT_NUMBER_WIDTH} characters: doing so could alias a
+	 * contract-invalid request onto a <em>different</em> account's key and move
+	 * money on the wrong record (a financial-integrity defect). The frozen
+	 * {@code makepayment} contract fixes {@code CommAccno} at {@code maxLength 8}
+	 * ({@code PIC X(8)}), so a trimmed value longer than
+	 * {@value #ACCOUNT_NUMBER_WIDTH} is contract-invalid and is failed with the
+	 * legacy account-not-found code ({@code '1'}) &mdash; the same safe
+	 * {@code PAYDBCR} failure envelope a non-existent account already produces.
+	 * The exception message is deliberately generic and never echoes the
+	 * offending value (CWE-209 safe).</p>
+	 *
+	 * <p>This is defence-in-depth: the controller's {@code @Valid} cascade
+	 * ({@code @Size(max = 8)} on {@code DbcrJson.CommAccno}) already rejects an
+	 * over-width account number at HTTP&nbsp;400 before the service is reached;
+	 * this guard additionally protects any direct (non-HTTP) caller of
+	 * {@link #processPayment(PaymentJson)}.</p>
+	 *
+	 * @param rawAccountNumber the inbound {@code COMM-ACCNO} (may be {@code null}
+	 *                         or blank; surrounding whitespace is trimmed)
+	 * @return the left-zero-padded, eight-character account number
+	 * @throws BusinessRuleException fail code {@code '1'} when the trimmed value
+	 *                               exceeds the fixed contract width of
+	 *                               {@value #ACCOUNT_NUMBER_WIDTH} characters
+	 */
+	private static String normaliseAccountNumber(String rawAccountNumber)
+	{
+		String trimmed = (rawAccountNumber == null) ? "" : rawAccountNumber.trim();
+		if (trimmed.length() > ACCOUNT_NUMBER_WIDTH)
+		{
+			// Over-width: reject rather than truncate. Truncating to the rightmost
+			// 8 characters would alias a different account and move money on the
+			// wrong record. Map to the legacy '1' (account-not-found) outcome,
+			// which the controller renders as a well-formed PAYDBCR failure
+			// envelope. Do NOT include the raw value in the message (CWE-209).
+			throw new BusinessRuleException(FAIL_ACCOUNT_NOT_FOUND,
+					"Account number exceeds the contract width of "
+							+ ACCOUNT_NUMBER_WIDTH + " characters");
+		}
+		return padLeftZero(trimmed, ACCOUNT_NUMBER_WIDTH);
+	}
+
+	/**
 	 * Left-zero-pads a display-numeric identifier to a fixed width, preserving
 	 * the COBOL leading-zero convention. A value already at or beyond the width
 	 * is returned by its trailing {@code width} characters; a {@code null} or
 	 * blank value pads to all zeroes.
+	 *
+	 * <p><strong>Internal use only.</strong> The trailing-character behaviour is
+	 * safe for the internally generated PROCTRAN reference (a monotonic counter
+	 * that never exceeds the field width in practice), but it must <em>not</em>
+	 * be used to normalise <em>external</em> identifiers: an over-width external
+	 * account number must be rejected, not truncated. Use
+	 * {@link #normaliseAccountNumber(String)} for the inbound {@code COMM-ACCNO}.</p>
 	 *
 	 * @param value the value to pad (may be {@code null}; surrounding whitespace
 	 *              is trimmed)

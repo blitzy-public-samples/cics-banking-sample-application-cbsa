@@ -6,6 +6,14 @@ package com.ibm.cics.cip.bank.core.dto.payment;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Digits;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Size;
+
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import com.ibm.cics.cip.bank.core.config.JacksonConfig;
@@ -84,6 +92,25 @@ import com.ibm.cics.cip.bank.core.config.JacksonConfig;
  * controller writes a numeric code ({@code "0"} = success); the request-side
  * default below is a single space, matching the legacy envelope.</p>
  *
+ * <h2>Input validation against the frozen schema (F-019/F-021, security)</h2>
+ * <p>Every field carries the Jakarta Bean Validation constraint declared by the
+ * frozen {@code makepayment} swagger / {@code PAYDBCR.cpy} contract:
+ * {@code CommAccno} {@link Size @Size(max = 8)}; the three money fields
+ * {@link Digits @Digits(integer = 10, fraction = 2)} +
+ * {@link DecimalMin @DecimalMin}/{@link DecimalMax @DecimalMax} over
+ * {@code [-9999999999.99, 9999999999.99]}; {@code mSortC}
+ * {@link Min @Min(0)}/{@link Max @Max(999999)}; {@code CommSuccess} and
+ * {@code CommFailCode} {@link Size @Size(max = 1)}; and {@code CommOrigin}
+ * {@link Valid @Valid} to descend into {@link OriginJson}. These fire when the
+ * {@code PaymentController} validates the inbound {@code @RequestBody} with
+ * {@code @Valid} (which cascades through {@link PaymentJson}'s {@code @Valid}
+ * payload), so a contract-invalid request is rejected at HTTP&nbsp;400
+ * <em>before</em> any balance is moved. This closes the gap whereby an
+ * over-width {@code CommAccno} could otherwise be silently truncated and
+ * aliased onto a different account (financial-integrity defect). The
+ * constraints describe the wire contract only; the business posting rules
+ * remain entirely in {@code PaymentService}.</p>
+ *
  * @see JacksonConfig.EnvelopeNamingStrategy
  * @see OriginJson
  * @see TransferForm
@@ -97,8 +124,19 @@ public class DbcrJson
 	 * Account number the movement applies to. {@code COMM-ACCNO PIC X(8)};
 	 * zero-padded to width&nbsp;8 by the {@link #DbcrJson(TransferForm)}
 	 * constructor. Left {@code null} by the no-arg constructor.
+	 *
+	 * <p>Constrained to the frozen contract's {@code maxLength 8}
+	 * ({@code makepayment} swagger {@code CommAccno}; {@code PIC X(8)}) via
+	 * {@link Size @Size(max = 8)}. This is the primary, contract-faithful guard
+	 * that rejects an over-width account number at HTTP&nbsp;400 (through the
+	 * controller's {@code @Valid} cascade) <em>before</em> any money movement,
+	 * so a contract-invalid value can never be truncated and aliased onto another
+	 * account's key (F-019/F-021, security/financial integrity). No
+	 * {@code @Pattern} is applied because the frozen schema declares only
+	 * {@code maxLength} (a stricter pattern would itself break the contract).</p>
 	 */
 	@JsonProperty("CommAccno")
+	@Size(max = 8)
 	private String commAccno;
 
 	/**
@@ -106,8 +144,18 @@ public class DbcrJson
 	 * {@link BigDecimal} at scale&nbsp;2. Negative denotes a debit, positive a
 	 * credit. Initialised to {@code 0.00} so an unpopulated payload serialises a
 	 * two-decimal zero.
+	 *
+	 * <p>Constrained to the frozen contract's money shape and range:
+	 * {@link Digits @Digits(integer = 10, fraction = 2)} pins the
+	 * {@code S9(10)V99} fixed-point scale (at most ten integer and two fraction
+	 * digits), and {@link DecimalMin @DecimalMin}/{@link DecimalMax @DecimalMax}
+	 * pin the swagger {@code minimum -9999999999.99} / {@code maximum
+	 * 9999999999.99}.</p>
 	 */
 	@JsonProperty("CommAmt")
+	@Digits(integer = 10, fraction = 2)
+	@DecimalMin("-9999999999.99")
+	@DecimalMax("9999999999.99")
 	private BigDecimal commAmt = new BigDecimal("0.00");
 
 	/**
@@ -116,16 +164,31 @@ public class DbcrJson
 	 * {@code type=integer} in the range {@code 0..999999}, so only an integer
 	 * round-trips against the contract. The wire name is literally
 	 * {@code "mSortC"}.
+	 *
+	 * <p>Constrained to the frozen contract's integer range
+	 * ({@code minimum 0}, {@code maximum 999999}; {@code PIC 9(6)}) via
+	 * {@link Min @Min(0)} / {@link Max @Max(999999)}.</p>
 	 */
 	@JsonProperty("mSortC")
+	@Min(0)
+	@Max(999999)
 	private Integer commSortC = 0;
 
 	/**
 	 * Available (cleared) balance after the movement. {@code COMM-AV-BAL PIC
 	 * S9(10)V99} &rarr; {@link BigDecimal} at scale&nbsp;2. Independent of
 	 * {@link #commActBal}. Initialised to {@code 0.00}.
+	 *
+	 * <p>Constrained identically to {@link #commAmt}: scale
+	 * {@link Digits @Digits(integer = 10, fraction = 2)} and range
+	 * {@link DecimalMin @DecimalMin}{@code (-9999999999.99)} /
+	 * {@link DecimalMax @DecimalMax}{@code (9999999999.99)} per the frozen
+	 * schema ({@code S9(10)V99}).</p>
 	 */
 	@JsonProperty("CommAvBal")
+	@Digits(integer = 10, fraction = 2)
+	@DecimalMin("-9999999999.99")
+	@DecimalMax("9999999999.99")
 	private BigDecimal commAvBal = new BigDecimal("0.00");
 
 	/**
@@ -133,8 +196,17 @@ public class DbcrJson
 	 * {@code COMM-ACT-BAL PIC S9(10)V99} &rarr; {@link BigDecimal} at
 	 * scale&nbsp;2. Independent of {@link #commAvBal}. Initialised to
 	 * {@code 0.00}.
+	 *
+	 * <p>Constrained identically to {@link #commAmt}: scale
+	 * {@link Digits @Digits(integer = 10, fraction = 2)} and range
+	 * {@link DecimalMin @DecimalMin}{@code (-9999999999.99)} /
+	 * {@link DecimalMax @DecimalMax}{@code (9999999999.99)} per the frozen
+	 * schema ({@code S9(10)V99}).</p>
 	 */
 	@JsonProperty("CommActBal")
+	@Digits(integer = 10, fraction = 2)
+	@DecimalMin("-9999999999.99")
+	@DecimalMax("9999999999.99")
 	private BigDecimal commActBal = new BigDecimal("0.00");
 
 	/**
@@ -142,16 +214,29 @@ public class DbcrJson
 	 * type and the origin string ({@code applid} + {@code userid}). Left
 	 * {@code null} by the no-arg constructor; built from the inbound organisation
 	 * by the {@link #DbcrJson(TransferForm)} constructor.
+	 *
+	 * <p>{@link Valid @Valid} cascades Bean Validation into the nested
+	 * {@link OriginJson} so the frozen {@code CommOrigin} sub-field constraints
+	 * (the four {@code maxLength 8} strings, the {@code CommFaciltype} integer
+	 * range, and the {@code Fill0} {@code maxLength 4}) are enforced too. A
+	 * {@code null} origin is permitted (the swagger does not mark
+	 * {@code CommOrigin} required); {@code @Valid} only descends when it is
+	 * present.</p>
 	 */
 	@JsonProperty("CommOrigin")
+	@Valid
 	private OriginJson commOrigin;
 
 	/**
 	 * Success flag. {@code COMM-SUCCESS PIC X}. Defaults to a single space for
 	 * wire parity with the legacy request-side envelope; set to the success/failure
 	 * flag by {@code PaymentService} on a response.
+	 *
+	 * <p>Constrained to the frozen contract's single character
+	 * ({@code maxLength 1}; {@code PIC X}) via {@link Size @Size(max = 1)}.</p>
 	 */
 	@JsonProperty("CommSuccess")
+	@Size(max = 1)
 	private String commSuccess = " ";
 
 	/**
@@ -159,8 +244,12 @@ public class DbcrJson
 	 * matching the legacy request-side envelope; the payment controller writes a
 	 * numeric value ({@code "0"} = success) on a response because the consumer
 	 * parses it with {@code Integer.parseInt(...)}.
+	 *
+	 * <p>Constrained to the frozen contract's single character
+	 * ({@code maxLength 1}; {@code PIC X}) via {@link Size @Size(max = 1)}.</p>
 	 */
 	@JsonProperty("CommFailCode")
+	@Size(max = 1)
 	private String commFailCode = " ";
 
 	/**

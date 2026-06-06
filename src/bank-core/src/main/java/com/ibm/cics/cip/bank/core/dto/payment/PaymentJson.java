@@ -3,6 +3,9 @@
 /*                                                                        */
 package com.ibm.cics.cip.bank.core.dto.payment;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
+
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import com.ibm.cics.cip.bank.core.config.JacksonConfig;
@@ -71,8 +74,22 @@ public class PaymentJson
 	 * {@code null} by the no-arg constructor (Jackson populates it via
 	 * {@link #setPAYDBCR(DbcrJson)} on deserialisation); built from the inbound
 	 * form by the {@link #PaymentJson(TransferForm)} convenience constructor.
+	 *
+	 * <h2>Cascaded validation of the frozen contract (F-019/F-021, security)</h2>
+	 * <p>{@link NotNull @NotNull} requires the payload to be present, and
+	 * {@link Valid @Valid} cascades Bean Validation <em>into</em> the nested
+	 * {@link DbcrJson} (and onward into {@code OriginJson}). Without these two
+	 * annotations the {@code @Valid @RequestBody PaymentJson} on
+	 * {@code PaymentController.makePayment(...)} would validate only this outer
+	 * wrapper and never descend into the {@code PAYDBCR} fields, leaving the
+	 * frozen {@code makepayment} schema unenforced before money movement. With
+	 * them, a missing payload or any contract-invalid {@code PAYDBCR} field is
+	 * rejected at HTTP&nbsp;400 (via {@code GlobalExceptionHandler}) before
+	 * {@code PaymentService} runs.</p>
 	 */
 	@JsonProperty("PAYDBCR")
+	@NotNull
+	@Valid
 	private DbcrJson payDbCr;
 
 	/**
