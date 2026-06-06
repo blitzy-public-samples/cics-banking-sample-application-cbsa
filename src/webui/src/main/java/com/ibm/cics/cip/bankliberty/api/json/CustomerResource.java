@@ -9,7 +9,6 @@ package com.ibm.cics.cip.bankliberty.api.json;
 import java.io.IOException;
 import java.sql.Connection;
 import java.sql.Date;
-import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -139,20 +138,6 @@ public class CustomerResource
 	 * are preserved so the wire format is byte-identical.
 	 */
 	private static final ObjectMapper mapper = new ObjectMapper();
-
-	/*
-	 * Shared PostgreSQL connection coordinates for the bank-core data store. The
-	 * database, user and password are all "cbsa" (per the setup constraint) and
-	 * DB_HOST is overridable via the environment, defaulting to localhost. This
-	 * replaces the deleted JCICS/VSAM customer data path.
-	 */
-	private static final String DB_NAME = "cbsa";
-
-	private static final String DB_USER = "cbsa";
-
-	private static final String DB_PASSWORD = "cbsa";
-
-	private static final int DB_PORT = 5432;
 
 	/*
 	 * The fixed customer-number display width (zero-padded), matching the legacy
@@ -318,105 +303,57 @@ public class CustomerResource
 
 		customer.setSortCode(this.getSortCode().toString());
 
-		String sortCodeString = padSortCode(this.getSortCode());
 		String customerNameTrimmed = customer.getCustomerName().trim();
 		String customerAddressTrimmed = customer.getCustomerAddress().trim();
 
-		// Reproduce the original date-of-birth normalisation used for the JSON
-		// response and the PROCTRAN audit record (no functional change).
+		// Reproduce the original date-of-birth normalisation used to render the
+		// JSON response date (no functional change).
 		Calendar myCalendar = Calendar.getInstance();
 		myCalendar.setTime(customer.getDateOfBirth());
-		myCalendar.setTimeInMillis(myCalendar.getTimeInMillis() - myCalendar.getTimeZone().getOffset(myCalendar.getTimeInMillis()));
+		myCalendar.setTimeInMillis(myCalendar.getTimeInMillis()
+				- myCalendar.getTimeZone()
+						.getOffset(myCalendar.getTimeInMillis()));
 
-		java.sql.Date mySqlDate = new java.sql.Date(myCalendar.getTimeInMillis());
-		mySqlDate.setTime(mySqlDate.getTime() - myCalendar.getTimeZone().getOffset(myCalendar.getTimeInMillis()));
+		// Encode the date of birth as the eight-character DDMMYYYY string the
+		// bank-core create-customer contract expects, derived from the same
+		// normalised calendar that shapes the response date below.
+		String dateOfBirthWire = String.format("%02d%02d%04d",
+				myCalendar.get(Calendar.DAY_OF_MONTH),
+				myCalendar.get(Calendar.MONTH) + 1,
+				myCalendar.get(Calendar.YEAR));
 
-		// Allocate a gap-free customer number from the customer_control counter
-		// row and insert the customer, all in one transaction so that a failure
-		// to append the PROCTRAN audit record rolls back BOTH the counter
-		// increment and the insert (reproducing the CICS SYNCPOINT/ROLLBACK
-		// boundary that the deleted JCICS task previously provided).
-		try (Connection conn = getConnection())
+		// Delegate the create to the bank-core customer service, which owns the
+		// COBOL CRECUST business logic: it allocates the gap-free customer
+		// number, runs the asynchronous credit-agency check, and appends the
+		// PROCTRAN audit record atomically inside one @Transactional boundary
+		// (reproducing the CICS SYNCPOINT/ROLLBACK semantics). webui no longer
+		// performs the mutation, allocates the number, or owns credit scoring
+		// (F-CUST-1 / F-TXN-1 / U3 / R3); it only adapts the JSON envelopes.
+		String paddedCustomerNumber;
+		try
 		{
-			conn.setAutoCommit(false);
+			ObjectNode creCust = mapper.createObjectNode();
+			creCust.put("CommName", customerNameTrimmed);
+			creCust.put("CommAddress", customerAddressTrimmed);
+			creCust.put("CommDateOfBirth", dateOfBirthWire);
+			ObjectNode requestEnvelope = mapper.createObjectNode();
+			requestEnvelope.set("CreCust", creCust);
 
-			long newCustomerNumber;
-			try (PreparedStatement allocate = conn.prepareStatement(
-					"UPDATE customer_control SET last_customer_number = last_customer_number + 1, "
-							+ "number_of_customers = number_of_customers + 1 "
-							+ "WHERE sort_code = ? RETURNING last_customer_number"))
-			{
-				allocate.setString(1, sortCodeString);
-				try (ResultSet rs = allocate.executeQuery())
-				{
-					if (!rs.next())
-					{
-						conn.rollback();
-						ObjectNode error = mapper.createObjectNode();
-						error.put(JSON_ERROR_MSG, "Failed to create customer");
-						logger.severe("Failed to create customer");
-						Response myResponse = Response.status(500)
-								.entity(error.toString()).build();
-						logger.exiting(this.getClass().getName(),
-								CREATE_CUSTOMER_INTERNAL_EXIT, myResponse);
-						return myResponse;
-					}
-					newCustomerNumber = rs.getLong(1);
-				}
-			}
+			BankCoreClient.BankCoreResult result = BankCoreClient.post(
+					"/crecust/insert",
+					mapper.writeValueAsString(requestEnvelope));
 
-			String paddedCustomerNumber = padCustomerNumber(
-					Long.toString(newCustomerNumber));
-
-			try (PreparedStatement insert = conn.prepareStatement(
-					"INSERT INTO customer (sort_code, customer_number, name, address, "
-							+ "date_of_birth, credit_score, cs_review_date) "
-							+ "VALUES (?, ?, ?, ?, ?, ?, ?)"))
-			{
-				insert.setString(1, sortCodeString);
-				insert.setString(2, paddedCustomerNumber);
-				insert.setString(3, customerNameTrimmed);
-				insert.setString(4, customerAddressTrimmed);
-				insert.setDate(5, mySqlDate);
-				// Credit scoring now belongs to bank-core; webui inserts a zero
-				// baseline score and a current review date.
-				insert.setInt(6, 0);
-				insert.setDate(7, new java.sql.Date(
-						Calendar.getInstance().getTimeInMillis()));
-				insert.executeUpdate();
-			}
-
-			response.put(JSON_ID, paddedCustomerNumber);
-			response.put(JSON_SORT_CODE, sortcode);
-			response.put(JSON_CUSTOMER_NAME, customer.getCustomerName());
-			response.put(JSON_CUSTOMER_ADDRESS, customer.getCustomerAddress());
-
-			DateFormat myDateFormat = DateFormat.getDateInstance();
-			Calendar newCalendar = Calendar.getInstance();
-			newCalendar.setTime(myCalendar.getTime());
-			response.put(JSON_DATE_OF_BIRTH,
-					myDateFormat.format(newCalendar.getTime()));
-
-			ProcessedTransactionResource myProcessedTransactionResource = new ProcessedTransactionResource();
-
-			ProcessedTransactionCreateCustomerJSON myCreatedCustomer = new ProcessedTransactionCreateCustomerJSON();
-			myCreatedCustomer.setAccountNumber("0");
-			myCreatedCustomer.setCustomerDOB(mySqlDate);
-			myCreatedCustomer.setCustomerName(customerNameTrimmed);
-			myCreatedCustomer.setSortCode(sortCodeString);
-			myCreatedCustomer.setCustomerNumber(paddedCustomerNumber);
-
-			Response writeCreateCustomerResponse = myProcessedTransactionResource
-					.writeCreateCustomerInternal(myCreatedCustomer);
-			if (writeCreateCustomerResponse == null
-					|| writeCreateCustomerResponse.getStatus() != 200)
+			JsonNode body = result.getBody();
+			JsonNode responseEnvelope = body == null ? null
+					: body.get("CreCust");
+			// bank-core signals success with a blank CommFailCode.
+			if (!result.isHttpSuccess() || responseEnvelope == null
+					|| !responseEnvelope.path("CommFailCode").asText("")
+							.isEmpty())
 			{
 				ObjectNode error = mapper.createObjectNode();
-				error.put(JSON_ERROR_MSG,
-						"Failed to write to PROCTRAN data store");
-				logger.severe(
-						"Customer: createCustomer: Failed to write to PROCTRAN");
-				conn.rollback();
+				error.put(JSON_ERROR_MSG, "Failed to create customer");
+				logger.severe("Failed to create customer");
 				Response myResponse = Response.status(500)
 						.entity(error.toString()).build();
 				logger.exiting(this.getClass().getName(),
@@ -424,9 +361,24 @@ public class CustomerResource
 				return myResponse;
 			}
 
-			conn.commit();
+			int newCustomerNumber = responseEnvelope.path("CommKey")
+					.path("CommNumber").asInt();
+			paddedCustomerNumber = padCustomerNumber(
+					Integer.toString(newCustomerNumber));
 		}
-		catch (SQLException e)
+		catch (InterruptedException e)
+		{
+			Thread.currentThread().interrupt();
+			ObjectNode error = mapper.createObjectNode();
+			error.put(JSON_ERROR_MSG, "Failed to create customer");
+			logger.severe("Failed to create customer " + e.getMessage());
+			Response myResponse = Response.status(500).entity(error.toString())
+					.build();
+			logger.exiting(this.getClass().getName(),
+					CREATE_CUSTOMER_INTERNAL_EXIT, myResponse);
+			return myResponse;
+		}
+		catch (IOException e)
 		{
 			ObjectNode error = mapper.createObjectNode();
 			error.put(JSON_ERROR_MSG, "Failed to create customer");
@@ -437,6 +389,17 @@ public class CustomerResource
 					CREATE_CUSTOMER_INTERNAL_EXIT, myResponse);
 			return myResponse;
 		}
+
+		response.put(JSON_ID, paddedCustomerNumber);
+		response.put(JSON_SORT_CODE, sortcode);
+		response.put(JSON_CUSTOMER_NAME, customer.getCustomerName());
+		response.put(JSON_CUSTOMER_ADDRESS, customer.getCustomerAddress());
+
+		DateFormat myDateFormat = DateFormat.getDateInstance();
+		Calendar newCalendar = Calendar.getInstance();
+		newCalendar.setTime(myCalendar.getTime());
+		response.put(JSON_DATE_OF_BIRTH,
+				myDateFormat.format(newCalendar.getTime()));
 
 		Response myResponse = Response.status(201).entity(response.toString())
 				.build();
@@ -551,27 +514,33 @@ public class CustomerResource
 		customer.setId(id.toString());
 		customer.setSortCode(this.getSortCode().toString());
 
-		String sortCodeString = padSortCode(this.getSortCode());
-		String paddedCustomerNumber = padCustomerNumber(id.toString());
-
 		// UPDCUST changes name and address only; balances, credit score, date of
 		// birth and review date are never modified, and no PROCTRAN record is
-		// written for an update (behavioural parity with the COBOL).
-		try (Connection conn = getConnection())
+		// written for an update. Delegate to the bank-core customer service,
+		// which owns the COBOL UPDCUST business logic inside one @Transactional
+		// boundary; webui only adapts the JSON envelopes (F-CUST-1 / U3 / R3).
+		try
 		{
-			int rowsUpdated;
-			try (PreparedStatement update = conn.prepareStatement(
-					"UPDATE customer SET name = ?, address = ? "
-							+ "WHERE sort_code = ? AND customer_number = ?"))
-			{
-				update.setString(1, customer.getCustomerName());
-				update.setString(2, customer.getCustomerAddress());
-				update.setString(3, sortCodeString);
-				update.setString(4, paddedCustomerNumber);
-				rowsUpdated = update.executeUpdate();
-			}
+			ObjectNode updCust = mapper.createObjectNode();
+			updCust.put("CommScode", padSortCode(this.getSortCode()));
+			updCust.put("CommCustno", id.toString());
+			updCust.put("CommName", customer.getCustomerName());
+			updCust.put("CommAddress", customer.getCustomerAddress());
+			ObjectNode requestEnvelope = mapper.createObjectNode();
+			requestEnvelope.set("UpdCust", updCust);
 
-			if (rowsUpdated == 0)
+			BankCoreClient.BankCoreResult result = BankCoreClient.put(
+					"/updcust/update",
+					mapper.writeValueAsString(requestEnvelope));
+
+			JsonNode body = result.getBody();
+			JsonNode responseEnvelope = body == null ? null
+					: body.get("UpdCust");
+			// A missing customer surfaces as CommUpdSuccess != "Y"; reproduce
+			// the legacy 404 "not found." envelope verbatim.
+			if (!result.isHttpSuccess() || responseEnvelope == null
+					|| !"Y".equals(responseEnvelope.path("CommUpdSuccess")
+							.asText("").trim()))
 			{
 				ObjectNode error = mapper.createObjectNode();
 				error.put(JSON_ERROR_MSG,
@@ -585,30 +554,31 @@ public class CustomerResource
 				return myResponse;
 			}
 
-			try (PreparedStatement select = conn.prepareStatement(
-					"SELECT sort_code, customer_number, name, address, date_of_birth "
-							+ "FROM customer WHERE sort_code = ? AND customer_number = ?"))
-			{
-				select.setString(1, sortCodeString);
-				select.setString(2, paddedCustomerNumber);
-				try (ResultSet rs = select.executeQuery())
-				{
-					if (rs.next())
-					{
-						response.put(JSON_ID, rs.getString("customer_number"));
-						response.put(JSON_SORT_CODE,
-								rs.getString("sort_code").trim());
-						response.put(JSON_CUSTOMER_NAME,
-								rs.getString("name").trim());
-						response.put(JSON_CUSTOMER_ADDRESS,
-								rs.getString("address").trim());
-						response.put(JSON_DATE_OF_BIRTH,
-								rs.getDate("date_of_birth").toString().trim());
-					}
-				}
-			}
+			response.put(JSON_ID,
+					responseEnvelope.path("CommCustno").asText());
+			response.put(JSON_SORT_CODE,
+					responseEnvelope.path("CommScode").asText().trim());
+			response.put(JSON_CUSTOMER_NAME,
+					responseEnvelope.path("CommName").asText().trim());
+			response.put(JSON_CUSTOMER_ADDRESS,
+					responseEnvelope.path("CommAddress").asText().trim());
+			response.put(JSON_DATE_OF_BIRTH, BankCoreClient
+					.toIsoDate(responseEnvelope.path("CommDob").asInt()));
 		}
-		catch (SQLException e)
+		catch (InterruptedException e)
+		{
+			Thread.currentThread().interrupt();
+			ObjectNode error = mapper.createObjectNode();
+			error.put(JSON_ERROR_MSG, "Failed to update customer");
+			Response myResponse = Response.status(500).entity(error.toString())
+					.build();
+			logger.log(Level.WARNING,
+					() -> "Failed to update customer " + e.getMessage());
+			logger.exiting(this.getClass().getName(),
+					"updateCustomerInternal() exiting", myResponse);
+			return myResponse;
+		}
+		catch (IOException e)
 		{
 			ObjectNode error = mapper.createObjectNode();
 			error.put(JSON_ERROR_MSG, "Failed to update customer");
@@ -770,193 +740,72 @@ public class CustomerResource
 			return myResponse;
 		}
 
-		// First we need to delete all the accounts
-
-		AccountsResource myAccountsResource = new AccountsResource();
-
-		JsonNode myAccountsJSON;
+		// Delete the customer through the bank-core customer service, which owns
+		// the COBOL DELCUS business logic: it cascades the deletion of the
+		// customer's accounts (each appending an account-close PROCTRAN record
+		// capturing the terminal balance) and then deletes the customer and
+		// appends the customer-close PROCTRAN record, all atomically inside one
+		// @Transactional boundary (reproducing the CICS SYNCPOINT/ROLLBACK
+		// semantics). webui no longer iterates accounts, mutates the database, or
+		// opens a separate audit transaction (F-CUST-1 / F-TXN-1 / U3 / R3).
 		try
 		{
-			myAccountsJSON = mapper.readTree(myAccountsResource
-					.getAccountsByCustomerInternal(id).getEntity().toString());
+			BankCoreClient.BankCoreResult result = BankCoreClient
+					.delete("/delcus/remove/"
+							+ BankCoreClient.encodeSegment(id.toString()));
 
-			//
-			JsonNode accountsToDelete = myAccountsJSON.get("accounts");
-			for (int i = 0; i < accountsToDelete.size(); i++)
+			JsonNode body = result.getBody();
+			JsonNode responseEnvelope = body == null ? null
+					: body.get("DelCus");
+			// A missing customer surfaces as CommDelSuccess != "Y"; reproduce
+			// the legacy 404 "not found" envelope verbatim.
+			if (!result.isHttpSuccess() || responseEnvelope == null
+					|| !"Y".equals(responseEnvelope.path("CommDelSuccess")
+							.asText("").trim()))
 			{
-
-				JsonNode accountToDelete = accountsToDelete.get(i);
-				Long accountToDeleteLong = Long
-						.parseLong(accountToDelete.get(JSON_ID).asText());
-				Response deleteAccountResponse = myAccountsResource
-						.deleteAccountInternal(accountToDeleteLong);
-
-				if (deleteAccountResponse.getStatus() == 404)
-				{
-
-					response.put(JSON_ERROR_MSG,
-							"Error deleting account " + accountToDeleteLong
-									+ " for customer " + id
-									+ ",account not found");
-					logger.log(Level.SEVERE,
-							() -> "Customer: deleteAccount: Failed to delete account, not found");
-					Response myResponse = Response.status(404)
-							.entity(response.toString()).build();
-					logger.log(Level.WARNING,
-							() -> "Customer: deleteAccount: Failed to delete account, not found for customer "
-									+ id + " in deleteCustomerInternal()");
-					logger.exiting(this.getClass().getName(),
-							DELETE_CUSTOMER_INTERNAL_EXIT, myResponse);
-					return myResponse;
-				}
-
-				if (deleteAccountResponse.getStatus() != 200)
-				{
-					response.put(JSON_ERROR_MSG, "Error deleting account "
-							+ accountToDeleteLong + " for customer " + id);
-					logger.log(Level.SEVERE,
-							() -> "Customer: deleteAccount: Failed to delete account, error");
-					Response myResponse = Response
-							.status(deleteAccountResponse.getStatus())
-							.entity(response.toString()).build();
-					logger.exiting(this.getClass().getName(),
-							DELETE_CUSTOMER_INTERNAL_EXIT, myResponse);
-					return myResponse;
-				}
-			}
-		}
-		catch (IOException e)
-		{
-
-			response.put(JSON_ERROR_MSG,
-					"Error obtaining accounts to delete for customer " + id);
-			Response myResponse = Response.status(500)
-					.entity(response.toString()).build();
-			logger.log(Level.WARNING,
-					() -> "Error obtaining accounts to delete for customer "
-							+ id + " in deleteCustomerInternal()");
-			logger.exiting(this.getClass().getName(),
-					GET_CUSTOMER_INTERNAL_EXIT, myResponse);
-			return myResponse;
-		}
-
-		// If we are still here then we can try to delete the customer
-
-		String sortCodeString = padSortCode(sortCode);
-		String paddedCustomerNumber = padCustomerNumber(id.toString());
-
-		String deletedSortCode;
-		String deletedCustomerNumber;
-		String deletedName;
-		String deletedAddress;
-		java.sql.Date deletedDob;
-		int deletedCreditScore;
-		java.sql.Date deletedReviewDate;
-
-		try (Connection conn = getConnection())
-		{
-			conn.setAutoCommit(false);
-
-			// Read the customer first so its terminal state can be returned and
-			// recorded in PROCTRAN, then physically delete it and decrement the
-			// customer_control counter, all in the same transaction.
-			try (PreparedStatement select = conn.prepareStatement(
-					"SELECT sort_code, customer_number, name, address, date_of_birth, "
-							+ "credit_score, cs_review_date FROM customer "
-							+ "WHERE sort_code = ? AND customer_number = ?"))
-			{
-				select.setString(1, sortCodeString);
-				select.setString(2, paddedCustomerNumber);
-				try (ResultSet rs = select.executeQuery())
-				{
-					if (!rs.next())
-					{
-						conn.rollback();
-						response.put(JSON_ERROR_MSG,
-								CUSTOMER_PREFIX + id + NOT_FOUND_MSG);
-						Response myResponse = Response.status(404)
-								.entity(response.toString()).build();
-						logger.log(Level.WARNING,
-								() -> "CustomerResource.deleteCustomerInternal() customer "
-										+ id + NOT_FOUND_MSG);
-						logger.exiting(this.getClass().getName(),
-								DELETE_CUSTOMER_INTERNAL, myResponse);
-						return myResponse;
-					}
-					deletedSortCode = rs.getString("sort_code");
-					deletedCustomerNumber = rs.getString("customer_number");
-					deletedName = rs.getString("name");
-					deletedAddress = rs.getString("address");
-					deletedDob = rs.getDate("date_of_birth");
-					deletedCreditScore = rs.getInt("credit_score");
-					deletedReviewDate = rs.getDate("cs_review_date");
-				}
-			}
-
-			try (PreparedStatement delete = conn.prepareStatement(
-					"DELETE FROM customer WHERE sort_code = ? AND customer_number = ?"))
-			{
-				delete.setString(1, sortCodeString);
-				delete.setString(2, paddedCustomerNumber);
-				delete.executeUpdate();
-			}
-
-			try (PreparedStatement decrement = conn.prepareStatement(
-					"UPDATE customer_control SET number_of_customers = number_of_customers - 1 "
-							+ "WHERE sort_code = ?"))
-			{
-				decrement.setString(1, sortCodeString);
-				decrement.executeUpdate();
-			}
-
-			response.put(JSON_SORT_CODE, deletedSortCode.trim());
-			response.put(JSON_ID, deletedCustomerNumber.trim());
-			response.put(JSON_CUSTOMER_NAME, deletedName.trim());
-			response.put(JSON_CUSTOMER_ADDRESS, deletedAddress.trim());
-			response.put(JSON_DATE_OF_BIRTH, deletedDob.toString());
-			response.put(JSON_CUSTOMER_CREDIT_SCORE,
-					Integer.toString(deletedCreditScore));
-			response.put(JSON_CUSTOMER_REVIEW_DATE,
-					deletedReviewDate.toString());
-
-			ProcessedTransactionResource myProcessedTransactionResource = new ProcessedTransactionResource();
-
-			ProcessedTransactionDeleteCustomerJSON myDeletedCustomer = new ProcessedTransactionDeleteCustomerJSON();
-			myDeletedCustomer.setAccountNumber("0");
-			myDeletedCustomer.setCustomerDOB(deletedDob);
-			myDeletedCustomer.setCustomerName(deletedName);
-
-
-			myDeletedCustomer.setSortCode(deletedSortCode);
-			myDeletedCustomer.setCustomerNumber(deletedCustomerNumber);
-
-
-			Response writeDeleteCustomerResponse = myProcessedTransactionResource
-					.writeDeleteCustomerInternal(myDeletedCustomer);
-			if (writeDeleteCustomerResponse.getStatus() != 200)
-			{
-				ObjectNode error = mapper.createObjectNode();
-				error.put(JSON_ERROR_MSG,
-						"Failed to write to PROCTRAN data store");
-				logger.log(Level.SEVERE,
-						() -> "Customer: deleteCustomer: Failed to write to proctran");
-				conn.rollback();
-				Response myResponse = Response.status(500)
-						.entity(error.toString()).build();
+				response.put(JSON_ERROR_MSG,
+						CUSTOMER_PREFIX + id + NOT_FOUND_MSG);
+				Response myResponse = Response.status(404)
+						.entity(response.toString()).build();
 				logger.log(Level.WARNING,
-						() -> "CustomerResource.deleteCustomerInternal() failed to write to proctran");
+						() -> "CustomerResource.deleteCustomerInternal() customer "
+								+ id + NOT_FOUND_MSG);
 				logger.exiting(this.getClass().getName(),
 						DELETE_CUSTOMER_INTERNAL, myResponse);
 				return myResponse;
 			}
 
-			conn.commit();
+			response.put(JSON_SORT_CODE, sortCode.toString().trim());
+			response.put(JSON_ID, padCustomerNumber(Integer.toString(
+					responseEnvelope.path("CommCustno").asInt())));
+			response.put(JSON_CUSTOMER_NAME,
+					responseEnvelope.path("CommName").asText().trim());
+			response.put(JSON_CUSTOMER_ADDRESS,
+					responseEnvelope.path("CommAddr").asText().trim());
+			response.put(JSON_DATE_OF_BIRTH, BankCoreClient
+					.toIsoDate(responseEnvelope.path("CommDob").asText()));
+			response.put(JSON_CUSTOMER_CREDIT_SCORE, Integer.toString(
+					responseEnvelope.path("CommCreditScore").asInt()));
+			response.put(JSON_CUSTOMER_REVIEW_DATE, BankCoreClient.toIsoDate(
+					responseEnvelope.path("CommCsReviewDate").asText()));
 		}
-		catch (SQLException e)
+		catch (InterruptedException e)
+		{
+			Thread.currentThread().interrupt();
+			ObjectNode error = mapper.createObjectNode();
+			error.put(JSON_ERROR_MSG, "Failed to delete customer " + id);
+			Response myResponse = Response.status(500)
+					.entity(error.toString()).build();
+			logger.log(Level.WARNING,
+					() -> "Error deleting customer " + id + " " + e.getMessage());
+			logger.exiting(this.getClass().getName(), DELETE_CUSTOMER_INTERNAL,
+					myResponse);
+			return myResponse;
+		}
+		catch (IOException e)
 		{
 			ObjectNode error = mapper.createObjectNode();
-			error.put(JSON_ERROR_MSG,
-					"Error obtaining accounts to delete for customer " + id);
+			error.put(JSON_ERROR_MSG, "Failed to delete customer " + id);
 			Response myResponse = Response.status(500)
 					.entity(error.toString()).build();
 			logger.log(Level.WARNING,
@@ -1568,23 +1417,20 @@ public class CustomerResource
 
 
 	/**
-	 * Opens a JDBC connection to the shared PostgreSQL bank-core store. The host
-	 * is read from the {@code DB_HOST} environment variable (defaulting to
-	 * {@code localhost}); the database, user and password are all {@code cbsa}.
+	 * Opens a JDBC connection to the shared PostgreSQL bank-core store for the
+	 * read-only gap endpoints this resource still serves directly. The
+	 * connection coordinates (host, port, database, user, password) are
+	 * externalised in {@link DatabaseConfig} so that no credential is hardcoded
+	 * in source (F-CONFIG-SEC-1 / CWE-798); the documented local-development
+	 * defaults ({@code localhost:5432/cbsa}, user/password {@code cbsa}) apply
+	 * only when no override is supplied.
 	 *
 	 * @return an open {@link Connection} that the caller must close
 	 * @throws SQLException if the connection cannot be established
 	 */
 	private Connection getConnection() throws SQLException
 	{
-		String host = System.getenv("DB_HOST");
-		if (host == null || host.trim().isEmpty())
-		{
-			host = "localhost";
-		}
-		String url = "jdbc:postgresql://" + host + ":" + DB_PORT + "/"
-				+ DB_NAME;
-		return DriverManager.getConnection(url, DB_USER, DB_PASSWORD);
+		return DatabaseConfig.getConnection();
 	}
 
 

@@ -151,20 +151,42 @@ CREATE INDEX idx_account_customer_number ON account (customer_number);
 --   PROC-TRAN-AMOUNT     S9(10)V99 -> amount             NUMERIC(12,2)
 --   PROC-TRAN-LOGICAL-DELETE-FLAG (redefines the 'PRTR' eye-catcher; 88 X'FF')
 --                                  -> deleted            BOOLEAN (soft-delete)
+--
+-- PRIMARY KEY = (sort_code, ref), NOT (sort_code, transaction_number).
+-- This is dictated by the copybook + the COBOL programs, which are the
+-- authoritative behavioural specification:
+--   * PROC-TRAN-NUMBER (-> transaction_number) is the ACCOUNT NUMBER the
+--     transaction pertains to. The COBOL moves COMM-ACCNO into the proctran
+--     "number" field for account-level transactions (DBCRFUN.cbl line 468:
+--     MOVE COMM-ACCNO TO HV-PROCTRAN-ACC-NUMBER) and moves ZEROS for
+--     customer-level transactions (CRECUST.cbl line 1197:
+--     MOVE ZEROS TO HV-PROCTRAN-ACC-NUMBER). It is therefore NOT unique per
+--     row -- an account has many transactions and every customer-level row
+--     shares '00000000'. The webui adapter's frozen JSON contract emits this
+--     value under the field name `accountNumber`, so it MUST remain the
+--     account number and MUST NOT be replaced by a generated audit sequence.
+--   * PROC-TRAN-REF (-> ref) is the per-transaction reference (the CICS task
+--     number, WS-EIBTASKN12, e.g. CRECUST.cbl line 1199). It is the value that
+--     uniquely identifies one appended audit row, so it is the natural primary
+--     key of this append-only log. bank-core allocates a gap-free, monotonic
+--     12-digit ref for each appended row, so ref is NOT NULL and unique within
+--     a sort code. (The reference Db2 DDL PROCDB2.cpy declares no primary key
+--     at all -- PROCTRAN is a pure append log -- so promoting the unique ref
+--     to the relational primary key is the faithful relational rendering.)
 -- Append-only / logical-delete only -- rows are NEVER physically removed
--- (ADR-006); the partial index below speeds up active-row queries.
+-- (ADR-006); the partial index below speeds up active-row queries by account.
 -- -----------------------------------------------------------------------------
 CREATE TABLE processed_transaction (
     sort_code           CHAR(6)        NOT NULL,
     transaction_number  CHAR(8)        NOT NULL,
     date                DATE,
     time                TIME,
-    ref                 CHAR(12),
+    ref                 CHAR(12)       NOT NULL,
     type_code           CHAR(3)        NOT NULL,
     description         VARCHAR(40),
     amount              NUMERIC(12,2)  NOT NULL DEFAULT 0,
     deleted             BOOLEAN        NOT NULL DEFAULT false,
-    CONSTRAINT pk_processed_transaction PRIMARY KEY (sort_code, transaction_number),
+    CONSTRAINT pk_processed_transaction PRIMARY KEY (sort_code, ref),
     -- The exact, complete set of 18 PROCTRAN type codes from PROCTRAN.cpy
     -- (lines 30-47). 'OCS' (create-SODD) is included; no more, no fewer.
     CONSTRAINT ck_proctran_type_code CHECK (type_code IN
@@ -173,7 +195,9 @@ CREATE TABLE processed_transaction (
 );
 
 -- Partial index supporting ProcessedTransactionRepository active-only queries
--- (the logical-delete model: WHERE deleted = false).
+-- (the logical-delete model: WHERE deleted = false). Keyed by
+-- (sort_code, transaction_number) so a single account's active transaction
+-- history -- the webui processed-transaction list -- is fetched efficiently.
 CREATE INDEX idx_proctran_active ON processed_transaction (sort_code, transaction_number) WHERE deleted = false;
 
 

@@ -11,11 +11,9 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.sql.Connection;
 import java.sql.Date;
-import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.Calendar;
 import java.util.logging.Level;
 import java.util.logging.LogManager;
 import java.util.logging.Logger;
@@ -174,8 +172,6 @@ public class AccountsResource
 
 	private static final String JSON_ERROR_MSG = "errorMessage";
 
-	private static final int MAXIMUM_ACCOUNTS_PER_CUSTOMER = 10;
-
 	private static final int CUSTOMER_NUMBER_LENGTH = 10;
 
 	private static final int ACCOUNT_NUMBER_LENGTH = 8;
@@ -188,21 +184,6 @@ public class AccountsResource
 	 * Liberty JSON API; the field names and structure are reproduced byte-for-byte.
 	 */
 	private static final ObjectMapper mapper = new ObjectMapper();
-
-	/**
-	 * Shared bank-core PostgreSQL store coordinates. The database, user and
-	 * password are all {@code cbsa} (per the setup constraint); {@code DB_HOST}
-	 * is overridable via the environment, defaulting to {@code localhost}. This
-	 * replaces the deleted JCICS / Db2 / VSAM data path.
-	 */
-	private static final String DB_NAME = "cbsa";
-
-	private static final String DB_USER = "cbsa";
-
-	private static final String DB_PASSWORD = "cbsa";
-
-	private static final int DB_PORT = 5432;
-
 
 	public AccountsResource()
 	{
@@ -258,214 +239,131 @@ public class AccountsResource
 
 		}
 
-		ObjectNode response = mapper.createObjectNode();
-		AccountsResource thisAccountsResource = new AccountsResource();
-
+		// Delegate the account creation to the bank-core account service, which
+		// owns the COBOL CREACC business logic: re-validate the customer
+		// (fail '1'), enforce the maximum of ten accounts per customer
+		// (fail '8'), validate the account type (fail 'A'), allocate a gap-free
+		// account number from the control row, insert the account, and append
+		// the create-account PROCTRAN audit record -- all atomically inside one
+		// @Transactional boundary (reproducing CICS SYNCPOINT / ROLLBACK). webui
+		// no longer mutates account / account_control or opens a separate audit
+		// transaction (F-ACCT-1 / F-TXN-1 / U3 / R3).
 		Long customerNumberLong = Long.parseLong(account.getCustomerNumber());
-		JsonNode myAccountsJSON = null;
+		long newAccountNumber;
 		try
 		{
-			Response accountsOfThisCustomer = thisAccountsResource
-					.getAccountsByCustomerInternal(customerNumberLong);
-			if (accountsOfThisCustomer.getStatus() != 200)
-			{
-				// If accountsOfThisCustomer returns status 404, create new
-				// error node containing the error message
-				if (accountsOfThisCustomer.getStatus() == 404)
-				{
-					error = mapper.createObjectNode();
-					error.put(JSON_ERROR_MSG, CUSTOMER_NUMBER_LITERAL
-							+ customerNumberLong.longValue() + CANNOT_BE_FOUND);
-					logger.log(Level.WARNING, () -> CUSTOMER_NUMBER_LITERAL
-							+ customerNumberLong.longValue() + CANNOT_BE_FOUND);
-					myResponse = Response.status(404).entity(error.toString())
-							.build();
-					logger.exiting(this.getClass().getName(),
-							CREATE_ACCOUNT_INTERNAL, myResponse);
-					return myResponse;
-				}
-				error = mapper.createObjectNode();
-				error.put(JSON_ERROR_MSG, CUSTOMER_NUMBER_LITERAL
-						+ customerNumberLong.longValue() + CANNOT_BE_ACCESSED);
-				logger.log(Level.SEVERE, () -> CUSTOMER_NUMBER_LITERAL
-						+ customerNumberLong.longValue() + CANNOT_BE_ACCESSED);
-				myResponse = Response.status(accountsOfThisCustomer.getStatus())
-						.entity(error.toString()).build();
-				logger.exiting(this.getClass().getName(),
-						CREATE_ACCOUNT_INTERNAL, myResponse);
-				return myResponse;
+			ObjectNode request = mapper.createObjectNode();
+			ObjectNode creAcc = request.putObject("CreAcc");
+			creAcc.put("CommAccType", account.getAccountType().trim());
+			creAcc.put("CommCustno", account.getCustomerNumber());
+			creAcc.put("CommIntRt", account.getInterestRate());
+			creAcc.put("CommOverdrLim",
+				new BigDecimal(account.getOverdraft().intValue()));
 
+			BankCoreClient.BankCoreResult result = BankCoreClient
+				.post("/creacc/insert", request.toString());
+
+			JsonNode body = result.getBody();
+			JsonNode responseEnvelope = body == null ? null
+				: body.get("CreAcc");
+			if (!result.isHttpSuccess() || responseEnvelope == null)
+			{
+				error = mapper.createObjectNode();
+				error.put(JSON_ERROR_MSG, ACCOUNT_CREATE_FAILURE);
+				logger.log(Level.SEVERE, () -> ACCOUNT_CREATE_FAILURE);
+				myResponse = Response.status(500).entity(error.toString())
+					.build();
+				logger.exiting(this.getClass().getName(),
+					CREATE_ACCOUNT_INTERNAL, myResponse);
+				return myResponse;
 			}
-			String accountsOfThisCustomerString = accountsOfThisCustomer
-					.getEntity().toString();
-			myAccountsJSON = mapper.readTree(accountsOfThisCustomerString);
+
+			// A business-rule failure surfaces as CommSuccess == "N" carrying the
+			// verbatim COBOL fail code; translate each onto the frozen webui
+			// status / message the original adapter returned.
+			if ("N".equals(responseEnvelope.path("CommSuccess").asText("")
+				.trim()))
+			{
+				final String failCode = responseEnvelope.path("CommFailCode")
+					.asText("").trim();
+				error = mapper.createObjectNode();
+				int status;
+				if ("8".equals(failCode))
+				{
+					error.put(JSON_ERROR_MSG,
+						CUSTOMER_NUMBER_LITERAL
+							+ customerNumberLong.longValue()
+							+ " cannot have more than ten accounts.");
+					status = 400;
+				}
+				else if ("1".equals(failCode))
+				{
+					error.put(JSON_ERROR_MSG, CUSTOMER_NUMBER_LITERAL
+						+ customerNumberLong.longValue() + CANNOT_BE_FOUND);
+					status = 404;
+				}
+				else
+				{
+					error.put(JSON_ERROR_MSG, ACC_TYPE_STRING
+						+ account.getAccountType() + NOT_SUPPORTED);
+					status = 400;
+				}
+				logger.log(Level.WARNING,
+					() -> "Accounts: createAccount: bank-core returned fail code "
+						+ failCode);
+				myResponse = Response.status(status).entity(error.toString())
+					.build();
+				logger.exiting(this.getClass().getName(),
+					CREATE_ACCOUNT_INTERNAL, myResponse);
+				return myResponse;
+			}
+
+			newAccountNumber = responseEnvelope.path("CommKey")
+				.path("CommNumber").asLong();
+		}
+		catch (InterruptedException e)
+		{
+			Thread.currentThread().interrupt();
+			error = mapper.createObjectNode();
+			error.put(JSON_ERROR_MSG, ACCOUNT_CREATE_FAILURE);
+			logger.log(Level.SEVERE,
+				() -> ACCOUNT_CREATE_FAILURE + " " + e.getMessage());
+			myResponse = Response.status(500).entity(error.toString()).build();
+			logger.exiting(this.getClass().getName(), CREATE_ACCOUNT_INTERNAL,
+				myResponse);
+			return myResponse;
 		}
 		catch (IOException e)
 		{
 			error = mapper.createObjectNode();
-			error.put(JSON_ERROR_MSG, "Failed to retrieve customer number "
-					+ customerNumberLong + " " + e.getLocalizedMessage());
-			logger.log(Level.SEVERE, () -> "Failed to retrieve customer number "
-					+ customerNumberLong + " " + e.getLocalizedMessage());
+			error.put(JSON_ERROR_MSG, ACCOUNT_CREATE_FAILURE);
+			logger.log(Level.SEVERE,
+				() -> ACCOUNT_CREATE_FAILURE + " " + e.getMessage());
 			myResponse = Response.status(500).entity(error.toString()).build();
 			logger.exiting(this.getClass().getName(), CREATE_ACCOUNT_INTERNAL,
-					myResponse);
-			return myResponse;
-		}
-		long accountCount = myAccountsJSON.get(JSON_NUMBER_OF_ACCOUNTS)
-				.asLong();
-
-		// Does the customer have ten or more accounts?
-
-		if (accountCount >= MAXIMUM_ACCOUNTS_PER_CUSTOMER)
-		{
-			error = mapper.createObjectNode();
-			error.put(JSON_ERROR_MSG,
-					CUSTOMER_NUMBER_LITERAL + customerNumberLong.longValue()
-							+ " cannot have more than ten accounts.");
-			logger.log(Level.WARNING,
-					() -> (CUSTOMER_NUMBER_LITERAL
-							+ customerNumberLong.longValue()
-							+ " cannot have more than ten accounts."));
-			myResponse = Response.status(400).entity(error.toString()).build();
-			logger.exiting(this.getClass().getName(), CREATE_ACCOUNT_INTERNAL,
-					myResponse);
+				myResponse);
 			return myResponse;
 		}
 
-		// Allocate a gap-free account number from the account_control counter
-		// row and insert the account, all in one transaction so that a failure
-		// to append the PROCTRAN audit record rolls back BOTH the counter
-		// increment and the insert (reproducing the CICS SYNCPOINT / ROLLBACK
-		// boundary that the deleted JCICS task previously provided).
-		String sortCodeString = padSortCode(this.getSortCode());
-		String customerNumberString = padCustomerNumber(
-				account.getCustomerNumber());
-		try (Connection conn = getConnection())
-		{
-			conn.setAutoCommit(false);
-
-			long newAccountNumber;
-			try (PreparedStatement allocate = conn.prepareStatement(
-					"UPDATE account_control SET last_account_number = last_account_number + 1, "
-							+ "number_of_accounts = number_of_accounts + 1 "
-							+ "WHERE sort_code = ? RETURNING last_account_number"))
-			{
-				allocate.setString(1, sortCodeString);
-				try (ResultSet rs = allocate.executeQuery())
-				{
-					if (!rs.next())
-					{
-						conn.rollback();
-						error = mapper.createObjectNode();
-						error.put(JSON_ERROR_MSG, ACCOUNT_CREATE_FAILURE);
-						logger.log(Level.SEVERE, () -> ACCOUNT_CREATE_FAILURE);
-						myResponse = Response.status(500)
-								.entity(error.toString()).build();
-						logger.exiting(this.getClass().getName(),
-								CREATE_ACCOUNT_INTERNAL, myResponse);
-						return myResponse;
-					}
-					newAccountNumber = rs.getLong(1);
-				}
-			}
-
-			String accountNumberString = padAccountNumber(
-					(int) newAccountNumber);
-
-			// Store today's date as the ACCOUNT-OPENED date and calculate the
-			// LAST-STMT-DATE (today) and the NEXT-STMT-DATE (today + ~1 month),
-			// reproducing the COBOL CREACC date handling.
-			Calendar myCalendar = Calendar.getInstance();
-			Date today = new Date(myCalendar.getTimeInMillis());
-			Date dateOpened = today;
-			Date lastStatement = today;
-			long nextStatementLong = myCalendar.getTimeInMillis()
-					+ getNextMonth(today);
-			Date nextStatement = new Date(nextStatementLong);
-
-			try (PreparedStatement insert = conn.prepareStatement(
-					"INSERT INTO account (sort_code, account_number, customer_number, "
-							+ "account_type, interest_rate, opened, overdraft_limit, "
-							+ "last_statement_date, next_statement_date, available_balance, "
-							+ "actual_balance) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0.00, 0.00)"))
-			{
-				insert.setString(1, sortCodeString);
-				insert.setString(2, accountNumberString);
-				insert.setString(3, customerNumberString);
-				insert.setString(4, account.getAccountType());
-				insert.setBigDecimal(5, account.getInterestRate());
-				insert.setDate(6, dateOpened);
-				insert.setInt(7, account.getOverdraft());
-				insert.setDate(8, lastStatement);
-				insert.setDate(9, nextStatement);
-				insert.executeUpdate();
-			}
-
-			// Re-read the freshly inserted row so the response is built from the
-			// canonical stored values, identical in shape to the read endpoints.
-			try (PreparedStatement select = conn.prepareStatement(
-					"SELECT * FROM account WHERE account_number = ? AND sort_code = ?"))
-			{
-				select.setString(1, accountNumberString);
-				select.setString(2, sortCodeString);
-				try (ResultSet rs = select.executeQuery())
-				{
-					if (rs.next())
-					{
-						populateAccountFull(response, rs);
-					}
-				}
-			}
-
-			// Append the PROCTRAN create-account audit record (sibling resource,
-			// its own connection). On failure roll back the account insert and
-			// the counter increment together.
-			ProcessedTransactionResource myProcessedTransactionResource = new ProcessedTransactionResource();
-			ProcessedTransactionAccountJSON myProctranAccount = new ProcessedTransactionAccountJSON();
-			myProctranAccount.setSortCode(sortCodeString);
-			myProctranAccount.setAccountNumber(accountNumberString);
-			myProctranAccount.setCustomerNumber(customerNumberString);
-			myProctranAccount.setLastStatement(lastStatement);
-			myProctranAccount.setNextStatement(nextStatement);
-			myProctranAccount.setType(account.getAccountType());
-			myProctranAccount.setActualBalance(new BigDecimal("0.00"));
-
-			Response writeCreateAccountResponse = myProcessedTransactionResource
-					.writeCreateAccountInternal(myProctranAccount);
-			if (writeCreateAccountResponse == null
-					|| writeCreateAccountResponse.getStatus() != 200)
-			{
-				error = mapper.createObjectNode();
-				error.put(JSON_ERROR_MSG, PROCTRAN_WRITE_FAILURE);
-				logger.log(Level.SEVERE, () -> "Accounts: createAccount: "
-						+ PROCTRAN_WRITE_FAILURE);
-				conn.rollback();
-				logger.log(Level.SEVERE, () -> ACCOUNT_CREATE_FAILURE);
-				myResponse = Response.status(500).entity(error.toString())
-						.build();
-				logger.exiting(this.getClass().getName(),
-						CREATE_ACCOUNT_INTERNAL, myResponse);
-				return myResponse;
-			}
-
-			conn.commit();
-		}
-		catch (SQLException e)
+		// Re-read the freshly created account through the existing read path so
+		// the 201 body is byte-identical to the read endpoint and to the
+		// original create response (populateAccountFull shape).
+		Response readBack = getAccountInternal(newAccountNumber);
+		if (readBack.getStatus() != 200)
 		{
 			error = mapper.createObjectNode();
 			error.put(JSON_ERROR_MSG, ACCOUNT_CREATE_FAILURE);
-			logger.log(Level.SEVERE,
-					() -> ACCOUNT_CREATE_FAILURE + " " + e.getMessage());
+			logger.log(Level.SEVERE, () -> ACCOUNT_CREATE_FAILURE);
 			myResponse = Response.status(500).entity(error.toString()).build();
 			logger.exiting(this.getClass().getName(), CREATE_ACCOUNT_INTERNAL,
-					myResponse);
+				myResponse);
 			return myResponse;
 		}
 
-		myResponse = Response.status(201).entity(response.toString()).build();
+		myResponse = Response.status(201)
+			.entity(readBack.getEntity().toString()).build();
 		logger.exiting(this.getClass().getName(), CREATE_ACCOUNT_INTERNAL,
-				myResponse);
+			myResponse);
 		return myResponse;
 
 	}
@@ -704,7 +602,6 @@ public class AccountsResource
 		 * touches the balances.
 		 */
 		logger.entering(this.getClass().getName(), UPDATE_ACCOUNT_INTERNAL);
-		ObjectNode response = mapper.createObjectNode();
 		Response myResponse = null;
 
 		if (!(account.validateType(account.getAccountType().trim())))
@@ -781,83 +678,92 @@ public class AccountsResource
 		}
 
 		account.setId(id.toString());
-		String sortCodeString = padSortCode(thisSortCode);
-		String accountNumberString = padAccountNumber(
-				Integer.parseInt(account.getId()));
 
-		try (Connection conn = getConnection())
+		// Delegate the update to the bank-core account service, which owns the
+		// COBOL UPDACC business logic: it updates only the account type, interest
+		// rate and overdraft limit (never the balances) and writes no PROCTRAN
+		// record, inside one @Transactional boundary. webui no longer mutates the
+		// account table directly (F-ACCT-1 / U3 / R3).
+		try
 		{
-			boolean found = false;
-			try (PreparedStatement check = conn.prepareStatement(
-					"SELECT account_number FROM account WHERE account_number = ? AND sort_code = ?"))
-			{
-				check.setString(1, accountNumberString);
-				check.setString(2, sortCodeString);
-				try (ResultSet rs = check.executeQuery())
-				{
-					found = rs.next();
-				}
-			}
+			ObjectNode request = mapper.createObjectNode();
+			ObjectNode updAcc = request.putObject("UpdAcc");
+			updAcc.put("CommAccno", id.longValue());
+			updAcc.put("CommAccType", account.getAccountType().trim());
+			updAcc.put("CommIntRate", account.getInterestRate());
+			updAcc.put("CommOverdraft", account.getOverdraft().intValue());
 
-			if (!found)
+			BankCoreClient.BankCoreResult result = BankCoreClient
+				.put("/updacc/update", request.toString());
+
+			JsonNode body = result.getBody();
+			JsonNode responseEnvelope = body == null ? null
+				: body.get("UpdAcc");
+			// UPDACC reports a missing account via CommSuccess != "Y"; reproduce
+			// the frozen 404 "Failed to read account" envelope verbatim.
+			if (!result.isHttpSuccess() || responseEnvelope == null
+				|| !"Y".equals(responseEnvelope.path("CommSuccess")
+					.asText("").trim()))
 			{
 				ObjectNode error = mapper.createObjectNode();
 				error.put(JSON_ERROR_MSG, FAILED_TO_READ + account.getId()
-						+ " in " + this.getClass().toString());
+					+ " in " + this.getClass().toString());
 				logger.log(Level.WARNING, () -> (FAILED_TO_READ
-						+ account.getId() + CLASS_NAME_MSG));
+					+ account.getId() + CLASS_NAME_MSG));
 				myResponse = Response.status(404).entity(error.toString())
-						.build();
+					.build();
 				logger.exiting(this.getClass().getName(),
-						UPDATE_ACCOUNT_INTERNAL, myResponse);
+					UPDATE_ACCOUNT_INTERNAL, myResponse);
 				return myResponse;
 			}
-
-			// Update only the type, interest rate and overdraft limit (never
-			// the balances) and write no PROCTRAN record, matching UPDACC.
-			try (PreparedStatement update = conn.prepareStatement(
-					"UPDATE account SET account_type = ?, interest_rate = ?, "
-							+ "overdraft_limit = ? WHERE account_number = ? AND sort_code = ?"))
-			{
-				update.setString(1, account.getAccountType());
-				update.setBigDecimal(2, account.getInterestRate());
-				update.setInt(3, account.getOverdraft());
-				update.setString(4, accountNumberString);
-				update.setString(5, sortCodeString);
-				update.executeUpdate();
-			}
-
-			try (PreparedStatement select = conn.prepareStatement(
-					"SELECT * FROM account WHERE account_number = ? AND sort_code = ?"))
-			{
-				select.setString(1, accountNumberString);
-				select.setString(2, sortCodeString);
-				try (ResultSet rs = select.executeQuery())
-				{
-					if (rs.next())
-					{
-						populateAccountFull(response, rs);
-					}
-				}
-			}
 		}
-		catch (SQLException e)
+		catch (InterruptedException e)
+		{
+			Thread.currentThread().interrupt();
+			ObjectNode error = mapper.createObjectNode();
+			error.put(JSON_ERROR_MSG,
+				"Failed to update account" + CLASS_NAME_MSG);
+			logger.log(Level.SEVERE,
+				() -> "Failed to update account" + CLASS_NAME_MSG);
+			myResponse = Response.status(500).entity(error.toString()).build();
+			logger.exiting(this.getClass().getName(), UPDATE_ACCOUNT_INTERNAL,
+				myResponse);
+			return myResponse;
+		}
+		catch (IOException e)
 		{
 			ObjectNode error = mapper.createObjectNode();
 			error.put(JSON_ERROR_MSG,
-					"Failed to update account" + CLASS_NAME_MSG);
+				"Failed to update account" + CLASS_NAME_MSG);
 			logger.log(Level.SEVERE,
-					() -> "Failed to update account" + CLASS_NAME_MSG);
+				() -> "Failed to update account" + CLASS_NAME_MSG);
 			myResponse = Response.status(500).entity(error.toString()).build();
 			logger.exiting(this.getClass().getName(), UPDATE_ACCOUNT_INTERNAL,
-					myResponse);
+				myResponse);
 			return myResponse;
 		}
 
-		myResponse = Response.status(200).entity(response.toString()).build();
-		logger.exiting(this.getClass().getName(), UPDATE_ACCOUNT_INTERNAL,
+		// Re-read the updated account through the existing read path so the 200
+		// response body is byte-identical to the read endpoint
+		// (populateAccountFull shape).
+		Response readBack = getAccountInternal(id);
+		if (readBack.getStatus() != 200)
+		{
+			ObjectNode error = mapper.createObjectNode();
+			error.put(JSON_ERROR_MSG,
+				"Failed to update account" + CLASS_NAME_MSG);
+			logger.log(Level.SEVERE,
+				() -> "Failed to update account" + CLASS_NAME_MSG);
+			myResponse = Response.status(500).entity(error.toString()).build();
+			logger.exiting(this.getClass().getName(), UPDATE_ACCOUNT_INTERNAL,
 				myResponse);
+			return myResponse;
+		}
 
+		myResponse = Response.status(200)
+			.entity(readBack.getEntity().toString()).build();
+		logger.exiting(this.getClass().getName(), UPDATE_ACCOUNT_INTERNAL,
+			myResponse);
 		return myResponse;
 	}
 
@@ -1080,9 +986,6 @@ public class AccountsResource
 
 		BigDecimal amount = transferLocal.getAmount();
 		amount = amount.setScale(2, RoundingMode.HALF_UP);
-		BigDecimal negativeAmount = amount;
-		negativeAmount = negativeAmount.negate();
-		negativeAmount = negativeAmount.setScale(2, RoundingMode.HALF_UP);
 
 		Long sortCode = Long.parseLong(this.getSortCode().toString());
 
@@ -1145,124 +1048,81 @@ public class AccountsResource
 			return myResponse;
 		}
 
-		// Move the money: debit the source account and credit the target
-		// account within a single transaction so the pair is atomic (reproducing
-		// the CICS SYNCPOINT boundary of XFRFUN). Both balances are updated on
-		// both accounts.
-		String sortCodeString = padSortCode(this.getSortCode());
-		String sourceAccountString = padAccountNumber(
-				Integer.parseInt(accountNumber));
-		String targetAccountString = padAccountNumber(
-				transferLocal.getTargetAccount());
+		// Move the money through the bank-core transfer service, which owns the
+		// COBOL XFRFUN business logic: it locks the lower-numbered account first
+		// to avoid deadlock, retries on deadlock, updates both balances on both
+		// accounts, and appends the transfer PROCTRAN record -- all atomically
+		// inside one @Transactional boundary (reproducing CICS SYNCPOINT /
+		// ROLLBACK). webui no longer mutates balances or opens a separate audit
+		// transaction (F-ACCT-1 / F-TXN-1 / U3 / R3).
 		BigDecimal targetNewActual = null;
 		BigDecimal targetNewAvailable = null;
 		BigDecimal targetInterestRate = null;
-		try (Connection conn = getConnection())
+		try
 		{
-			conn.setAutoCommit(false);
+			ObjectNode request = mapper.createObjectNode();
+			request.put("fromAccount", Long.parseLong(accountNumber));
+			request.put("toAccount",
+				transferLocal.getTargetAccount().longValue());
+			request.put("amount", amount);
 
-			// Debit the source account
-			try (PreparedStatement select = conn.prepareStatement(
-					"SELECT actual_balance, available_balance FROM account "
-							+ "WHERE account_number = ? AND sort_code = ?"))
-			{
-				select.setString(1, sourceAccountString);
-				select.setString(2, sortCodeString);
-				try (ResultSet rs = select.executeQuery())
-				{
-					if (rs.next())
-					{
-						BigDecimal srcActual = rs
-								.getBigDecimal("actual_balance")
-								.add(negativeAmount)
-								.setScale(2, RoundingMode.HALF_UP);
-						BigDecimal srcAvailable = rs
-								.getBigDecimal("available_balance")
-								.add(negativeAmount)
-								.setScale(2, RoundingMode.HALF_UP);
-						try (PreparedStatement update = conn.prepareStatement(
-								"UPDATE account SET actual_balance = ?, available_balance = ? "
-										+ "WHERE account_number = ? AND sort_code = ?"))
-						{
-							update.setBigDecimal(1, srcActual);
-							update.setBigDecimal(2, srcAvailable);
-							update.setString(3, sourceAccountString);
-							update.setString(4, sortCodeString);
-							update.executeUpdate();
-						}
-					}
-				}
-			}
+			BankCoreClient.BankCoreResult result = BankCoreClient
+				.put("/transfer", request.toString());
 
-			// Credit the target account
-			try (PreparedStatement select = conn.prepareStatement(
-					"SELECT actual_balance, available_balance, interest_rate FROM account "
-							+ "WHERE account_number = ? AND sort_code = ?"))
-			{
-				select.setString(1, targetAccountString);
-				select.setString(2, sortCodeString);
-				try (ResultSet rs = select.executeQuery())
-				{
-					if (rs.next())
-					{
-						targetNewActual = rs.getBigDecimal("actual_balance")
-								.add(amount).setScale(2, RoundingMode.HALF_UP);
-						targetNewAvailable = rs
-								.getBigDecimal("available_balance").add(amount)
-								.setScale(2, RoundingMode.HALF_UP);
-						targetInterestRate = rs.getBigDecimal("interest_rate");
-						try (PreparedStatement update = conn.prepareStatement(
-								"UPDATE account SET actual_balance = ?, available_balance = ? "
-										+ "WHERE account_number = ? AND sort_code = ?"))
-						{
-							update.setBigDecimal(1, targetNewActual);
-							update.setBigDecimal(2, targetNewAvailable);
-							update.setString(3, targetAccountString);
-							update.setString(4, sortCodeString);
-							update.executeUpdate();
-						}
-					}
-				}
-			}
-
-			ProcessedTransactionResource myProcessedTransactionResource = new ProcessedTransactionResource();
-
-			ProcessedTransactionTransferLocalJSON myProctranTransferLocal = new ProcessedTransactionTransferLocalJSON();
-			myProctranTransferLocal.setSortCode(sortCode.toString());
-			myProctranTransferLocal.setAccountNumber(
-					transferLocal.getTargetAccount().toString());
-			myProctranTransferLocal.setAmount(amount);
-			myProctranTransferLocal.setTargetAccountNumber(
-					transferLocal.getTargetAccount().toString());
-
-			Response writeTransferResponse = myProcessedTransactionResource
-					.writeTransferLocalInternal(myProctranTransferLocal);
-			if (writeTransferResponse == null
-					|| writeTransferResponse.getStatus() != 200)
+			JsonNode body = result.getBody();
+			if (!result.isHttpSuccess() || body == null
+				|| !"Y".equals(body.path("success").asText("").trim()))
 			{
 				ObjectNode error = mapper.createObjectNode();
 				error.put(JSON_ERROR_MSG, PROCTRAN_WRITE_FAILURE);
 				logger.log(Level.SEVERE, () -> "Accounts: transferLocal: "
-						+ PROCTRAN_WRITE_FAILURE);
-				conn.rollback();
+					+ PROCTRAN_WRITE_FAILURE);
 				myResponse = Response.status(500).entity(error.toString())
-						.build();
+					.build();
 				logger.exiting(this.getClass().getName(),
-						TRANSFER_LOCAL_INTERNAL, myResponse);
+					TRANSFER_LOCAL_INTERNAL, myResponse);
 				return myResponse;
 			}
 
-			conn.commit();
+			targetNewAvailable = body.path("toAvailableBalance")
+				.decimalValue().setScale(2, RoundingMode.HALF_UP);
+			targetNewActual = body.path("toActualBalance").decimalValue()
+				.setScale(2, RoundingMode.HALF_UP);
+
+			// The transfer result does not echo the target account interest rate,
+			// which the frozen response includes; re-read it through the existing
+			// read path (BigDecimal-preserving parse, no floating point).
+			Response targetReadBack = getAccountInternal(Long
+				.parseLong(transferLocal.getTargetAccount().toString()));
+			if (targetReadBack.getStatus() == 200)
+			{
+				JsonNode targetNode = BankCoreClient
+					.parse(targetReadBack.getEntity().toString());
+				targetInterestRate = targetNode.path(JSON_INTEREST_RATE)
+					.decimalValue();
+			}
 		}
-		catch (SQLException e)
+		catch (InterruptedException e)
+		{
+			Thread.currentThread().interrupt();
+			ObjectNode error = mapper.createObjectNode();
+			error.put(JSON_ERROR_MSG, PROCTRAN_WRITE_FAILURE);
+			logger.log(Level.SEVERE, () -> "Accounts: transferLocal: "
+				+ PROCTRAN_WRITE_FAILURE);
+			myResponse = Response.status(500).entity(error.toString()).build();
+			logger.exiting(this.getClass().getName(), TRANSFER_LOCAL_INTERNAL,
+				myResponse);
+			return myResponse;
+		}
+		catch (IOException e)
 		{
 			ObjectNode error = mapper.createObjectNode();
 			error.put(JSON_ERROR_MSG, PROCTRAN_WRITE_FAILURE);
 			logger.log(Level.SEVERE, () -> "Accounts: transferLocal: "
-					+ PROCTRAN_WRITE_FAILURE);
+				+ PROCTRAN_WRITE_FAILURE);
 			myResponse = Response.status(500).entity(error.toString()).build();
 			logger.exiting(this.getClass().getName(), TRANSFER_LOCAL_INTERNAL,
-					myResponse);
+				myResponse);
 			return myResponse;
 		}
 
@@ -1293,99 +1153,72 @@ public class AccountsResource
 		}
 		final BigDecimal amount = apiAmount;
 
-		String sortCodeString = padSortCode(sortCode.intValue());
+		// Apply the debit/credit through the bank-core payment service, which
+		// owns the COBOL DBCRFUN business logic and updates BOTH balances and
+		// appends the PROCTRAN audit record atomically inside one @Transactional
+		// boundary (reproducing CICS SYNCPOINT / ROLLBACK). The teller facility
+		// type ("0000", not 496) is used so the channel restriction and overdraft
+		// checks are bypassed, matching this adapter's original debit/credit
+		// behaviour. webui no longer mutates balances or opens a separate audit
+		// transaction (F-ACCT-1 / F-TXN-1 / U3 / R3).
 		String accountNumberString = padAccountNumber(
-				Integer.parseInt(accountNumber));
-
-		try (Connection conn = getConnection())
+			Integer.parseInt(accountNumber));
+		try
 		{
-			conn.setAutoCommit(false);
+			ObjectNode request = mapper.createObjectNode();
+			ObjectNode payDbCr = request.putObject("PAYDBCR");
+			payDbCr.put("CommAccno", accountNumberString);
+			payDbCr.put("CommAmt", amount);
+			payDbCr.putObject("CommOrigin").put("CommFaciltype", "0000");
 
-			BigDecimal newActualBalance = null;
-			BigDecimal newAvailableBalance = null;
-			BigDecimal interestRate = null;
+			BankCoreClient.BankCoreResult result = BankCoreClient
+				.put("/makepayment/dbcr", request.toString());
 
-			try (PreparedStatement select = conn.prepareStatement(
-					"SELECT actual_balance, available_balance, interest_rate FROM account "
-							+ "WHERE account_number = ? AND sort_code = ?"))
-			{
-				select.setString(1, accountNumberString);
-				select.setString(2, sortCodeString);
-				try (ResultSet rs = select.executeQuery())
-				{
-					if (!rs.next())
-					{
-						conn.rollback();
-						ObjectNode error = mapper.createObjectNode();
-						if (amount.signum() < 0)
-						{
-							error.put(JSON_ERROR_MSG, "Failed to debit account "
-									+ accountNumber + CLASS_NAME_MSG);
-							logger.log(Level.SEVERE,
-									() -> "Failed to debit account "
-											+ accountNumber + CLASS_NAME_MSG);
-						}
-						else
-						{
-							error.put(JSON_ERROR_MSG, "Failed to credit account "
-									+ accountNumber + CLASS_NAME_MSG);
-							logger.log(Level.SEVERE,
-									() -> "Failed to credit account "
-											+ accountNumber + CLASS_NAME_MSG);
-						}
-						myResponse = Response.status(500)
-								.entity(error.toString()).build();
-						logger.exiting(this.getClass().getName(),
-								DEBIT_CREDIT_ACCOUNT, myResponse);
-						return myResponse;
-					}
-					BigDecimal actualBalance = rs
-							.getBigDecimal("actual_balance");
-					BigDecimal availableBalance = rs
-							.getBigDecimal("available_balance");
-					interestRate = rs.getBigDecimal("interest_rate");
-					newActualBalance = actualBalance.add(amount).setScale(2,
-							RoundingMode.HALF_UP);
-					newAvailableBalance = availableBalance.add(amount)
-							.setScale(2, RoundingMode.HALF_UP);
-				}
-			}
-
-			try (PreparedStatement update = conn.prepareStatement(
-					"UPDATE account SET actual_balance = ?, available_balance = ? "
-							+ "WHERE account_number = ? AND sort_code = ?"))
-			{
-				update.setBigDecimal(1, newActualBalance);
-				update.setBigDecimal(2, newAvailableBalance);
-				update.setString(3, accountNumberString);
-				update.setString(4, sortCodeString);
-				update.executeUpdate();
-			}
-
-			ProcessedTransactionResource myProcessedTransactionResource = new ProcessedTransactionResource();
-			ProcessedTransactionDebitCreditJSON myProctranDbCr = new ProcessedTransactionDebitCreditJSON();
-			myProctranDbCr.setSortCode(sortCode.toString());
-			myProctranDbCr.setAccountNumber(accountNumber);
-			myProctranDbCr.setAmount(amount);
-
-			Response debitCreditResponse = myProcessedTransactionResource
-					.writeInternal(myProctranDbCr);
-
-			if (debitCreditResponse == null
-					|| debitCreditResponse.getStatus() != 200)
+			JsonNode body = result.getBody();
+			JsonNode env = body == null ? null : body.get("PAYDBCR");
+			// CommFailCode is numeric: "0" success, anything else a failure.
+			if (!result.isHttpSuccess() || env == null
+				|| !"0".equals(env.path("CommFailCode").asText("").trim()))
 			{
 				ObjectNode error = mapper.createObjectNode();
-				error.put(JSON_ERROR_MSG, PROCTRAN_WRITE_FAILURE);
-				logger.log(Level.SEVERE, () -> PROCTRAN_WRITE_FAILURE);
-				conn.rollback();
+				if (amount.signum() < 0)
+				{
+					error.put(JSON_ERROR_MSG, "Failed to debit account "
+						+ accountNumber + CLASS_NAME_MSG);
+					logger.log(Level.SEVERE, () -> "Failed to debit account "
+						+ accountNumber + CLASS_NAME_MSG);
+				}
+				else
+				{
+					error.put(JSON_ERROR_MSG, "Failed to credit account "
+						+ accountNumber + CLASS_NAME_MSG);
+					logger.log(Level.SEVERE, () -> "Failed to credit account "
+						+ accountNumber + CLASS_NAME_MSG);
+				}
 				myResponse = Response.status(500).entity(error.toString())
-						.build();
+					.build();
 				logger.exiting(this.getClass().getName(), DEBIT_CREDIT_ACCOUNT,
-						myResponse);
+					myResponse);
 				return myResponse;
 			}
 
-			conn.commit();
+			BigDecimal newAvailableBalance = env.path("CommAvBal")
+				.decimalValue().setScale(2, RoundingMode.HALF_UP);
+			BigDecimal newActualBalance = env.path("CommActBal")
+				.decimalValue().setScale(2, RoundingMode.HALF_UP);
+
+			// The make-payment result does not echo the interest rate, which the
+			// frozen response includes; re-read it through the existing read path
+			// (parsed with the BigDecimal-preserving mapper, no floating point).
+			BigDecimal interestRate = null;
+			Response readBack = getAccountInternal(
+				Long.parseLong(accountNumber));
+			if (readBack.getStatus() == 200)
+			{
+				JsonNode acct = BankCoreClient
+					.parse(readBack.getEntity().toString());
+				interestRate = acct.path(JSON_INTEREST_RATE).decimalValue();
+			}
 
 			response.put(JSON_SORT_CODE, sortCode.toString().trim());
 			response.put("id", accountNumber);
@@ -1393,26 +1226,29 @@ public class AccountsResource
 			response.put(JSON_ACTUAL_BALANCE, newActualBalance);
 			response.put(JSON_INTEREST_RATE, interestRate);
 		}
-		catch (SQLException e)
+		catch (InterruptedException e)
 		{
+			Thread.currentThread().interrupt();
 			ObjectNode error = mapper.createObjectNode();
-			if (amount.signum() < 0)
-			{
-				error.put(JSON_ERROR_MSG, "Failed to debit account "
-						+ accountNumber + CLASS_NAME_MSG);
-				logger.log(Level.SEVERE, () -> "Failed to debit account "
-						+ accountNumber + CLASS_NAME_MSG);
-			}
-			else
-			{
-				error.put(JSON_ERROR_MSG, "Failed to credit account "
-						+ accountNumber + CLASS_NAME_MSG);
-				logger.log(Level.SEVERE, () -> "Failed to credit account "
-						+ accountNumber + CLASS_NAME_MSG);
-			}
+			error.put(JSON_ERROR_MSG, "Failed to update account "
+				+ accountNumber + CLASS_NAME_MSG);
+			logger.log(Level.SEVERE, () -> "Failed to update account "
+				+ accountNumber + CLASS_NAME_MSG);
 			myResponse = Response.status(500).entity(error.toString()).build();
 			logger.exiting(this.getClass().getName(), DEBIT_CREDIT_ACCOUNT,
-					myResponse);
+				myResponse);
+			return myResponse;
+		}
+		catch (IOException e)
+		{
+			ObjectNode error = mapper.createObjectNode();
+			error.put(JSON_ERROR_MSG, "Failed to update account "
+				+ accountNumber + CLASS_NAME_MSG);
+			logger.log(Level.SEVERE, () -> "Failed to update account "
+				+ accountNumber + CLASS_NAME_MSG);
+			myResponse = Response.status(500).entity(error.toString()).build();
+			logger.exiting(this.getClass().getName(), DEBIT_CREDIT_ACCOUNT,
+				myResponse);
 			return myResponse;
 		}
 
@@ -1445,117 +1281,86 @@ public class AccountsResource
 
 		ObjectNode response = mapper.createObjectNode();
 
-		Integer sortCode = this.getSortCode();
-		String sortCodeString = padSortCode(sortCode);
-		String accountNumberString = padAccountNumber(accountNumber.intValue());
-
-		try (Connection conn = getConnection())
+		// Delete the account through the bank-core account service, which owns
+		// the COBOL DELACC business logic: it captures the terminal balance,
+		// physically removes the account row, decrements the account_control
+		// counter, and appends the account-close PROCTRAN audit record -- all
+		// atomically inside one @Transactional boundary (reproducing CICS
+		// SYNCPOINT / ROLLBACK). webui no longer mutates account / account_control
+		// or opens a separate audit transaction (F-ACCT-1 / F-TXN-1 / U3 / R3).
+		try
 		{
-			conn.setAutoCommit(false);
+			BankCoreClient.BankCoreResult result = BankCoreClient
+				.delete("/delacc/remove/" + BankCoreClient
+					.encodeSegment(accountNumber.toString()));
 
-			boolean found = false;
-			String delCustomerNumber = null;
-			String delType = null;
-			Date delLastStatement = null;
-			Date delNextStatement = null;
-			BigDecimal delActualBalance = null;
-
-			try (PreparedStatement select = conn.prepareStatement(
-					"SELECT * FROM account WHERE account_number = ? AND sort_code = ?"))
+			JsonNode body = result.getBody();
+			JsonNode env = body == null ? null : body.get("DelAcc");
+			// DELACC reports a missing account via DelAccFailCd == 1; reproduce
+			// the frozen 404 "not found" envelope verbatim.
+			if (!result.isHttpSuccess() || env == null
+				|| env.path("DelAccFailCd").asInt(1) != 0)
 			{
-				select.setString(1, accountNumberString);
-				select.setString(2, sortCodeString);
-				try (ResultSet rs = select.executeQuery())
-				{
-					if (rs.next())
-					{
-						found = true;
-						populateAccountFull(response, rs);
-						// Capture the values required for the PROCTRAN
-						// account-close record (which records the terminal
-						// balance) before the row is removed.
-						delCustomerNumber = rs.getString("customer_number");
-						delType = rs.getString("account_type");
-						delLastStatement = rs.getDate("last_statement_date");
-						delNextStatement = rs.getDate("next_statement_date");
-						delActualBalance = rs.getBigDecimal("actual_balance");
-					}
-				}
-			}
-
-			if (!found)
-			{
-				conn.rollback();
 				logger.log(Level.INFO,
-						() -> ("Accounts: deleteAccount: Failed to find account "
-								+ accountNumber));
+					() -> ("Accounts: deleteAccount: Failed to find account "
+						+ accountNumber));
 				response.put(JSON_ERROR_MSG,
-						ACCOUNT_LITERAL + accountNumber + " not found");
+					ACCOUNT_LITERAL + accountNumber + " not found");
 				myResponse = Response.status(404).entity(response.toString())
-						.build();
+					.build();
 				logger.exiting(this.getClass().getName(), DELETE_ACCOUNT,
-						myResponse);
+					myResponse);
 				return myResponse;
 			}
 
-			// Physically remove the account row (DELACC physically deletes the
-			// account but appends a PROCTRAN audit record) and decrement the
-			// account_control counter, mirroring the create-side increment.
-			try (PreparedStatement delete = conn.prepareStatement(
-					"DELETE FROM account WHERE account_number = ? AND sort_code = ?"))
-			{
-				delete.setString(1, accountNumberString);
-				delete.setString(2, sortCodeString);
-				delete.executeUpdate();
-			}
-
-			try (PreparedStatement decrement = conn.prepareStatement(
-					"UPDATE account_control SET number_of_accounts = number_of_accounts - 1 "
-							+ "WHERE sort_code = ?"))
-			{
-				decrement.setString(1, sortCodeString);
-				decrement.executeUpdate();
-			}
-
-			ProcessedTransactionResource myProcessedTransactionResource = new ProcessedTransactionResource();
-
-			ProcessedTransactionAccountJSON myDeletedAccount = new ProcessedTransactionAccountJSON();
-			myDeletedAccount.setAccountNumber(accountNumberString);
-			myDeletedAccount.setType(delType);
-			myDeletedAccount.setCustomerNumber(delCustomerNumber);
-			myDeletedAccount.setSortCode(sortCodeString);
-			myDeletedAccount.setNextStatement(delNextStatement);
-			myDeletedAccount.setLastStatement(delLastStatement);
-			myDeletedAccount.setActualBalance(delActualBalance);
-
-			Response deletedAccountResponse = myProcessedTransactionResource
-					.writeDeleteAccountInternal(myDeletedAccount);
-			if (deletedAccountResponse == null
-					|| deletedAccountResponse.getStatus() != 200)
-			{
-				ObjectNode error = mapper.createObjectNode();
-				error.put(JSON_ERROR_MSG, PROCTRAN_WRITE_FAILURE);
-				logger.log(Level.SEVERE, () -> PROCTRAN_WRITE_FAILURE);
-				conn.rollback();
-				myResponse = Response.status(500).entity(error.toString())
-						.build();
-				logger.exiting(this.getClass().getName(), DELETE_ACCOUNT,
-						myResponse);
-				return myResponse;
-			}
-
-			conn.commit();
+			// Build the frozen response from the deleted account's terminal
+			// state, matching the populateAccountFull field set and formats.
+			response.put(JSON_SORT_CODE,
+				env.path("DelAccScode").asText().trim());
+			response.put("id",
+				padAccountNumber(env.path("DelAccAccno").asInt()));
+			response.put(JSON_CUSTOMER_NUMBER,
+				env.path("DelAccCustno").asText());
+			response.put(JSON_ACCOUNT_TYPE,
+				env.path("DelAccAccType").asText().trim());
+			response.put(JSON_AVAILABLE_BALANCE,
+				env.path("DelAccAvailBal").decimalValue());
+			response.put(JSON_ACTUAL_BALANCE,
+				env.path("DelAccActualBal").decimalValue());
+			response.put(JSON_INTEREST_RATE,
+				env.path("DelAccIntRate").decimalValue());
+			response.put(JSON_OVERDRAFT,
+				env.path("DelAccOverdraft").asInt());
+			response.put(JSON_LAST_STATEMENT_DATE, BankCoreClient
+				.toIsoDate(env.path("DelAccLastStmtDt").asText()));
+			response.put(JSON_NEXT_STATEMENT_DATE, BankCoreClient
+				.toIsoDate(env.path("DelAccNextStmtDt").asText()));
+			response.put(JSON_DATE_OPENED, BankCoreClient
+				.toIsoDate(env.path("DelAccOpened").asText()));
 		}
-		catch (SQLException e)
+		catch (InterruptedException e)
+		{
+			Thread.currentThread().interrupt();
+			ObjectNode error = mapper.createObjectNode();
+			error.put(JSON_ERROR_MSG, "Failed to delete account "
+				+ accountNumber + CLASS_NAME_MSG);
+			logger.log(Level.SEVERE, () -> "Failed to delete account "
+				+ accountNumber + CLASS_NAME_MSG);
+			myResponse = Response.status(500).entity(error.toString()).build();
+			logger.exiting(this.getClass().getName(), DELETE_ACCOUNT,
+				myResponse);
+			return myResponse;
+		}
+		catch (IOException e)
 		{
 			ObjectNode error = mapper.createObjectNode();
 			error.put(JSON_ERROR_MSG, "Failed to delete account "
-					+ accountNumber + CLASS_NAME_MSG);
+				+ accountNumber + CLASS_NAME_MSG);
 			logger.log(Level.SEVERE, () -> "Failed to delete account "
-					+ accountNumber + CLASS_NAME_MSG);
+				+ accountNumber + CLASS_NAME_MSG);
 			myResponse = Response.status(500).entity(error.toString()).build();
 			logger.exiting(this.getClass().getName(), DELETE_ACCOUNT,
-					myResponse);
+				myResponse);
 			return myResponse;
 		}
 		/*
@@ -2017,22 +1822,19 @@ public class AccountsResource
 
 
 	/**
-	 * Obtain a JDBC connection to the shared bank-core PostgreSQL store. This
-	 * replaces the deleted JCICS / Db2 connection lifecycle that the former
-	 * shared data-access base class provided.
+	 * Obtain a JDBC connection to the shared bank-core PostgreSQL store for the
+	 * read-only gap endpoints that this adapter still serves directly. All JDBC
+	 * coordinates (host, port, database, user, password) are externalised to
+	 * {@link DatabaseConfig}, which resolves them from system properties or
+	 * environment variables and never hardcodes credentials in source
+	 * (F-CONFIG-SEC-1, CWE-798).
 	 *
 	 * @return an open {@link Connection}; the caller owns closing it
 	 * @throws SQLException if the connection cannot be established
 	 */
 	private Connection getConnection() throws SQLException
 	{
-		String host = System.getenv("DB_HOST");
-		if (host == null || host.trim().isEmpty())
-		{
-			host = "localhost";
-		}
-		String url = "jdbc:postgresql://" + host + ":" + DB_PORT + "/" + DB_NAME;
-		return DriverManager.getConnection(url, DB_USER, DB_PASSWORD);
+		return DatabaseConfig.getConnection();
 	}
 
 
@@ -2180,51 +1982,5 @@ public class AccountsResource
 
 	}
 
-
-	private long getNextMonth(Date today)
-	{
-		// What is next month?
-		long nextMonthInMs;
-		Calendar myCalendar = Calendar.getInstance();
-		myCalendar.setTime(today);
-		switch (myCalendar.get(Calendar.MONTH))
-		{
-		case 8:
-		case 3:
-		case 5:
-		case 10:
-			nextMonthInMs = 1000L * 60L * 60L * 24L * 30L;
-			break;
-		case 1:
-			if ((myCalendar.get(Calendar.YEAR)) % 4 > 0)
-			{
-				nextMonthInMs = 1000L * 60L * 60L * 24L * 28L;
-			}
-			else
-			{
-				if (myCalendar.get(Calendar.YEAR) % 100 > 0)
-				{
-					nextMonthInMs = 1000L * 60L * 60L * 24L * 29L;
-				}
-				else
-				{
-					if (myCalendar.get(Calendar.YEAR) % 400 == 0)
-					{
-						nextMonthInMs = 1000L * 60L * 60L * 24L * 29L;
-					}
-					else
-					{
-						nextMonthInMs = 1000L * 60L * 60L * 24L * 28L;
-					}
-				}
-			}
-			break;
-		default:
-			nextMonthInMs = 1000L * 60L * 60L * 24L * 31L;
-			break;
-		}
-		return nextMonthInMs;
-
-	}
 
 }

@@ -23,6 +23,28 @@
 		<maven.compiler.target>17</maven.compiler.target>
 	</properties>
 
+	<!--
+		Centralise the Jackson version through the official jackson-bom so the
+		jackson-databind, jackson-core, and jackson-annotations artifacts in the
+		webui dependency tree always resolve to one mutually-compatible, patched
+		release train. The 2.21.1 line is selected because earlier lines resolve a
+		jackson-core that falls inside the published GHSA advisory range
+		(<= 2.18.5 and >= 2.19.0, < 2.21.1); 2.21.1 is the patched core (F-DEP-1).
+		Using the BOM (rather than three independent version pins) guarantees the
+		three components stay aligned on every future bump.
+	-->
+	<dependencyManagement>
+		<dependencies>
+			<dependency>
+				<groupId>com.fasterxml.jackson</groupId>
+				<artifactId>jackson-bom</artifactId>
+				<version>2.21.1</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
+
 	<dependencies>
 		<dependency>
 			<groupId>jakarta.ws.rs</groupId>
@@ -36,10 +58,25 @@
 			<scope>provided</scope>
 		</dependency>
 
+		<!--
+			Jackson JSON binding for the surviving JAX-RS resources. Versions are
+			supplied by the imported jackson-bom (2.21.1) above so databind, core,
+			and annotations stay aligned on the patched release train (F-DEP-1).
+			core and annotations are declared explicitly (in addition to databind,
+			which would otherwise pull them transitively) so the patched, aligned
+			versions are visible directly in the webui dependency tree.
+		-->
 		<dependency>
 			<groupId>com.fasterxml.jackson.core</groupId>
 			<artifactId>jackson-databind</artifactId>
-			<version>2.17.2</version>
+		</dependency>
+		<dependency>
+			<groupId>com.fasterxml.jackson.core</groupId>
+			<artifactId>jackson-core</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>com.fasterxml.jackson.core</groupId>
+			<artifactId>jackson-annotations</artifactId>
 		</dependency>
 
 		<!--
