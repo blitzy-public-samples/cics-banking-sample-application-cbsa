@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.ibm.cics.cip.bank.core.constants.BankConstants;
 import com.ibm.cics.cip.bank.core.dto.DtoFormat;
-import com.ibm.cics.cip.bank.core.dto.common.EnvelopeKeyJson;
+import com.ibm.cics.cip.bank.core.dto.common.CommKey;
 import com.ibm.cics.cip.bank.core.dto.createcustomer.CrecustJson;
 import com.ibm.cics.cip.bank.core.dto.createcustomer.CreateCustomerJson;
 import com.ibm.cics.cip.bank.core.entity.Customer;
@@ -118,9 +118,9 @@ public class CreateCustomerController
 				: customer.getCreditScore().intValue());
 		out.setCommCsReviewDate(
 				DtoFormat.dateToString(customer.getCsReviewDate()));
-		out.setCommKey(new EnvelopeKeyJson(
+		out.setCommKey(new CommKey(
 				Integer.parseInt(customer.getId().getSortCode()),
-				(int) Long.parseLong(customer.getId().getCustomerNumber())));
+				Long.parseLong(customer.getId().getCustomerNumber())));
 		out.setCommSuccess(FLAG_SUCCESS);
 		out.setCommFailCode(SUCCESS_FAIL_CODE);
 		return new CreateCustomerJson(out);
@@ -140,8 +140,8 @@ public class CreateCustomerController
 		out.setCommName(in.getCommName());
 		out.setCommAddress(in.getCommAddress());
 		out.setCommDateOfBirth(in.getCommDateOfBirth());
-		out.setCommKey(new EnvelopeKeyJson(
-				Integer.parseInt(BankConstants.SORT_CODE), 0));
+		out.setCommKey(new CommKey(
+				Integer.parseInt(BankConstants.SORT_CODE), 0L));
 		out.setCommSuccess(FLAG_FAILURE);
 		out.setCommFailCode(failCode);
 		return new CreateCustomerJson(out);

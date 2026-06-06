@@ -4,75 +4,171 @@
 package com.ibm.cics.cip.bank.core.dto.createcustomer;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.ibm.cics.cip.bank.core.dto.common.EnvelopeKeyJson;
+import com.fasterxml.jackson.databind.annotation.JsonNaming;
+import com.ibm.cics.cip.bank.core.config.JacksonConfig;
+import com.ibm.cics.cip.bank.core.dto.common.CommKey;
 
 /**
- * Frozen z/OS Connect <em>create-customer</em> envelope ({@code CrecustJson}),
- * reproduced from the interface module's class of the same name so that the
- * {@code bank-core} module deserialises and serialises the create-customer
- * contract byte-for-byte (feature F-019).
+ * Inner commarea payload of the frozen z/OS Connect {@code crecust} (CREATE
+ * CUSTOMER) contract (feature F-019), wrapped by {@link CreateCustomerJson}
+ * under the {@code "CreCust"} envelope key.
  *
- * <p>It is nested inside {@link CreateCustomerJson} under the {@code CreCust}
- * key. On a request the meaningful inputs are {@code CommName},
- * {@code CommAddress} and {@code CommDateOfBirth} (an eight-character
- * {@code DDMMYYYY} string). On a response {@code bank-core} additionally
- * populates the allocated {@link #commKey key}, the agency-derived
- * {@code CommCreditScore}, the {@code CommCsReviewDate}, and the
- * {@code CommSuccess}/{@code CommFailCode} status pair. A blank
- * {@code CommFailCode} denotes success, matching the interface's
- * {@code equals("")} success test.</p>
+ * <p><strong>Dual role.</strong> This single DTO is BOTH the request payload
+ * (the client POSTs {@code CommName}, {@code CommAddress} and
+ * {@code CommDateOfBirth}) AND the response payload (the server returns the
+ * allocated {@link #commKey identity} &mdash; sort code plus customer number
+ * &mdash; together with the agency-derived {@code CommCreditScore}, the
+ * {@code CommCsReviewDate}, and the {@code CommSuccess}/{@code CommFailCode}
+ * status pair). It carries data only; all business behaviour lives in
+ * {@code CustomerService}, whose authoritative specification is the COBOL
+ * program {@code CRECUST.cbl}.</p>
+ *
+ * <p><strong>Structure / PIC widths.</strong> The nine fields and their PIC
+ * widths are taken verbatim from {@code CRECUST.cpy}: {@code COMM-EYECATCHER
+ * X(4)}, {@code COMM-KEY} (sort code {@code 9(6)} + number {@code 9(10)}),
+ * {@code COMM-NAME X(60)}, {@code COMM-ADDRESS X(160)},
+ * {@code COMM-DATE-OF-BIRTH 9(8)}, {@code COMM-CREDIT-SCORE 999},
+ * {@code COMM-CS-REVIEW-DATE 9(8)}, {@code COMM-SUCCESS X} and
+ * {@code COMM-FAIL-CODE X}. The {@code @JsonProperty} wire names reproduce the
+ * z/OS Connect envelope byte-for-byte.</p>
+ *
+ * <p><strong>Shared composite key.</strong> The {@code CommKey} field is the
+ * shared {@link CommKey} from {@code dto.common}, which supersedes the legacy
+ * interface module's nested per-envelope key class. Its number component is a
+ * {@link Long}, safely holding the {@code 9(10)} customer number (maximum
+ * 9,999,999,999, which exceeds {@code int} range) while still serialising as a
+ * JSON integer, so the frozen {@code "CommNumber":integer} contract is
+ * preserved verbatim.</p>
+ *
+ * <p><strong>Date fields are Strings (deliberate contract decision).</strong>
+ * {@code commDateOfBirth} and {@code commCsReviewDate} are declared as
+ * {@code String} (not a numeric or temporal Java type). The
+ * frozen swagger types both as {@code integer}, but the preserved
+ * interface-module consumer DTO &mdash; the authoritative runtime contract for
+ * backward compatibility &mdash; uses {@code String} for both, so the
+ * contract-faithful choice here is {@code String} (Jackson coerces a JSON
+ * number&harr;String, making this wire-safe in both directions). The on-the-wire
+ * value is the eight-character {@code DDMMYYYY} digit string (for example
+ * {@code "15051990"}); no slashes are inserted &mdash; the "DD/MM/YYYY" form in
+ * the specification is the human-readable DISPLAY format, not the wire form.
+ * The controller contract integration test locks this behaviour.</p>
+ *
+ * <p><strong>Naming strategy.</strong> The class carries
+ * {@code @JsonNaming(JacksonConfig.EnvelopeNamingStrategy.class)} to opt in to
+ * the module's envelope naming behaviour; however every field also declares its
+ * own explicit {@code @JsonProperty} wire name, which Jackson honours
+ * authoritatively over the strategy, guaranteeing the verbatim wire names.</p>
+ *
+ * <p><strong>Backward-compatibility constraint.</strong> The preserved consumer
+ * deserialises with a default {@code ObjectMapper}
+ * ({@code FAIL_ON_UNKNOWN_PROPERTIES=true}); this DTO therefore emits exactly
+ * these nine wire keys and exposes no extra serialised getter.</p>
+ *
+ * @see CreateCustomerJson
+ * @see CommKey
+ * @see JacksonConfig.EnvelopeNamingStrategy
  */
+@JsonNaming(JacksonConfig.EnvelopeNamingStrategy.class)
 public class CrecustJson
 {
 
-	/** Eye-catcher; preserved as four spaces for wire parity. */
+	/**
+	 * Eye-catcher integrity marker ({@code COMM-EYECATCHER PIC X(4)}). Retained
+	 * as a WIRE field for contract fidelity even though the eye-catcher is
+	 * dropped from the JPA entity; the service sets it to {@code "CUST"} on
+	 * success. Defaults to four spaces to reproduce the legacy initial value.
+	 */
 	@JsonProperty("CommEyecatcher")
 	private String commEyecatcher = "    ";
 
-	/** Allocated identity (sort code + customer number). */
+	/**
+	 * Allocated identity: sort code ({@code 9(6)}) plus customer number
+	 * ({@code 9(10)}). Uses the shared {@link CommKey} (whose number is a
+	 * {@link Long} to hold the 10-digit customer number). Initialised eagerly so
+	 * the key is never {@code null} and a freshly-constructed envelope reproduces
+	 * the legacy default {@code "CommKey":{"CommSortcode":0,"CommNumber":0}}.
+	 */
 	@JsonProperty("CommKey")
-	private EnvelopeKeyJson commKey = new EnvelopeKeyJson();
+	private CommKey commKey = new CommKey();
 
-	/** Customer name (first token is the honorific title). */
+	/** Customer name ({@code COMM-NAME PIC X(60)}; first token is the title). */
 	@JsonProperty("CommName")
 	private String commName;
 
-	/** Customer address. */
+	/** Customer address ({@code COMM-ADDRESS PIC X(160)}). */
 	@JsonProperty("CommAddress")
 	private String commAddress;
 
-	/** Date of birth, encoded as an eight-character {@code DDMMYYYY} string. */
+	/**
+	 * Date of birth. Carried as an eight-character {@code DDMMYYYY} digit string
+	 * (for example {@code "15051990"}) &mdash; a {@code String}, not a numeric or
+	 * temporal Java type: the swagger types it {@code integer} but
+	 * the preserved consumer DTO uses {@code String}, which is the authoritative
+	 * runtime contract (locked by the controller IT). No slashes on the wire.
+	 */
 	@JsonProperty("CommDateOfBirth")
 	private String commDateOfBirth;
 
-	/** Agency-derived credit score (0&ndash;999). */
+	/**
+	 * Agency-derived credit score ({@code COMM-CREDIT-SCORE PIC 999}, range
+	 * 0&ndash;999). A primitive {@code int} mirroring the legacy field; serialises
+	 * as a JSON number.
+	 */
 	@JsonProperty("CommCreditScore")
 	private int commCreditScore = 0;
 
-	/** Credit-score review date, as a {@code DDMMYYYY} string. */
+	/**
+	 * Credit-score review date. Like {@link #commDateOfBirth}, an eight-character
+	 * {@code DDMMYYYY} {@code String} (swagger says integer but the consumer DTO
+	 * is authoritative). Defaults to {@code "0"} to reproduce the legacy initial
+	 * value.
+	 */
 	@JsonProperty("CommCsReviewDate")
 	private String commCsReviewDate = "0";
 
-	/** Success flag ({@code Y}/{@code N}). */
+	/** Success flag ({@code COMM-SUCCESS PIC X}: {@code 'Y'}/{@code 'N'}). */
 	@JsonProperty("CommSuccess")
 	private String commSuccess;
 
-	/** Single-character fail code; blank on success. */
+	/**
+	 * Single-character COBOL fail code ({@code COMM-FAIL-CODE PIC X}); blank on
+	 * success, for example {@code 'C'} when no credit agency responds.
+	 */
 	@JsonProperty("CommFailCode")
 	private String commFailCode;
 
 	/**
-	 * Default constructor for Jackson (de)serialisation.
+	 * No-argument constructor required by Jackson for deserialisation. Leaves the
+	 * field-level defaults in place ({@code commEyecatcher} = four spaces,
+	 * {@code commKey} = {@code new CommKey()}, {@code commCreditScore} = 0,
+	 * {@code commCsReviewDate} = {@code "0"}).
 	 */
 	public CrecustJson()
 	{
-		// Field defaults preserve the legacy envelope's initial values.
+	}
+
+	/**
+	 * Convenience constructor for building a request payload, ported verbatim
+	 * from the legacy interface-module {@code CrecustJson}. The
+	 * {@code (String, String, String)} signature is relied upon by the
+	 * create-customer wrapper that maps a submitted form onto this DTO.
+	 *
+	 * @param custName    the customer name (mapped to {@code CommName})
+	 * @param custAddress the customer address (mapped to {@code CommAddress})
+	 * @param custDob     the date of birth as an eight-character {@code DDMMYYYY}
+	 *                    string (mapped to {@code CommDateOfBirth})
+	 */
+	public CrecustJson(String custName, String custAddress, String custDob)
+	{
+		commName = custName;
+		commAddress = custAddress;
+		commDateOfBirth = custDob;
 	}
 
 	/**
 	 * Returns the eye-catcher.
 	 *
-	 * @return the eye-catcher
+	 * @return the eye-catcher (serialised as {@code CommEyecatcher})
 	 */
 	public String getCommEyecatcher()
 	{
@@ -82,19 +178,20 @@ public class CrecustJson
 	/**
 	 * Sets the eye-catcher.
 	 *
-	 * @param commEyecatcher the eye-catcher
+	 * @param commEyecatcherIn the eye-catcher (serialised as
+	 *                         {@code CommEyecatcher})
 	 */
-	public void setCommEyecatcher(String commEyecatcher)
+	public void setCommEyecatcher(String commEyecatcherIn)
 	{
-		this.commEyecatcher = commEyecatcher;
+		commEyecatcher = commEyecatcherIn;
 	}
 
 	/**
 	 * Returns the allocated identity key.
 	 *
-	 * @return the key
+	 * @return the shared composite key (serialised as {@code CommKey})
 	 */
-	public EnvelopeKeyJson getCommKey()
+	public CommKey getCommKey()
 	{
 		return commKey;
 	}
@@ -102,17 +199,17 @@ public class CrecustJson
 	/**
 	 * Sets the allocated identity key.
 	 *
-	 * @param commKey the key
+	 * @param commKeyIn the shared composite key (serialised as {@code CommKey})
 	 */
-	public void setCommKey(EnvelopeKeyJson commKey)
+	public void setCommKey(CommKey commKeyIn)
 	{
-		this.commKey = commKey;
+		commKey = commKeyIn;
 	}
 
 	/**
 	 * Returns the customer name.
 	 *
-	 * @return the name
+	 * @return the name (serialised as {@code CommName})
 	 */
 	public String getCommName()
 	{
@@ -122,17 +219,17 @@ public class CrecustJson
 	/**
 	 * Sets the customer name.
 	 *
-	 * @param commName the name
+	 * @param commNameIn the name (serialised as {@code CommName})
 	 */
-	public void setCommName(String commName)
+	public void setCommName(String commNameIn)
 	{
-		this.commName = commName;
+		commName = commNameIn;
 	}
 
 	/**
 	 * Returns the customer address.
 	 *
-	 * @return the address
+	 * @return the address (serialised as {@code CommAddress})
 	 */
 	public String getCommAddress()
 	{
@@ -142,17 +239,17 @@ public class CrecustJson
 	/**
 	 * Sets the customer address.
 	 *
-	 * @param commAddress the address
+	 * @param commAddressIn the address (serialised as {@code CommAddress})
 	 */
-	public void setCommAddress(String commAddress)
+	public void setCommAddress(String commAddressIn)
 	{
-		this.commAddress = commAddress;
+		commAddress = commAddressIn;
 	}
 
 	/**
-	 * Returns the date of birth ({@code DDMMYYYY}).
+	 * Returns the date of birth as an eight-character {@code DDMMYYYY} string.
 	 *
-	 * @return the date of birth
+	 * @return the date of birth (serialised as {@code CommDateOfBirth})
 	 */
 	public String getCommDateOfBirth()
 	{
@@ -160,19 +257,20 @@ public class CrecustJson
 	}
 
 	/**
-	 * Sets the date of birth ({@code DDMMYYYY}).
+	 * Sets the date of birth.
 	 *
-	 * @param commDateOfBirth the date of birth
+	 * @param commDateOfBirthIn the eight-character {@code DDMMYYYY} date of birth
+	 *                          (serialised as {@code CommDateOfBirth})
 	 */
-	public void setCommDateOfBirth(String commDateOfBirth)
+	public void setCommDateOfBirth(String commDateOfBirthIn)
 	{
-		this.commDateOfBirth = commDateOfBirth;
+		commDateOfBirth = commDateOfBirthIn;
 	}
 
 	/**
 	 * Returns the credit score.
 	 *
-	 * @return the credit score
+	 * @return the credit score (serialised as {@code CommCreditScore})
 	 */
 	public int getCommCreditScore()
 	{
@@ -182,17 +280,19 @@ public class CrecustJson
 	/**
 	 * Sets the credit score.
 	 *
-	 * @param commCreditScore the credit score
+	 * @param commCreditScoreIn the credit score (serialised as
+	 *                          {@code CommCreditScore})
 	 */
-	public void setCommCreditScore(int commCreditScore)
+	public void setCommCreditScore(int commCreditScoreIn)
 	{
-		this.commCreditScore = commCreditScore;
+		commCreditScore = commCreditScoreIn;
 	}
 
 	/**
-	 * Returns the credit-score review date ({@code DDMMYYYY}).
+	 * Returns the credit-score review date as an eight-character {@code DDMMYYYY}
+	 * string.
 	 *
-	 * @return the review date
+	 * @return the review date (serialised as {@code CommCsReviewDate})
 	 */
 	public String getCommCsReviewDate()
 	{
@@ -200,19 +300,20 @@ public class CrecustJson
 	}
 
 	/**
-	 * Sets the credit-score review date ({@code DDMMYYYY}).
+	 * Sets the credit-score review date.
 	 *
-	 * @param commCsReviewDate the review date
+	 * @param commCsReviewDateIn the eight-character {@code DDMMYYYY} review date
+	 *                           (serialised as {@code CommCsReviewDate})
 	 */
-	public void setCommCsReviewDate(String commCsReviewDate)
+	public void setCommCsReviewDate(String commCsReviewDateIn)
 	{
-		this.commCsReviewDate = commCsReviewDate;
+		commCsReviewDate = commCsReviewDateIn;
 	}
 
 	/**
 	 * Returns the success flag.
 	 *
-	 * @return the success flag
+	 * @return the success flag (serialised as {@code CommSuccess})
 	 */
 	public String getCommSuccess()
 	{
@@ -222,17 +323,17 @@ public class CrecustJson
 	/**
 	 * Sets the success flag.
 	 *
-	 * @param commSuccess the success flag
+	 * @param commSuccessIn the success flag (serialised as {@code CommSuccess})
 	 */
-	public void setCommSuccess(String commSuccess)
+	public void setCommSuccess(String commSuccessIn)
 	{
-		this.commSuccess = commSuccess;
+		commSuccess = commSuccessIn;
 	}
 
 	/**
 	 * Returns the fail code.
 	 *
-	 * @return the fail code
+	 * @return the single-character fail code (serialised as {@code CommFailCode})
 	 */
 	public String getCommFailCode()
 	{
@@ -242,11 +343,30 @@ public class CrecustJson
 	/**
 	 * Sets the fail code.
 	 *
-	 * @param commFailCode the fail code
+	 * @param commFailCodeIn the single-character fail code (serialised as
+	 *                       {@code CommFailCode})
 	 */
-	public void setCommFailCode(String commFailCode)
+	public void setCommFailCode(String commFailCodeIn)
 	{
-		this.commFailCode = commFailCode;
+		commFailCode = commFailCodeIn;
+	}
+
+	/**
+	 * Returns a diagnostic string representation. Not part of the JSON wire
+	 * contract; intended for logging and debugging only, and built with no
+	 * external dependencies.
+	 *
+	 * @return a human-readable representation of all nine fields
+	 */
+	@Override
+	public String toString()
+	{
+		return "CrecustJson [CommEyecatcher=" + commEyecatcher + ", CommKey="
+				+ commKey + ", CommName=" + commName + ", CommAddress="
+				+ commAddress + ", CommDateOfBirth=" + commDateOfBirth
+				+ ", CommCreditScore=" + commCreditScore + ", CommCsReviewDate="
+				+ commCsReviewDate + ", CommSuccess=" + commSuccess
+				+ ", CommFailCode=" + commFailCode + "]";
 	}
 
 }
