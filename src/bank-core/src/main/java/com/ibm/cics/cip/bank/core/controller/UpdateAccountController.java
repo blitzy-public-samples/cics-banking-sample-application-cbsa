@@ -77,13 +77,13 @@ public class UpdateAccountController
 			@RequestBody UpdateAccountJson request)
 	{
 		UpdaccJson in = request.getUpdacc();
-		long accountNumber = in.getCommAccno();
+		long accountNumber = Long.parseLong(in.getCommAccno().trim());
 
 		try
 		{
 			Account updated = accountService.updateAccount(accountNumber,
 					in.getCommAccountType(), in.getCommInterestRate(),
-					Integer.valueOf(in.getCommOverdraft()));
+					in.getCommOverdraft());
 			LOG.info("Account updated: {}",
 					updated.getId().getAccountNumber());
 			return ResponseEntity.ok(success(updated));
@@ -106,8 +106,7 @@ public class UpdateAccountController
 		UpdaccJson out = new UpdaccJson();
 		out.setCommCustno(account.getCustomerNumber());
 		out.setCommSortcode(account.getId().getSortCode());
-		out.setCommAccno((int) Long.parseLong(account.getId()
-				.getAccountNumber()));
+		out.setCommAccno(account.getId().getAccountNumber());
 		out.setCommInterestRate(account.getInterestRate());
 		out.setCommOpened(DtoFormat.dateToString(account.getOpened()));
 		out.setCommOverdraft(account.getOverdraftLimit() == null ? 0

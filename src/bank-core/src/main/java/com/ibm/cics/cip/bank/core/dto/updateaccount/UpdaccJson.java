@@ -6,84 +6,208 @@ package com.ibm.cics.cip.bank.core.dto.updateaccount;
 import java.math.BigDecimal;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.annotation.JsonNaming;
+import com.ibm.cics.cip.bank.core.config.JacksonConfig;
 
 /**
- * Frozen z/OS Connect <em>update-account</em> envelope ({@code UpdaccJson}),
- * reproduced from the interface module's class of the same name (feature
- * F-019). Nested inside {@link UpdateAccountJson} under the {@code UpdAcc} key.
+ * Inner commarea payload for the frozen z/OS Connect <em>update-account</em>
+ * ({@code updacc}) contract. It is the nested object wrapped by
+ * {@link UpdateAccountJson} under the {@code UpdAcc} key, reproducing the legacy
+ * {@code UPDACC} commarea (copybook {@code UPDACC.cpy}) field-for-field so the
+ * serialised JSON matches the frozen z/OS Connect schema verbatim (feature
+ * F-019).
  *
- * <p>On a request the meaningful inputs are {@code CommAccno},
+ * <p><strong>Single class, request and response.</strong> The frozen
+ * {@code updacc} request and response bodies are byte-identical (confirmed
+ * against {@code CSaccupdRequest.json} and {@code CSaccupdResponse.json}: the
+ * same thirteen keys with the same types), so this single DTO serves both
+ * directions. On a request the meaningful inputs are {@code CommAccno},
  * {@code CommAccType}, {@code CommIntRate} and {@code CommOverdraft} (the only
- * fields {@code UPDACC} changes; balances are never altered). On a response
- * {@code bank-core} echoes the account and sets {@code CommSuccess}. This
- * envelope carries no fail-code field &mdash; success/failure is signalled
- * solely by {@code CommSuccess} ({@code Y}/{@code N}), matching the legacy
- * contract.</p>
+ * attributes {@code UPDACC} changes); on a response {@code bank-core} echoes the
+ * full account and sets {@code CommSuccess}.</p>
  *
- * <p>Monetary fields are typed {@link BigDecimal} (rule U1); statement dates are
- * {@code DDMMYYYY} strings.</p>
+ * <p><strong>No fail-code field.</strong> Neither {@code UPDACC.cpy} nor either
+ * schema declares a fail-code element, so this envelope carries none. Success or
+ * failure is signalled solely by {@code CommSuccess}; business failures surface
+ * through {@code BusinessRuleException} / the {@code GlobalExceptionHandler}.</p>
+ *
+ * <h2>Wire-name strategy</h2>
+ * <p>The class is annotated {@code @JsonNaming(}{@link
+ * JacksonConfig.EnvelopeNamingStrategy}{@code .class)} to carry the frozen
+ * envelope naming behaviour forward into the pure-Java module. Every field
+ * additionally declares an explicit {@link JsonProperty}; an explicit
+ * {@code @JsonProperty} always overrides the {@code substring(3)} naming
+ * strategy, so each wire name is pinned verbatim (for example {@code CommEye},
+ * {@code CommCustno}, {@code CommScode}, {@code CommAccno}) regardless of the
+ * Java field name. The explicit annotations are the contract guarantee.</p>
+ *
+ * <h2>Documented representation divergences (AAP &sect;0.6)</h2>
+ * <ul>
+ *   <li><strong>Account number</strong> ({@code CommAccno}) &mdash; the raw
+ *       z/OS Connect schema types this as a JSON {@code integer}
+ *       ({@code 9(8)} in the copybook), but {@code bank-core} represents it as a
+ *       left-zero-padded {@code String} (fixed-width identifier rule). The
+ *       mapper pads to width eight before setting it.</li>
+ *   <li><strong>Dates</strong> ({@code CommOpened}, {@code CommLastStmtDt},
+ *       {@code CommNextStmtDt}) &mdash; the raw schema types these as
+ *       {@code integer}, but {@code bank-core} carries them as the formatted
+ *       account-date {@code String} (account dates use {@code DD/MM/YYYY})
+ *       produced by the populating mapper; the legacy Java client likewise used
+ *       {@code String}. No date/time object is stored here.</li>
+ * </ul>
+ *
+ * <h2>Money and identifier handling</h2>
+ * <p>Monetary and rate fields ({@link #commInterestRate},
+ * {@link #commAvailableBalance}, {@link #commActualBalance}) are typed
+ * {@link BigDecimal} (the money-fidelity rule, AAP &sect;0.6 / ADR-005); the
+ * mapper supplies values already normalised to scale&nbsp;2 with
+ * {@code RoundingMode.HALF_UP} so the wire shows two decimal places. The
+ * overdraft limit is a whole-pounds {@link Integer} (no decimals in COBOL),
+ * <em>not</em> money. Identifiers, account type, dates and the success flag are
+ * {@code String}.</p>
+ *
+ * <p><strong>Two independent balances (F-012).</strong>
+ * {@link #commAvailableBalance} and {@link #commActualBalance} model cleared
+ * versus pending funds and are always kept as two distinct values &mdash; never
+ * collapsed into one. {@code UPDACC} itself never mutates either balance; they
+ * are echoed for context only.</p>
+ *
+ * <p><strong>Eye-catcher retained on the wire.</strong> {@code CommEye} is kept
+ * because the frozen contract includes it; the AAP &sect;0.6 eye-catcher-removal
+ * rule applies to JPA <em>entities</em>, not to this wire DTO.</p>
+ *
+ * <p><strong>Pure carrier.</strong> This class only stores and returns values:
+ * it performs no zero-padding, no date formatting, no {@code BigDecimal} scale
+ * normalisation and applies no defaults. Those responsibilities belong to the
+ * service/mapper that populates it.</p>
  */
+@JsonNaming(JacksonConfig.EnvelopeNamingStrategy.class)
 public class UpdaccJson
 {
 
-	/** Eye-catcher (preserved for wire parity). */
+	/** Eye-catcher, {@code X(4)} (retained for wire parity). */
 	@JsonProperty("CommEye")
-	private String commEye = "    ";
+	private String commEye;
 
-	/** Owning customer number. */
+	/** Owning customer number, {@code X(10)}; left-zero-padded to width 10 by the mapper. */
 	@JsonProperty("CommCustno")
 	private String commCustno;
 
-	/** Sort code. */
+	/** Sort code, {@code X(6)}; left-zero-padded to width 6 by the mapper. */
 	@JsonProperty("CommScode")
 	private String commSortcode;
 
-	/** Account number. */
+	/**
+	 * Account number, {@code 9(8)}; left-zero-padded to width 8 by the mapper.
+	 * Represented as a {@code String} per AAP &sect;0.6 (the raw schema types it
+	 * as a JSON integer &mdash; documented divergence).
+	 */
 	@JsonProperty("CommAccno")
-	private int commAccno;
+	private String commAccno;
 
-	/** Interest rate. */
+	/** Account type, {@code X(8)}; plain {@code String} (e.g. {@code CURRENT}), never an enum. */
+	@JsonProperty("CommAccType")
+	private String commAccountType;
+
+	/** Interest rate, {@code 9(4)V99}; {@link BigDecimal} at scale 2. */
 	@JsonProperty("CommIntRate")
 	private BigDecimal commInterestRate;
 
-	/** Date opened, {@code DDMMYYYY} string. */
+	/**
+	 * Date opened; formatted account-date {@code String} ({@code DD/MM/YYYY})
+	 * supplied by the mapper (raw schema types it integer &mdash; documented
+	 * divergence).
+	 */
 	@JsonProperty("CommOpened")
 	private String commOpened;
 
-	/** Overdraft limit (whole units). */
+	/** Overdraft limit, {@code 9(8)}; whole pounds as an {@link Integer} (not money). */
 	@JsonProperty("CommOverdraft")
-	private int commOverdraft;
+	private Integer commOverdraft;
 
-	/** Last-statement date, {@code DDMMYYYY} string. */
+	/**
+	 * Last-statement date; formatted account-date {@code String}
+	 * ({@code DD/MM/YYYY}) supplied by the mapper (raw schema types it integer
+	 * &mdash; documented divergence).
+	 */
 	@JsonProperty("CommLastStmtDt")
 	private String commLastStatementDate;
 
-	/** Next-statement date, {@code DDMMYYYY} string. */
+	/**
+	 * Next-statement date; formatted account-date {@code String}
+	 * ({@code DD/MM/YYYY}) supplied by the mapper (raw schema types it integer
+	 * &mdash; documented divergence).
+	 */
 	@JsonProperty("CommNextStmtDt")
 	private String commNextStatementDate;
 
-	/** Available balance. */
+	/**
+	 * Available balance, {@code S9(10)V99}; {@link BigDecimal} at scale 2.
+	 * Independent from the actual balance and not mutated by {@code UPDACC}
+	 * (F-012); echoed for context only.
+	 */
 	@JsonProperty("CommAvailBal")
 	private BigDecimal commAvailableBalance;
 
-	/** Actual balance. */
+	/**
+	 * Actual balance, {@code S9(10)V99}; {@link BigDecimal} at scale 2.
+	 * Independent from the available balance &mdash; the two are never collapsed.
+	 */
 	@JsonProperty("CommActualBal")
 	private BigDecimal commActualBalance;
 
-	/** Success flag ({@code Y}/{@code N}). */
+	/** Success flag, {@code X(1)}. */
 	@JsonProperty("CommSuccess")
 	private String commSuccess;
-
-	/** Account type. */
-	@JsonProperty("CommAccType")
-	private String commAccountType = "        ";
 
 	/**
 	 * Default constructor for Jackson (de)serialisation.
 	 */
 	public UpdaccJson()
 	{
-		// Field defaults preserve the legacy envelope's initial values.
+		super();
+	}
+
+	/**
+	 * All-arguments constructor taking the thirteen fields in copybook
+	 * ({@code UPDACC.cpy}) order. Performs simple field assignments only &mdash;
+	 * no padding, formatting, scale normalisation or defaulting (the populating
+	 * mapper owns those responsibilities).
+	 *
+	 * @param commEye               eye-catcher
+	 * @param commCustno            owning customer number (zero-padded width 10)
+	 * @param commSortcode          sort code (zero-padded width 6)
+	 * @param commAccno             account number (zero-padded width 8)
+	 * @param commAccountType       account type name
+	 * @param commInterestRate      interest rate (scale 2)
+	 * @param commOpened            date opened (formatted {@code DD/MM/YYYY} string)
+	 * @param commOverdraft         overdraft limit (whole pounds)
+	 * @param commLastStatementDate last-statement date (formatted {@code DD/MM/YYYY} string)
+	 * @param commNextStatementDate next-statement date (formatted {@code DD/MM/YYYY} string)
+	 * @param commAvailableBalance  available balance (scale 2)
+	 * @param commActualBalance     actual balance (scale 2)
+	 * @param commSuccess           success flag
+	 */
+	public UpdaccJson(String commEye, String commCustno, String commSortcode,
+			String commAccno, String commAccountType,
+			BigDecimal commInterestRate, String commOpened,
+			Integer commOverdraft, String commLastStatementDate,
+			String commNextStatementDate, BigDecimal commAvailableBalance,
+			BigDecimal commActualBalance, String commSuccess)
+	{
+		this.commEye = commEye;
+		this.commCustno = commCustno;
+		this.commSortcode = commSortcode;
+		this.commAccno = commAccno;
+		this.commAccountType = commAccountType;
+		this.commInterestRate = commInterestRate;
+		this.commOpened = commOpened;
+		this.commOverdraft = commOverdraft;
+		this.commLastStatementDate = commLastStatementDate;
+		this.commNextStatementDate = commNextStatementDate;
+		this.commAvailableBalance = commAvailableBalance;
+		this.commActualBalance = commActualBalance;
+		this.commSuccess = commSuccess;
 	}
 
 	/**
@@ -117,7 +241,7 @@ public class UpdaccJson
 	}
 
 	/**
-	 * Sets the owning customer number.
+	 * Sets the owning customer number (expected left-zero-padded to width 10).
 	 *
 	 * @param commCustno the customer number
 	 */
@@ -137,7 +261,7 @@ public class UpdaccJson
 	}
 
 	/**
-	 * Sets the sort code.
+	 * Sets the sort code (expected left-zero-padded to width 6).
 	 *
 	 * @param commSortcode the sort code
 	 */
@@ -151,19 +275,40 @@ public class UpdaccJson
 	 *
 	 * @return the account number
 	 */
-	public int getCommAccno()
+	public String getCommAccno()
 	{
 		return commAccno;
 	}
 
 	/**
-	 * Sets the account number.
+	 * Sets the account number (expected left-zero-padded to width 8).
 	 *
 	 * @param commAccno the account number
 	 */
-	public void setCommAccno(int commAccno)
+	public void setCommAccno(String commAccno)
 	{
 		this.commAccno = commAccno;
+	}
+
+	/**
+	 * Returns the account type.
+	 *
+	 * @return the account type
+	 */
+	public String getCommAccountType()
+	{
+		return commAccountType;
+	}
+
+	/**
+	 * Sets the account type (e.g. {@code ISA}, {@code MORTGAGE}, {@code SAVING},
+	 * {@code CURRENT}, {@code LOAN}, or empty).
+	 *
+	 * @param commAccountType the account type
+	 */
+	public void setCommAccountType(String commAccountType)
+	{
+		this.commAccountType = commAccountType;
 	}
 
 	/**
@@ -177,7 +322,7 @@ public class UpdaccJson
 	}
 
 	/**
-	 * Sets the interest rate.
+	 * Sets the interest rate (expected at scale 2, {@code RoundingMode.HALF_UP}).
 	 *
 	 * @param commInterestRate the interest rate
 	 */
@@ -187,7 +332,7 @@ public class UpdaccJson
 	}
 
 	/**
-	 * Returns the date opened ({@code DDMMYYYY}).
+	 * Returns the date opened ({@code DD/MM/YYYY}).
 	 *
 	 * @return the date opened
 	 */
@@ -197,7 +342,7 @@ public class UpdaccJson
 	}
 
 	/**
-	 * Sets the date opened ({@code DDMMYYYY}).
+	 * Sets the date opened ({@code DD/MM/YYYY}).
 	 *
 	 * @param commOpened the date opened
 	 */
@@ -207,27 +352,27 @@ public class UpdaccJson
 	}
 
 	/**
-	 * Returns the overdraft limit.
+	 * Returns the overdraft limit (whole pounds).
 	 *
 	 * @return the overdraft limit
 	 */
-	public int getCommOverdraft()
+	public Integer getCommOverdraft()
 	{
 		return commOverdraft;
 	}
 
 	/**
-	 * Sets the overdraft limit.
+	 * Sets the overdraft limit (whole pounds).
 	 *
 	 * @param commOverdraft the overdraft limit
 	 */
-	public void setCommOverdraft(int commOverdraft)
+	public void setCommOverdraft(Integer commOverdraft)
 	{
 		this.commOverdraft = commOverdraft;
 	}
 
 	/**
-	 * Returns the last-statement date ({@code DDMMYYYY}).
+	 * Returns the last-statement date ({@code DD/MM/YYYY}).
 	 *
 	 * @return the last-statement date
 	 */
@@ -237,7 +382,7 @@ public class UpdaccJson
 	}
 
 	/**
-	 * Sets the last-statement date ({@code DDMMYYYY}).
+	 * Sets the last-statement date ({@code DD/MM/YYYY}).
 	 *
 	 * @param commLastStatementDate the last-statement date
 	 */
@@ -247,7 +392,7 @@ public class UpdaccJson
 	}
 
 	/**
-	 * Returns the next-statement date ({@code DDMMYYYY}).
+	 * Returns the next-statement date ({@code DD/MM/YYYY}).
 	 *
 	 * @return the next-statement date
 	 */
@@ -257,7 +402,7 @@ public class UpdaccJson
 	}
 
 	/**
-	 * Sets the next-statement date ({@code DDMMYYYY}).
+	 * Sets the next-statement date ({@code DD/MM/YYYY}).
 	 *
 	 * @param commNextStatementDate the next-statement date
 	 */
@@ -267,7 +412,7 @@ public class UpdaccJson
 	}
 
 	/**
-	 * Returns the available balance.
+	 * Returns the available balance. Independent from the actual balance.
 	 *
 	 * @return the available balance
 	 */
@@ -277,7 +422,8 @@ public class UpdaccJson
 	}
 
 	/**
-	 * Sets the available balance.
+	 * Sets the available balance (expected at scale 2). Independent from the
+	 * actual balance &mdash; never collapse the two.
 	 *
 	 * @param commAvailableBalance the available balance
 	 */
@@ -287,7 +433,7 @@ public class UpdaccJson
 	}
 
 	/**
-	 * Returns the actual balance.
+	 * Returns the actual balance. Independent from the available balance.
 	 *
 	 * @return the actual balance
 	 */
@@ -297,7 +443,8 @@ public class UpdaccJson
 	}
 
 	/**
-	 * Sets the actual balance.
+	 * Sets the actual balance (expected at scale 2). Independent from the
+	 * available balance &mdash; never collapse the two.
 	 *
 	 * @param commActualBalance the actual balance
 	 */
@@ -327,23 +474,23 @@ public class UpdaccJson
 	}
 
 	/**
-	 * Returns the account type.
+	 * Returns a diagnostic representation listing all thirteen fields in
+	 * copybook order. Not part of the wire contract.
 	 *
-	 * @return the account type
+	 * @return a string representation of this payload
 	 */
-	public String getCommAccountType()
+	@Override
+	public String toString()
 	{
-		return commAccountType;
-	}
-
-	/**
-	 * Sets the account type.
-	 *
-	 * @param commAccountType the account type
-	 */
-	public void setCommAccountType(String commAccountType)
-	{
-		this.commAccountType = commAccountType;
+		return "UpdaccJson [CommEye=" + commEye + ", CommCustno=" + commCustno
+				+ ", CommScode=" + commSortcode + ", CommAccno=" + commAccno
+				+ ", CommAccType=" + commAccountType + ", CommIntRate="
+				+ commInterestRate + ", CommOpened=" + commOpened
+				+ ", CommOverdraft=" + commOverdraft + ", CommLastStmtDt="
+				+ commLastStatementDate + ", CommNextStmtDt="
+				+ commNextStatementDate + ", CommAvailBal="
+				+ commAvailableBalance + ", CommActualBal=" + commActualBalance
+				+ ", CommSuccess=" + commSuccess + "]";
 	}
 
 }
