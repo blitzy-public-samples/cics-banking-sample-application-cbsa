@@ -3,8 +3,6 @@
 /*                                                                        */
 package com.ibm.cics.cip.bank.core.controller;
 
-import java.math.BigDecimal;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
@@ -14,7 +12,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.ibm.cics.cip.bank.core.dto.DtoFormat;
-import com.ibm.cics.cip.bank.core.dto.common.EnvelopeKeyJson;
+import com.ibm.cics.cip.bank.core.dto.common.CommKey;
 import com.ibm.cics.cip.bank.core.dto.createaccount.CreaccJson;
 import com.ibm.cics.cip.bank.core.dto.createaccount.CreateAccountJson;
 import com.ibm.cics.cip.bank.core.entity.Account;
@@ -115,14 +113,14 @@ public class CreateAccountController
 		CreaccJson out = new CreaccJson();
 		out.setCommAccType(account.getAccountType());
 		out.setCommCustno(account.getCustomerNumber());
-		out.setCommKey(new EnvelopeKeyJson(
+		out.setCommKey(new CommKey(
 				Integer.parseInt(account.getId().getSortCode()),
-				(int) Long.parseLong(account.getId().getAccountNumber())));
+				Long.parseLong(account.getId().getAccountNumber())));
 		out.setCommInterestRate(account.getInterestRate());
 		out.setCommOpened(DtoFormat.dateToInt(account.getOpened()));
 		out.setCommOverdraftLimit(account.getOverdraftLimit() == null
-				? BigDecimal.ZERO
-				: BigDecimal.valueOf(account.getOverdraftLimit()));
+				? Integer.valueOf(0)
+				: account.getOverdraftLimit());
 		out.setCommLastStatementDate(
 				DtoFormat.dateToInt(account.getLastStatementDate()));
 		out.setCommNextStatementDate(
