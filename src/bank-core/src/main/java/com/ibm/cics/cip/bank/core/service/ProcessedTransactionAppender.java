@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.ibm.cics.cip.bank.core.domain.TransactionType;
 import com.ibm.cics.cip.bank.core.entity.AccountControl;
 import com.ibm.cics.cip.bank.core.entity.ProcessedTransaction;
 import com.ibm.cics.cip.bank.core.entity.ProcessedTransactionId;
@@ -307,7 +308,7 @@ public class ProcessedTransactionAppender
 		row.setTransactionNumber(transactionNumber);
 		row.setDate(LocalDate.now());
 		row.setTime(LocalTime.now());
-		row.setTypeCode(typeCode);
+		row.setTypeCode(TransactionType.fromCode(typeCode));
 		row.setDescription(fixedWidth(description, DESCRIPTION_WIDTH));
 		row.setAmount(amount.setScale(MONEY_SCALE, RoundingMode.HALF_UP));
 		row.setDeleted(false);
