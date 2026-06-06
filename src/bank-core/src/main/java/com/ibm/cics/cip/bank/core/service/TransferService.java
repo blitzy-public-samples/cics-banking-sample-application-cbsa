@@ -110,11 +110,78 @@ public class TransferService
 	}
 
 	/**
+	 * Transfers funds between two accounts identified by their display-numeric
+	 * account numbers within this bank's single sort code
+	 * ({@link BankConstants#SORT_CODE}), reproducing {@code XFRFUN}.
+	 *
+	 * <p>This is the canonical, domain-typed entry point. The account numbers are
+	 * the COBOL {@code PIC 9(8)} display-numeric identifiers (up to eight digits,
+	 * leading zeros optional); they are validated and resolved here and the call
+	 * is delegated to {@link #transfer(long, long, BigDecimal)}, which performs
+	 * the same-account guard, the lower-account-first pessimistic lock ordering
+	 * and the deadlock-retry loop.</p>
+	 *
+	 * <p><strong>Validation order.</strong> The {@code XFRFUN} order is preserved
+	 * exactly: the amount guard (fail code {@code 4}) is applied <em>first</em>,
+	 * before either account number is resolved, mirroring {@code XFRFUN}'s
+	 * {@code IF COMM-AMT &lt;= ZERO} check that precedes any {@code ACCOUNT}
+	 * access. A {@code null}, blank or non-numeric account number cannot match a
+	 * stored account, so it is surfaced with the same role-specific
+	 * "account not found" fail code the locked read would raise &mdash;
+	 * {@code 1} for the source, {@code 2} for the target.</p>
+	 *
+	 * @param fromAccountNumber the source (debited) account number, display-numeric
+	 *                          ({@code PIC 9(8)}; leading zeros optional)
+	 * @param toAccountNumber   the target (credited) account number, display-numeric
+	 *                          ({@code PIC 9(8)}; leading zeros optional)
+	 * @param amount            the transfer amount (must be strictly positive)
+	 * @return a {@link TransferResult} carrying the updated source and target
+	 *         accounts with their new balances
+	 * @throws BusinessRuleException {@code 4} if the amount is {@code null} or not
+	 *                               positive, {@code SAME} if the two account
+	 *                               numbers are equal, {@code 1} if the source
+	 *                               account number is missing/non-numeric or no
+	 *                               such account exists, {@code 2} if the target
+	 *                               account number is missing/non-numeric or no
+	 *                               such account exists, or {@code 3} if the locks
+	 *                               cannot be acquired after the maximum number of
+	 *                               retries
+	 */
+	public TransferResult transfer(String fromAccountNumber,
+			String toAccountNumber, BigDecimal amount)
+	{
+		// 1. Amount must be strictly positive (XFRFUN fail '4'). Checked before
+		//    any account number is resolved so the validation order matches
+		//    XFRFUN, which tests COMM-AMT <= ZERO before reading the ACCOUNT rows.
+		scaledPositiveAmount(amount);
+
+		// 2. Resolve the display-numeric account numbers to their values. A
+		//    missing or non-numeric identifier cannot match any stored account,
+		//    so it yields the role-specific "not found" fail code ('1' source,
+		//    '2' target) - the same outcome the locked read produces for a
+		//    well-formed but absent number.
+		long fromAccount = parseAccountNumber(fromAccountNumber,
+				FAIL_SOURCE_NOT_FOUND);
+		long toAccount = parseAccountNumber(toAccountNumber,
+				FAIL_TARGET_NOT_FOUND);
+
+		// 3. Delegate to the numeric overload for the same-account guard, the
+		//    lower-account-first lock ordering and the deadlock-retry loop.
+		return transfer(fromAccount, toAccount, amount);
+	}
+
+	/**
 	 * Transfers funds between two accounts, reproducing {@code XFRFUN}.
 	 *
 	 * <p>Amount and same-account validation happen before any transaction is
 	 * started. The balance mutation, audit append and lock acquisition then run
 	 * inside a transaction that is retried on deadlock.</p>
+	 *
+	 * <p>This numeric overload is the workhorse shared with the sibling balance
+	 * services (for example {@code PaymentService}) and is the method the
+	 * {@code TransferController} invokes; the {@link #transfer(String, String,
+	 * BigDecimal)} String entry point delegates here after validating its
+	 * inputs.</p>
 	 *
 	 * @param fromAccount the source (debited) account number
 	 * @param toAccount   the target (credited) account number
@@ -133,13 +200,7 @@ public class TransferService
 			BigDecimal amount)
 	{
 		// 1. Amount must be strictly positive (XFRFUN fail '4').
-		BigDecimal scaledAmount = amount.setScale(MONEY_SCALE,
-				RoundingMode.HALF_UP);
-		if (scaledAmount.signum() <= 0)
-		{
-			throw new BusinessRuleException(FAIL_INVALID_AMOUNT,
-					"Transfer amount must be greater than zero");
-		}
+		BigDecimal scaledAmount = scaledPositiveAmount(amount);
 
 		// 2. Source and target must differ (XFRFUN abend 'SAME').
 		if (fromAccount == toAccount)
@@ -170,6 +231,80 @@ public class TransferService
 				}
 				pauseBeforeRetry();
 			}
+		}
+	}
+
+	/**
+	 * Scales the supplied amount to two decimal places
+	 * ({@link RoundingMode#HALF_UP}) and enforces the {@code XFRFUN} rule that a
+	 * transfer amount must be strictly positive.
+	 *
+	 * <p>Reproduces {@code XFRFUN} {@code IF COMM-AMT <= ZERO ... MOVE '4'}: a
+	 * {@code null}, zero or negative amount is rejected with fail code
+	 * {@code 4}. The {@code null} guard cannot be exercised by the COBOL
+	 * fixed-format field but is retained so the Java entry points never raise a
+	 * bare {@link NullPointerException} for an omitted amount.</p>
+	 *
+	 * @param amount the requested transfer amount
+	 * @return the amount scaled to two decimal places
+	 * @throws BusinessRuleException {@code 4} if the amount is {@code null}, zero
+	 *                               or negative
+	 */
+	private static BigDecimal scaledPositiveAmount(BigDecimal amount)
+	{
+		if (amount == null)
+		{
+			throw new BusinessRuleException(FAIL_INVALID_AMOUNT,
+					"Transfer amount must be supplied and greater than zero");
+		}
+		BigDecimal scaledAmount = amount.setScale(MONEY_SCALE,
+				RoundingMode.HALF_UP);
+		if (scaledAmount.signum() <= 0)
+		{
+			throw new BusinessRuleException(FAIL_INVALID_AMOUNT,
+					"Transfer amount must be greater than zero");
+		}
+		return scaledAmount;
+	}
+
+	/**
+	 * Parses a display-numeric ({@code PIC 9(8)}) account-number string into its
+	 * numeric value.
+	 *
+	 * <p>Account numbers are numeric fields in the COBOL specification, so a
+	 * {@code null}, blank or non-numeric identifier cannot match any stored
+	 * account. Rather than leak a {@link NumberFormatException}, such input is
+	 * surfaced as the role-specific "account not found" fail code &mdash;
+	 * {@code 1} for the source account, {@code 2} for the target &mdash; which is
+	 * the same outcome the locked read produces for a number that is well-formed
+	 * but absent. Leading/trailing whitespace is ignored and leading zeros are
+	 * accepted.</p>
+	 *
+	 * @param accountNumber    the account-number string (leading zeros optional)
+	 * @param notFoundFailCode the fail code to raise when the value is missing or
+	 *                         non-numeric ({@code 1} for source, {@code 2} for
+	 *                         target)
+	 * @return the parsed account number
+	 * @throws BusinessRuleException {@code notFoundFailCode} if the value is
+	 *                               {@code null}, blank or not a valid integer
+	 */
+	private static long parseAccountNumber(String accountNumber,
+			String notFoundFailCode)
+	{
+		if (accountNumber == null || accountNumber.trim().isEmpty())
+		{
+			throw new BusinessRuleException(notFoundFailCode,
+					"Account number must be supplied");
+		}
+		try
+		{
+			return Long.parseLong(accountNumber.trim());
+		}
+		catch (NumberFormatException invalidNumber)
+		{
+			throw new BusinessRuleException(notFoundFailCode,
+					"Account number is not a valid number: " + accountNumber,
+					invalidNumber);
 		}
 	}
 
