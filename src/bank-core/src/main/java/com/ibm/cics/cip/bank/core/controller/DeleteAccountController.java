@@ -31,9 +31,9 @@ import com.ibm.cics.cip.bank.core.service.AccountService;
  * physically removes the account row, all in one transaction.</p>
  *
  * <h2>Success / failure convention (endpoint-specific)</h2>
- * <p>The consumer treats {@code getDelaccCommarea().getDelaccDelFailCode() == 1}
- * (JSON {@code DelAccFailCd}) as &quot;account not found&quot;. This controller
- * sets {@code DelAccFailCd=0} on success and {@code DelAccFailCd=1} on a
+ * <p>The consumer treats JSON {@code DelAccFailCd == 1} as &quot;account not
+ * found&quot;. This controller sets the single-character primary fail code
+ * {@code DelAccFailCd} to {@code "0"} on success and {@code "1"} on a
  * {@link BusinessRuleException} (the only failure being the not-found case), and
  * echoes the deleted account's terminal state on success. HTTP 200 is always
  * returned.</p>
@@ -46,11 +46,11 @@ public class DeleteAccountController
 	private static final Logger LOG = LoggerFactory
 			.getLogger(DeleteAccountController.class);
 
-	/** Integer fail code denoting success. */
-	private static final int FAIL_NONE = 0;
+	/** Primary fail code (wire {@code DelAccFailCd}) denoting success. */
+	private static final String FAIL_NONE = "0";
 
-	/** Integer fail code denoting &quot;account not found&quot;. */
-	private static final int FAIL_NOT_FOUND = 1;
+	/** Primary fail code (wire {@code DelAccFailCd}) denoting &quot;account not found&quot;. */
+	private static final String FAIL_NOT_FOUND = "1";
 
 	/** Success flag value. */
 	private static final String FLAG_SUCCESS = "Y";
@@ -106,8 +106,7 @@ public class DeleteAccountController
 	private DeleteAccountJson success(Account account)
 	{
 		DelaccJson out = new DelaccJson();
-		out.setDelaccAccno(
-				(int) Long.parseLong(account.getId().getAccountNumber()));
+		out.setDelaccAccno(account.getId().getAccountNumber());
 		out.setDelaccSortcode(account.getId().getSortCode());
 		out.setDelaccCustno(account.getCustomerNumber());
 		out.setDelaccAccType(account.getAccountType());
@@ -121,7 +120,7 @@ public class DeleteAccountController
 				DtoFormat.dateToString(account.getLastStatementDate()));
 		out.setDelaccNextStatementDate(
 				DtoFormat.dateToString(account.getNextStatementDate()));
-		out.setDelaccDelFailCode(FAIL_NONE);
+		out.setDelaccFailCode(FAIL_NONE);
 		out.setDelaccSuccess(FLAG_SUCCESS);
 		out.setDelaccDelSuccess(FLAG_SUCCESS);
 		return new DeleteAccountJson(out);
@@ -136,9 +135,9 @@ public class DeleteAccountController
 	private DeleteAccountJson failure(long accountNumber)
 	{
 		DelaccJson out = new DelaccJson();
-		out.setDelaccAccno((int) accountNumber);
+		out.setDelaccAccno(String.format("%08d", accountNumber));
 		out.setDelaccSortcode(BankConstants.SORT_CODE);
-		out.setDelaccDelFailCode(FAIL_NOT_FOUND);
+		out.setDelaccFailCode(FAIL_NOT_FOUND);
 		out.setDelaccSuccess(FLAG_FAILURE);
 		out.setDelaccDelSuccess(FLAG_FAILURE);
 		return new DeleteAccountJson(out);
