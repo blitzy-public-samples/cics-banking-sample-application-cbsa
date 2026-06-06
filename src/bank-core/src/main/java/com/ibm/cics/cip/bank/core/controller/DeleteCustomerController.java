@@ -31,10 +31,10 @@ import com.ibm.cics.cip.bank.core.service.CustomerService;
  * then appends a customer-close PROCTRAN record, all in one transaction.</p>
  *
  * <h2>Success / failure convention (endpoint-specific)</h2>
- * <p>The consumer treats {@code getCommDelFailCode() == 1} (JSON
- * {@code CommDelFailCd}) as &quot;customer not found&quot;. This controller sets
- * {@code CommDelFailCd=0} with {@code CommDelSuccess="Y"} on success, and
- * {@code CommDelFailCd=1} with {@code CommDelSuccess="N"} on a
+ * <p>The consumer treats a JSON {@code CommDelFailCd} value of {@code "1"} as
+ * &quot;customer not found&quot;. This controller sets
+ * {@code CommDelFailCd="0"} with {@code CommDelSuccess="Y"} on success, and
+ * {@code CommDelFailCd="1"} with {@code CommDelSuccess="N"} on a
  * {@link BusinessRuleException} (the only failure being the not-found case).
  * HTTP 200 is always returned.</p>
  */
@@ -46,11 +46,11 @@ public class DeleteCustomerController
 	private static final Logger LOG = LoggerFactory
 			.getLogger(DeleteCustomerController.class);
 
-	/** Integer fail code denoting success. */
-	private static final int FAIL_NONE = 0;
+	/** Single-character fail code denoting success (wire value {@code "0"}). */
+	private static final String FAIL_NONE = "0";
 
-	/** Integer fail code denoting &quot;customer not found&quot;. */
-	private static final int FAIL_NOT_FOUND = 1;
+	/** Single-character fail code denoting &quot;customer not found&quot; (wire value {@code "1"}). */
+	private static final String FAIL_NOT_FOUND = "1";
 
 	/** Success flag value. */
 	private static final String FLAG_SUCCESS = "Y";
@@ -106,9 +106,8 @@ public class DeleteCustomerController
 	private DeleteCustomerJson success(Customer customer)
 	{
 		DelcusJson out = new DelcusJson();
-		out.setCommSortcode(Integer.parseInt(customer.getId().getSortCode()));
-		out.setCommCustno(
-				(int) Long.parseLong(customer.getId().getCustomerNumber()));
+		out.setCommSortcode(customer.getId().getSortCode());
+		out.setCommCustno(customer.getId().getCustomerNumber());
 		out.setCommName(customer.getName());
 		out.setCommAddress(customer.getAddress());
 		out.setCommDateOfBirth(
@@ -131,8 +130,8 @@ public class DeleteCustomerController
 	private DeleteCustomerJson failure(long customerNumber)
 	{
 		DelcusJson out = new DelcusJson();
-		out.setCommSortcode(Integer.parseInt(BankConstants.SORT_CODE));
-		out.setCommCustno((int) customerNumber);
+		out.setCommSortcode(BankConstants.SORT_CODE);
+		out.setCommCustno(String.format("%010d", customerNumber));
 		out.setCommDelFailCode(FAIL_NOT_FOUND);
 		out.setCommDelSuccess(FLAG_FAILURE);
 		return new DeleteCustomerJson(out);
