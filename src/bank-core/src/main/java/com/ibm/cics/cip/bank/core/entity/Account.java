@@ -333,4 +333,56 @@ public class Account
 		this.actualBalance = actualBalance;
 	}
 
+	/**
+	 * Convenience accessor returning the branch sort code from the composite
+	 * key, without forcing callers to dereference {@link #getId()} first.
+	 *
+	 * <p>Delegates to {@link AccountId#getSortCode()} and is null-safe: it
+	 * returns {@code null} when the {@link AccountId} has not yet been assigned
+	 * (for example, on a freshly constructed, unpersisted {@code Account}). The
+	 * sort code is the six-digit, zero-padded {@code CHAR(6)} identifier that
+	 * the COBOL {@code ACCOUNT-SORT-CODE PIC 9(6)} field carries.</p>
+	 *
+	 * @return the branch sort code, or {@code null} if the composite key is unset
+	 */
+	public String getSortCode()
+	{
+		return id == null ? null : id.getSortCode();
+	}
+
+	/**
+	 * Convenience accessor returning the account number from the composite key,
+	 * without forcing callers to dereference {@link #getId()} first.
+	 *
+	 * <p>Delegates to {@link AccountId#getAccountNumber()} and is null-safe: it
+	 * returns {@code null} when the {@link AccountId} has not yet been assigned.
+	 * This is the account's OWN identity number ({@code CHAR(8)}, COBOL
+	 * {@code ACCOUNT-NUMBER PIC 9(8)}) and is distinct from the owning
+	 * {@link #getCustomerNumber() customer number}.</p>
+	 *
+	 * @return the account number, or {@code null} if the composite key is unset
+	 */
+	public String getAccountNumber()
+	{
+		return id == null ? null : id.getAccountNumber();
+	}
+
+	/**
+	 * Diagnostic representation of this account for logging and debugging.
+	 *
+	 * <p>Includes the composite key, owning customer number, account type, and
+	 * both balances. No sensitive credential data is held by this entity, so the
+	 * balances are safe to render here (AAP entity-prompt guidance).</p>
+	 *
+	 * @return a string describing the account's key fields and balances
+	 */
+	@Override
+	public String toString()
+	{
+		return "Account{" + "id=" + id + ", customerNumber='" + customerNumber
+				+ '\'' + ", accountType='" + accountType + '\''
+				+ ", availableBalance=" + availableBalance + ", actualBalance="
+				+ actualBalance + '}';
+	}
+
 }
