@@ -11,18 +11,17 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.ibm.cics.cip.bank.core.dto.DtoFormat;
-import com.ibm.cics.cip.bank.core.dto.common.CommKey;
+import com.ibm.cics.cip.bank.core.domain.AccountType;
 import com.ibm.cics.cip.bank.core.dto.createaccount.CreaccJson;
+import com.ibm.cics.cip.bank.core.dto.createaccount.CreateAccountForm;
 import com.ibm.cics.cip.bank.core.dto.createaccount.CreateAccountJson;
-import com.ibm.cics.cip.bank.core.entity.Account;
 import com.ibm.cics.cip.bank.core.exception.BusinessRuleException;
 import com.ibm.cics.cip.bank.core.service.AccountService;
 
 /**
  * REST controller reproducing the frozen z/OS Connect <em>create-account</em>
  * endpoint (feature F-019), mapping the {@code CSacccre} service onto
- * {@link AccountService#createAccount}.
+ * {@link AccountService#createAccount(CreateAccountForm)}.
  *
  * <p>The path ({@code POST /creacc/insert}), HTTP verb, and JSON envelope
  * ({@code {"CreAcc": {...}}}) are preserved verbatim. {@code CREACC.cbl} is the
@@ -30,13 +29,22 @@ import com.ibm.cics.cip.bank.core.service.AccountService;
  * customer must exist (fail {@code "1"}), no more than ten accounts (fail
  * {@code "8"}), and a valid account type (fail {@code "A"}).</p>
  *
+ * <h2>Request adaptation</h2>
+ * <p>The inbound {@link CreaccJson} commarea is adapted into the service's
+ * {@link CreateAccountForm} input: the customer number is trimmed, and the raw
+ * account-type string is resolved to an {@link AccountType} (an unrecognised
+ * value becomes {@code null}, which the service rejects with fail code
+ * {@code "A"}). The service performs the ordered validation and returns the
+ * fully populated success envelope.</p>
+ *
  * <h2>Success / failure convention (endpoint-specific)</h2>
  * <p>The consumer treats the response as a failure when {@code CommSuccess}
- * equals {@code "N"}. On success this controller sets {@code CommSuccess="Y"};
- * on a {@link BusinessRuleException} it sets {@code CommSuccess="N"} with the
- * verbatim fail code and echoes {@code CommCustno} (the consumer parses it as an
- * integer when reporting the {@code "8"} too-many-accounts case). The response
- * is HTTP 200 because the consumer inspects the body for business outcomes.</p>
+ * equals {@code "N"}. The service builds the {@code CommSuccess="Y"} success
+ * envelope; on a {@link BusinessRuleException} this controller sets
+ * {@code CommSuccess="N"} with the verbatim fail code and echoes
+ * {@code CommCustno} (the consumer parses it as an integer when reporting the
+ * {@code "8"} too-many-accounts case). The response is HTTP 200 because the
+ * consumer inspects the body for business outcomes.</p>
  */
 @RestController
 public class CreateAccountController
@@ -45,12 +53,6 @@ public class CreateAccountController
 	/** Logger for request/outcome diagnostics. */
 	private static final Logger LOG = LoggerFactory
 			.getLogger(CreateAccountController.class);
-
-	/** Success sentinel for the fail-code field on a successful create. */
-	private static final String SUCCESS_FAIL_CODE = "";
-
-	/** Success flag value. */
-	private static final String FLAG_SUCCESS = "Y";
 
 	/** Failure flag value. */
 	private static final String FLAG_FAILURE = "N";
@@ -81,55 +83,27 @@ public class CreateAccountController
 			@RequestBody CreateAccountJson request)
 	{
 		CreaccJson in = request.getCreAcc();
-		long customerNumber = Long.parseLong(in.getCommCustno().trim());
-		Integer overdraftLimit = in.getCommOverdraftLimit() == null
-				? Integer.valueOf(0)
-				: Integer.valueOf(in.getCommOverdraftLimit().intValue());
-
 		try
 		{
-			Account created = accountService.createAccount(customerNumber,
-					in.getCommAccType(), in.getCommInterestRate(),
-					overdraftLimit);
-			LOG.info("Account created: {}",
-					created.getId().getAccountNumber());
-			return ResponseEntity.ok(success(created));
+			CreateAccountForm form = new CreateAccountForm();
+			form.setCustNumber(in.getCommCustno() == null ? null
+					: in.getCommCustno().trim());
+			String rawType = in.getCommAccType();
+			form.setAccountType(AccountType.isValid(rawType)
+					? AccountType.fromValue(rawType)
+					: null);
+			form.setOverdraftLimit(in.getCommOverdraftLimit());
+			form.setInterestRate(in.getCommInterestRate());
+
+			CreateAccountJson response = accountService.createAccount(form);
+			LOG.info("Account created for customer {}", form.getCustNumber());
+			return ResponseEntity.ok(response);
 		}
 		catch (BusinessRuleException ex)
 		{
 			LOG.info("Create-account rejected, failCode={}", ex.getFailCode());
 			return ResponseEntity.ok(failure(in, ex.getFailCode()));
 		}
-	}
-
-	/**
-	 * Builds the success envelope echoing the persisted account.
-	 *
-	 * @param account the persisted account
-	 * @return the populated success envelope
-	 */
-	private CreateAccountJson success(Account account)
-	{
-		CreaccJson out = new CreaccJson();
-		out.setCommAccType(account.getAccountType());
-		out.setCommCustno(account.getCustomerNumber());
-		out.setCommKey(new CommKey(
-				Integer.parseInt(account.getId().getSortCode()),
-				Long.parseLong(account.getId().getAccountNumber())));
-		out.setCommInterestRate(account.getInterestRate());
-		out.setCommOpened(DtoFormat.dateToInt(account.getOpened()));
-		out.setCommOverdraftLimit(account.getOverdraftLimit() == null
-				? Integer.valueOf(0)
-				: account.getOverdraftLimit());
-		out.setCommLastStatementDate(
-				DtoFormat.dateToInt(account.getLastStatementDate()));
-		out.setCommNextStatementDate(
-				DtoFormat.dateToInt(account.getNextStatementDate()));
-		out.setCommAvailableBalance(account.getAvailableBalance());
-		out.setCommActualBalance(account.getActualBalance());
-		out.setCommSuccess(FLAG_SUCCESS);
-		out.setCommFailCode(SUCCESS_FAIL_CODE);
-		return new CreateAccountJson(out);
 	}
 
 	/**
