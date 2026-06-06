@@ -13,16 +13,14 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.ibm.cics.cip.bank.core.constants.BankConstants;
 import com.ibm.cics.cip.bank.core.dto.payment.DbcrJson;
-import com.ibm.cics.cip.bank.core.dto.payment.OriginJson;
-import com.ibm.cics.cip.bank.core.dto.payment.PaymentInterfaceJson;
-import com.ibm.cics.cip.bank.core.entity.Account;
+import com.ibm.cics.cip.bank.core.dto.payment.PaymentJson;
 import com.ibm.cics.cip.bank.core.exception.BusinessRuleException;
 import com.ibm.cics.cip.bank.core.service.PaymentService;
 
 /**
  * REST controller reproducing the frozen z/OS Connect <em>make-payment</em>
  * (debit/credit) endpoint (feature F-019), mapping the {@code Pay} service onto
- * {@link PaymentService#processDebitCredit}.
+ * {@link PaymentService#processPayment(PaymentJson)}.
  *
  * <p>The path ({@code PUT /makepayment/dbcr}), HTTP verb, and JSON envelope
  * ({@code {"PAYDBCR": {...}}} on both request and response) are preserved
@@ -39,6 +37,15 @@ import com.ibm.cics.cip.bank.core.service.PaymentService;
  * restricted account/facility-type rule. A blank value would raise
  * {@code NumberFormatException} on the consumer, so this controller always
  * writes a numeric code. HTTP 200 is always returned.</p>
+ *
+ * <p>The service ({@code DBCRFUN} port) owns the debit/credit posting, the
+ * facility-type-496 channel restrictions, the overdraft / insufficient-funds
+ * checks, the signed-amount convention, and the dual-balance update; it returns
+ * the populated {@code PAYDBCR} envelope on success and throws a
+ * {@link BusinessRuleException} carrying the single-character fail code on a
+ * rule violation. This controller is the thin adapter that pins the response
+ * sort code and translates the success/failure outcome into the numeric
+ * {@code CommFailCode} the consumer expects.</p>
  */
 @RestController
 public class PaymentController
@@ -71,7 +78,7 @@ public class PaymentController
 	}
 
 	/**
-	 * Processes a debit or credit from the supplied envelope.
+	 * Processes a debit or credit from the supplied {@code PAYDBCR} envelope.
 	 *
 	 * @param request the make-payment request envelope
 	 * @return the make-payment response envelope, always HTTP 200
@@ -79,93 +86,28 @@ public class PaymentController
 	@PutMapping(path = "/makepayment/dbcr",
 			consumes = MediaType.APPLICATION_JSON_VALUE,
 			produces = MediaType.APPLICATION_JSON_VALUE)
-	public ResponseEntity<PaymentInterfaceJson> makePayment(
-			@RequestBody PaymentInterfaceJson request)
+	public ResponseEntity<PaymentJson> makePayment(
+			@RequestBody PaymentJson request)
 	{
 		DbcrJson in = request.getPAYDBCR();
-		long accountNumber = Long.parseLong(in.getCommAccno().trim());
-		int facilityType = resolveFacilityType(in.getCommOrigin());
-		String origin = resolveOrigin(in.getCommOrigin());
-
 		try
 		{
-			Account updated = paymentService.processDebitCredit(accountNumber,
-					in.getCommAmt(), facilityType, origin);
+			PaymentJson response = paymentService.processPayment(request);
+			DbcrJson out = response.getPAYDBCR();
+			// Pin the bank sort code and surface the success outcome as the
+			// numeric fail code "0" the consumer parses with Integer.parseInt.
+			out.setCommSortC(Integer.parseInt(BankConstants.SORT_CODE));
+			out.setCommSuccess(FLAG_SUCCESS);
+			out.setCommFailCode(SUCCESS_FAIL_CODE);
 			LOG.info("Payment applied to account {}, amount {}",
 					in.getCommAccno(), in.getCommAmt());
-			return ResponseEntity.ok(success(in, updated));
+			return ResponseEntity.ok(response);
 		}
 		catch (BusinessRuleException ex)
 		{
 			LOG.info("Payment rejected, failCode={}", ex.getFailCode());
 			return ResponseEntity.ok(failure(in, ex.getFailCode()));
 		}
-	}
-
-	/**
-	 * Resolves the facility type from the origin's {@code CommFaciltype} (for
-	 * example {@code 496}). Defaults to the payment facility type when the origin
-	 * or its facility type is absent, matching the payment-channel caller.
-	 *
-	 * <p>{@code CommFaciltype} is modelled as an {@link Integer} (the frozen
-	 * schema declares it {@code type=integer}), so no string parsing is required:
-	 * a present value is returned directly and an absent ({@code null}) value
-	 * falls back to {@link BankConstants#PAYMENT_FACILITY_TYPE}.</p>
-	 *
-	 * @param origin the request origin, possibly {@code null}
-	 * @return the resolved facility type
-	 */
-	private int resolveFacilityType(OriginJson origin)
-	{
-		if (origin == null || origin.getCommFaciltype() == null)
-		{
-			return BankConstants.PAYMENT_FACILITY_TYPE;
-		}
-		return origin.getCommFaciltype();
-	}
-
-	/**
-	 * Resolves the origin string (application id concatenated with user id) used
-	 * by {@code PaymentService} for the payment-channel PROCTRAN description. The
-	 * service truncates it to fourteen characters, reproducing
-	 * {@code DBCRFUN}'s {@code COMM-ORIGIN(1:14)} slice.
-	 *
-	 * @param origin the request origin, possibly {@code null}
-	 * @return the concatenated origin string (never {@code null})
-	 */
-	private String resolveOrigin(OriginJson origin)
-	{
-		if (origin == null)
-		{
-			return "";
-		}
-		String applid = origin.getCommApplid() == null ? ""
-				: origin.getCommApplid();
-		String userid = origin.getCommUserid() == null ? ""
-				: origin.getCommUserid();
-		return applid + userid;
-	}
-
-	/**
-	 * Builds the success envelope echoing the request and the post-movement
-	 * balances.
-	 *
-	 * @param in      the original request commarea
-	 * @param account the updated account
-	 * @return the populated success envelope
-	 */
-	private PaymentInterfaceJson success(DbcrJson in, Account account)
-	{
-		DbcrJson out = new DbcrJson();
-		out.setCommAccno(in.getCommAccno());
-		out.setCommAmt(in.getCommAmt());
-		out.setCommSortC(Integer.parseInt(BankConstants.SORT_CODE));
-		out.setCommAvBal(account.getAvailableBalance());
-		out.setCommActBal(account.getActualBalance());
-		out.setCommOrigin(in.getCommOrigin());
-		out.setCommSuccess(FLAG_SUCCESS);
-		out.setCommFailCode(SUCCESS_FAIL_CODE);
-		return new PaymentInterfaceJson(out);
 	}
 
 	/**
@@ -176,7 +118,7 @@ public class PaymentController
 	 * @param failCode the COBOL fail code to surface (numeric)
 	 * @return the populated failure envelope
 	 */
-	private PaymentInterfaceJson failure(DbcrJson in, String failCode)
+	private PaymentJson failure(DbcrJson in, String failCode)
 	{
 		DbcrJson out = new DbcrJson();
 		out.setCommAccno(in.getCommAccno());
@@ -185,7 +127,9 @@ public class PaymentController
 		out.setCommOrigin(in.getCommOrigin());
 		out.setCommSuccess(FLAG_FAILURE);
 		out.setCommFailCode(failCode);
-		return new PaymentInterfaceJson(out);
+		PaymentJson envelope = new PaymentJson();
+		envelope.setPAYDBCR(out);
+		return envelope;
 	}
 
 }

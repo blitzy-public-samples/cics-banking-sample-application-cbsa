@@ -5,244 +5,514 @@ package com.ibm.cics.cip.bank.core.service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.util.Optional;
 
+import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.ibm.cics.cip.bank.core.constants.BankConstants;
+import com.ibm.cics.cip.bank.core.domain.AccountType;
+import com.ibm.cics.cip.bank.core.domain.TransactionType;
+import com.ibm.cics.cip.bank.core.dto.payment.DbcrJson;
+import com.ibm.cics.cip.bank.core.dto.payment.OriginJson;
+import com.ibm.cics.cip.bank.core.dto.payment.PaymentJson;
 import com.ibm.cics.cip.bank.core.entity.Account;
 import com.ibm.cics.cip.bank.core.entity.AccountId;
+import com.ibm.cics.cip.bank.core.entity.ProcessedTransaction;
+import com.ibm.cics.cip.bank.core.entity.ProcessedTransactionId;
 import com.ibm.cics.cip.bank.core.exception.BusinessRuleException;
 import com.ibm.cics.cip.bank.core.repository.AccountRepository;
-import com.ibm.cics.cip.bank.core.util.BankFormat;
+import com.ibm.cics.cip.bank.core.repository.ProcessedTransactionRepository;
 
 /**
- * Debit/credit (payment) service, reproducing the COBOL program
- * {@code DBCRFUN} exactly &mdash; its sign convention, facility-type rules,
- * fail codes, dual-balance update and PROCTRAN audit semantics.
+ * Debit/credit (payment) business service &mdash; the authoritative pure-Java
+ * port of the COBOL program {@code DBCRFUN} (feature&nbsp;F-015). It backs the
+ * frozen z/OS&nbsp;Connect <em>make-payment</em> endpoint
+ * ({@code PUT /makepayment/dbcr}) and reproduces the legacy behaviour exactly:
+ * its single-character fail codes, its signed-amount convention, its
+ * facility-type channel rules, and its <em>dual-balance</em> update semantics
+ * (AAP&nbsp;&sect;0.6, &sect;0.7).
  *
- * <p>The operation runs inside a single {@link Transactional @Transactional}
- * boundary so that the balance update and the PROCTRAN audit append commit or
- * roll back together (review finding F-TXN-1). The account row is read under a
- * pessimistic write lock, reproducing the CICS record lock that {@code DBCRFUN}
- * holds between its {@code SELECT} and {@code UPDATE}.</p>
+ * <h2>Transaction boundary</h2>
+ * <p>The whole operation runs inside a single
+ * {@link Transactional @Transactional} boundary
+ * ({@link Propagation#REQUIRED}, {@link Isolation#READ_COMMITTED}) so that the
+ * account balance update and the {@code PROCTRAN} audit append commit or roll
+ * back together &mdash; the Spring rendering of the COBOL
+ * {@code EXEC CICS SYNCPOINT}/{@code ROLLBACK} pair. The account row is read
+ * under a {@code PESSIMISTIC_WRITE} lock
+ * ({@link AccountRepository#findByIdForUpdate(AccountId)}), reproducing the CICS
+ * record lock {@code DBCRFUN} holds between its {@code SELECT} and
+ * {@code UPDATE}; an unchecked {@link BusinessRuleException} unwinds the
+ * transaction on any fail code.</p>
  *
- * <p><strong>Sign convention.</strong> A negative amount is a debit (payment
- * out); a non-negative amount (including zero) is a credit (money in). This
- * mirrors {@code IF COMM-AMT &lt; 0} in {@code DBCRFUN}.</p>
+ * <h2>Sign convention (BIND)</h2>
+ * <p>A negative {@code CommAmt} is a DEBIT (money out); a non-negative amount
+ * (including zero) is a CREDIT (money in). This mirrors {@code IF COMM-AMT &lt; 0}
+ * in {@code DBCRFUN} (L307). The sign is <strong>already applied</strong> by the
+ * inbound {@code DbcrJson} (its {@code DbcrJson(TransferForm)} constructor
+ * negates a debit), so this service <strong>never re-negates</strong> the
+ * amount.</p>
  *
- * <p><strong>Facility-type rules.</strong> Facility type
- * {@value com.ibm.cics.cip.bank.core.constants.BankConstants#PAYMENT_FACILITY_TYPE}
- * identifies a payment (as opposed to a teller movement, which uses any other
- * value). For a payment:</p>
+ * <h2>Facility-type channel rules</h2>
+ * <p>The facility type {@code CommFaciltype} discriminates the calling channel.
+ * Facility type {@value com.ibm.cics.cip.bank.core.constants.BankConstants#PAYMENT_FACILITY_TYPE}
+ * is the PAYMENT channel; any other value is the teller/branch channel. On the
+ * PAYMENT channel:</p>
  * <ul>
- *   <li>A debit or credit against a {@code MORTGAGE} or {@code LOAN} account
- *       fails with code {@code 4}.</li>
- *   <li>A debit that would drive the available balance below zero fails with
- *       code {@code 3} (insufficient funds). Note that, exactly as in the
- *       COBOL, the overdraft limit is <em>not</em> consulted in this check.</li>
+ *   <li>a debit or credit against a {@code MORTGAGE} or {@code LOAN} account
+ *       fails with code {@code 4} ({@code DBCRFUN} L330-338 debit, L368-376
+ *       credit);</li>
+ *   <li>a debit that would breach the overdraft floor fails with code {@code 3}
+ *       (insufficient funds; {@code DBCRFUN} L340-347, generalised by
+ *       AAP&nbsp;&sect;0.6 &mdash; see {@link #processPayment(PaymentJson)}).</li>
  * </ul>
- * A teller movement (any other facility type) bypasses both the account-type
- * and the insufficient-funds checks.
+ * The teller/branch channel (any facility type other than {@code 496})
+ * deliberately <strong>bypasses</strong> both the account-type guard and the
+ * insufficient-funds guard.
  *
- * <p><strong>Balances.</strong> On success both the available and actual
- * balances are adjusted by the signed amount; they are independent values and
- * are never collapsed.</p>
+ * <h2>Balances (BIND)</h2>
+ * <p>On success both the available and the actual balance move together by the
+ * signed amount ({@code DBCRFUN} L384-387). They are independent values
+ * (cleared vs. pending funds) and are <strong>never collapsed</strong> into a
+ * single figure.</p>
  *
- * <p><strong>Audit type codes.</strong> Teller debit {@code DEB}
- * ("COUNTER WTHDRW"), teller credit {@code CRE} ("COUNTER RECVED"); payment
- * debit {@code PDR} and payment credit {@code PCR}, each with the first
- * fourteen characters of the origin as the description.</p>
+ * <h2>Audit (PROCTRAN) type codes</h2>
+ * <p>Exactly four type codes are produced on this path ({@code DBCRFUN}
+ * L491-517): teller debit {@link TransactionType#DEB} (description
+ * {@code "COUNTER WTHDRW"}) and teller credit {@link TransactionType#CRE}
+ * (description {@code "COUNTER RECVED"}); payment debit
+ * {@link TransactionType#PDR} and payment credit {@link TransactionType#PCR},
+ * each described by the first fourteen characters of the origin
+ * ({@code COMM-ORIGIN(1:14)}).</p>
+ *
+ * <h2>Fail codes</h2>
+ * <ul>
+ *   <li>{@code 1} &mdash; account not found ({@code DBCRFUN} L283-284,
+ *       {@code SQLCODE +100});</li>
+ *   <li>{@code 2} &mdash; persistence/SQL error on the update ({@code DBCRFUN}
+ *       L425-427);</li>
+ *   <li>{@code 3} &mdash; insufficient funds on a payment debit ({@code DBCRFUN}
+ *       L344-347);</li>
+ *   <li>{@code 4} &mdash; payment against a {@code MORTGAGE}/{@code LOAN}
+ *       account ({@code DBCRFUN} L330-335, L368-373).</li>
+ * </ul>
  */
 @Service
 public class PaymentService
 {
 
-	/** Fail code: account not found. */
-	private static final String FAIL_NOT_FOUND = "1";
+	/** Fail code: the account does not exist ({@code DBCRFUN} {@code SQLCODE +100}). */
+	private static final String FAIL_ACCOUNT_NOT_FOUND = "1";
 
-	/** Fail code: insufficient funds on a payment debit. */
+	/** Fail code: a persistence/SQL error occurred applying the update. */
+	private static final String FAIL_SQL_ERROR = "2";
+
+	/** Fail code: insufficient funds on a payment-channel debit. */
 	private static final String FAIL_INSUFFICIENT_FUNDS = "3";
 
-	/** Fail code: payment against a restricted (MORTGAGE/LOAN) account. */
+	/** Fail code: payment-channel movement on a {@code MORTGAGE}/{@code LOAN} account. */
 	private static final String FAIL_RESTRICTED_ACCOUNT = "4";
 
-	/** Monetary scale for balances and amounts. */
+	/** Monetary scale (two decimal places) for every computed money value. */
 	private static final int MONEY_SCALE = 2;
 
-	/** Maximum width of the origin text carried into a payment description. */
+	/** Fixed COBOL width of the account number ({@code COMM-ACCNO PIC X(8)}). */
+	private static final int ACCOUNT_NUMBER_WIDTH = 8;
+
+	/** Fixed width of the PROCTRAN reference ({@code PROC-TRAN-REF PIC 9(12)}). */
+	private static final int REFERENCE_WIDTH = 12;
+
+	/** Fixed width of the PROCTRAN description ({@code PROC-TRAN-DESC PIC X(40)}). */
+	private static final int DESCRIPTION_WIDTH = 40;
+
+	/** Width of the origin slice carried into a payment description ({@code COMM-ORIGIN(1:14)}). */
 	private static final int ORIGIN_DESC_WIDTH = 14;
 
-	/** Restricted account type: mortgage. */
-	private static final String TYPE_MORTGAGE = "MORTGAGE";
+	/** Teller-debit description ({@code DBCRFUN} L493). */
+	private static final String DESC_COUNTER_WITHDRAW = "COUNTER WTHDRW";
 
-	/** Restricted account type: loan. */
-	private static final String TYPE_LOAN = "LOAN";
+	/** Teller-credit description ({@code DBCRFUN} L506). */
+	private static final String DESC_COUNTER_RECEIVED = "COUNTER RECVED";
 
-	/** Audit type code: teller debit. */
-	private static final String AUDIT_DEBIT = "DEB";
+	/** Success flag written to the response commarea ({@code COMM-SUCCESS = 'Y'}). */
+	private static final String SUCCESS_FLAG = "Y";
 
-	/** Audit type code: teller credit. */
-	private static final String AUDIT_CREDIT = "CRE";
+	/** Blank fail code written to the response commarea on success ({@code COMM-FAIL-CODE}). */
+	private static final String BLANK_FAIL_CODE = " ";
 
-	/** Audit type code: payment debit. */
-	private static final String AUDIT_PAYMENT_DEBIT = "PDR";
-
-	/** Audit type code: payment credit. */
-	private static final String AUDIT_PAYMENT_CREDIT = "PCR";
-
-	/** Audit description: teller debit. */
-	private static final String DESC_DEBIT = "COUNTER WTHDRW";
-
-	/** Audit description: teller credit. */
-	private static final String DESC_CREDIT = "COUNTER RECVED";
-
+	/** Repository for reading (under a write lock) and saving the {@link Account}. */
 	private final AccountRepository accountRepository;
 
-	private final ProcessedTransactionAppender proctranAppender;
+	/** Append-only repository for the {@code PROCTRAN} audit log. */
+	private final ProcessedTransactionRepository processedTransactionRepository;
 
 	/**
-	 * Constructs the payment service with its collaborators.
+	 * Constructs the payment service with its collaborators (constructor
+	 * injection only).
 	 *
-	 * @param accountRepository repository for {@link Account} persistence and
-	 *                          locking
-	 * @param proctranAppender  atomic PROCTRAN audit-row appender
+	 * @param accountRepository              repository for {@link Account}
+	 *                                       read/lock/update
+	 * @param processedTransactionRepository repository for appending the
+	 *                                       {@code PROCTRAN} audit row
 	 */
 	public PaymentService(AccountRepository accountRepository,
-			ProcessedTransactionAppender proctranAppender)
+			ProcessedTransactionRepository processedTransactionRepository)
 	{
 		this.accountRepository = accountRepository;
-		this.proctranAppender = proctranAppender;
+		this.processedTransactionRepository = processedTransactionRepository;
 	}
 
 	/**
-	 * Applies a debit or credit to an account, reproducing {@code DBCRFUN}.
+	 * Applies a debit or credit to a single account, reproducing
+	 * {@code DBCRFUN} end to end. Works against the inner {@link DbcrJson}
+	 * commarea carried by the {@code PAYDBCR} envelope.
 	 *
-	 * @param accountNumber the account to debit/credit
-	 * @param amount        the signed amount (negative debit, non-negative
-	 *                      credit)
-	 * @param facilityType  the facility type; {@code 496} denotes a payment, any
-	 *                      other value denotes a teller movement
-	 * @param origin        the origin text used as the payment description's
-	 *                      first fourteen characters (ignored for teller
-	 *                      movements)
-	 * @return the updated {@link Account}, carrying the new available and actual
-	 *         balances
-	 * @throws BusinessRuleException {@code 1} if the account does not exist,
-	 *                               {@code 4} for a payment against a
-	 *                               MORTGAGE/LOAN account, or {@code 3} for a
-	 *                               payment debit with insufficient funds
+	 * <p><strong>Overdraft rule.</strong> Per AAP&nbsp;&sect;0.6 the binding
+	 * insufficient-funds rule is that a debit is permitted only when
+	 * {@code (availableBalance + commAmt) >= -overdraftLimit}. Because
+	 * {@code commAmt} is already negative for a debit, this is equivalent to
+	 * {@code availableBalance + commAmt >= -overdraftLimit}. The overdraft limit
+	 * is an {@code Integer} while balances are scale&nbsp;2, so the limit is
+	 * converted to a scale-2, negated {@link BigDecimal} before the
+	 * {@link BigDecimal#compareTo(BigDecimal) compareTo}. This generalises the
+	 * literal {@code DBCRFUN} L341-344 check (which compares the new balance with
+	 * an effective floor of zero) so that an account's configured overdraft is
+	 * honoured; the guard still fires only on the PAYMENT channel
+	 * ({@code COMM-FACILTYPE = 496}).</p>
+	 *
+	 * @param request the {@code PAYDBCR} request envelope carrying the inner
+	 *                debit/credit commarea
+	 * @return the same envelope with its commarea populated with the two new
+	 *         balances and the success flags
+	 * @throws BusinessRuleException {@code 1} account not found, {@code 2}
+	 *                               persistence error, {@code 3} insufficient
+	 *                               funds (payment debit), {@code 4} payment on a
+	 *                               {@code MORTGAGE}/{@code LOAN} account &mdash;
+	 *                               each rolls the transaction back
 	 */
-	@Transactional
-	public Account processDebitCredit(long accountNumber, BigDecimal amount,
-			int facilityType, String origin)
+	@Transactional(propagation = Propagation.REQUIRED,
+			isolation = Isolation.READ_COMMITTED)
+	public PaymentJson processPayment(PaymentJson request)
 	{
-		BigDecimal signedAmount = amount.setScale(MONEY_SCALE,
-				RoundingMode.HALF_UP);
+		DbcrJson commarea = (request == null) ? null : request.getPAYDBCR();
+		if (commarea == null)
+		{
+			// A request without a PAYDBCR payload cannot identify an account;
+			// treat it as account-not-found, matching the legacy '1' outcome.
+			throw new BusinessRuleException(FAIL_ACCOUNT_NOT_FOUND,
+					"Missing PAYDBCR payload");
+		}
 
-		// Read the account under a write lock (DBCRFUN holds the record lock
-		// from SELECT through UPDATE). Not found -> fail '1'.
-		Account account = accountRepository
-				.findByIdForUpdate(new AccountId(BankConstants.SORT_CODE,
-						BankFormat.accountNumber(accountNumber)))
-				.orElseThrow(() -> new BusinessRuleException(FAIL_NOT_FOUND,
+		// COMM-ACCNO PIC X(8): normalise to the fixed, zero-padded width used by
+		// the account key.
+		String accountNumber = padLeftZero(commarea.getCommAccno(),
+				ACCOUNT_NUMBER_WIDTH);
+
+		// COMM-AMT is ALREADY signed (negative = debit, non-negative = credit);
+		// never re-negate it. Normalise to scale 2 for the money pipeline.
+		BigDecimal signedAmount = scale2(commarea.getCommAmt());
+		boolean isDebit = signedAmount.signum() < 0;
+
+		// COMM-FACILTYPE: 496 is the PAYMENT channel; anything else is the
+		// teller/branch channel, which bypasses the '4' and '3' guards.
+		boolean isPaymentChannel = resolveFacilityType(
+				commarea.getCommOrigin()) == BankConstants.PAYMENT_FACILITY_TYPE;
+
+		// Read the ACCOUNT row under a write lock (DBCRFUN holds the record lock
+		// from SELECT through UPDATE). Absent -> fail '1'.
+		Optional<Account> located = accountRepository.findByIdForUpdate(
+				new AccountId(BankConstants.SORT_CODE, accountNumber));
+		Account account = located
+				.orElseThrow(() -> new BusinessRuleException(
+						FAIL_ACCOUNT_NOT_FOUND,
 						"Account not found: " + accountNumber));
 
-		boolean isPayment = facilityType == BankConstants.PAYMENT_FACILITY_TYPE;
-		boolean isDebit = signedAmount.signum() < 0;
-		String accountType = account.getAccountType() == null ? ""
-				: account.getAccountType().trim();
-		boolean restrictedType = TYPE_MORTGAGE.equals(accountType)
-				|| TYPE_LOAN.equals(accountType);
-
-		if (isDebit)
+		// MORTGAGE/LOAN guard on the PAYMENT channel only (DBCRFUN L330-338 for a
+		// debit, L368-376 for a credit) -> fail '4'. A single check covers both
+		// directions because the COBOL condition is identical in each branch.
+		AccountType accountType = AccountType.fromValue(account.getAccountType());
+		boolean isRestrictedType = accountType == AccountType.MORTGAGE
+				|| accountType == AccountType.LOAN;
+		if (isRestrictedType && isPaymentChannel)
 		{
-			// Payment debit against a MORTGAGE/LOAN account -> fail '4'.
-			if (restrictedType && isPayment)
-			{
-				throw new BusinessRuleException(FAIL_RESTRICTED_ACCOUNT,
-						"Payment debit not permitted on " + accountType
-								+ " account " + accountNumber);
-			}
+			throw new BusinessRuleException(FAIL_RESTRICTED_ACCOUNT,
+					"Payment not permitted on " + account.getAccountType()
+							+ " account " + accountNumber);
+		}
 
-			// Insufficient funds: available + amount < 0, payments only.
-			// The overdraft limit is intentionally NOT consulted (DBCRFUN).
-			BigDecimal difference = account.getAvailableBalance()
-					.add(signedAmount);
-			if (difference.signum() < 0 && isPayment)
+		BigDecimal currentAvailable = scale2(account.getAvailableBalance());
+		BigDecimal currentActual = scale2(account.getActualBalance());
+
+		// Insufficient-funds guard, payment-channel debit only.
+		// DBCRFUN L341: WS-DIFFERENCE = HV-ACCOUNT-AVAIL-BAL + COMM-AMT, then
+		// L344 IF WS-DIFFERENCE < 0 AND COMM-FACILTYPE = 496 -> '3'.
+		// AAP §0.6 generalises the zero floor to the account's overdraft limit:
+		// permit the debit only when (available + commAmt) >= -overdraftLimit.
+		if (isDebit && isPaymentChannel)
+		{
+			BigDecimal projectedAvailable = currentAvailable.add(signedAmount)
+					.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+			BigDecimal overdraftFloor = overdraftFloor(
+					account.getOverdraftLimit());
+			if (projectedAvailable.compareTo(overdraftFloor) < 0)
 			{
 				throw new BusinessRuleException(FAIL_INSUFFICIENT_FUNDS,
 						"Insufficient funds on account " + accountNumber);
 			}
 		}
 
-		// Payment credit against a MORTGAGE/LOAN account -> fail '4'.
-		// (For a debit this condition was already handled above.)
-		if (restrictedType && isPayment)
-		{
-			throw new BusinessRuleException(FAIL_RESTRICTED_ACCOUNT,
-					"Payment not permitted on " + accountType + " account "
-							+ accountNumber);
-		}
-
-		// Update both balances by the signed amount (independent values).
-		BigDecimal newAvailable = account.getAvailableBalance().add(signedAmount)
+		// Apply BOTH balances by the signed amount (DBCRFUN L384-387). The two
+		// balances are independent and are never collapsed.
+		BigDecimal newAvailable = currentAvailable.add(signedAmount)
 				.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
-		BigDecimal newActual = account.getActualBalance().add(signedAmount)
+		BigDecimal newActual = currentActual.add(signedAmount)
 				.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
 		account.setAvailableBalance(newAvailable);
 		account.setActualBalance(newActual);
-		accountRepository.save(account);
 
-		// Resolve the audit type code and description, then append atomically.
-		String typeCode = resolveTypeCode(isDebit, isPayment);
-		String description = resolveDescription(isDebit, isPayment, origin);
-		proctranAppender.appendPayment(BankConstants.SORT_CODE, accountNumber,
-				typeCode, description, signedAmount);
+		// Persist the updated account (DBCRFUN UPDATE ACCOUNT). A persistence
+		// failure maps to the legacy SQL-error fail code '2' (DBCRFUN L425-427).
+		try
+		{
+			accountRepository.save(account);
+		}
+		catch (DataAccessException ex)
+		{
+			throw new BusinessRuleException(FAIL_SQL_ERROR,
+					"Failed to update account " + accountNumber, ex);
+		}
 
-		return account;
+		// Append the PROCTRAN audit row (DBCRFUN WRITE-TO-PROCTRAN, L491-517).
+		appendProcessedTransaction(accountNumber, signedAmount, isDebit,
+				isPaymentChannel, commarea.getCommOrigin());
+
+		// Populate the response commarea (DBCRFUN L416-419 + success flags) and
+		// return the wrapping envelope.
+		commarea.setCommAvBal(newAvailable);
+		commarea.setCommActBal(newActual);
+		commarea.setCommSuccess(SUCCESS_FLAG);
+		commarea.setCommFailCode(BLANK_FAIL_CODE);
+		return request;
 	}
 
 	/**
-	 * Resolves the PROCTRAN type code from the movement direction and facility.
+	 * Builds and persists the append-only {@code PROCTRAN} audit row for this
+	 * movement, reproducing {@code DBCRFUN}'s {@code WRITE-TO-PROCTRAN-DB2}
+	 * section.
 	 *
-	 * @param isDebit   {@code true} for a debit, {@code false} for a credit
-	 * @param isPayment {@code true} for a payment, {@code false} for a teller
-	 *                  movement
-	 * @return {@code DEB}/{@code CRE} for teller movements, {@code PDR}/
-	 *         {@code PCR} for payments
+	 * <p>The unique transaction reference replaces the COBOL CICS task number
+	 * ({@code EIBTASKN}), which has no equivalent in a mainframe-free runtime: it
+	 * is allocated as {@link ProcessedTransactionRepository#findMaxReference(String)
+	 * findMaxReference(sortCode) + 1}. The allocation and the insert run inside
+	 * the caller's {@code @Transactional} boundary, which serialises them for
+	 * behavioural parity; a rolled-back payment also rolls back the consumed
+	 * reference.</p>
+	 *
+	 * @param accountNumber the zero-padded eight-digit account number
+	 * @param signedAmount  the signed movement amount (scale 2)
+	 * @param isDebit       {@code true} for a debit, {@code false} for a credit
+	 * @param isPaymentChannel {@code true} when on the PAYMENT channel (496)
+	 * @param origin        the calling-channel origin (may be {@code null})
 	 */
-	private String resolveTypeCode(boolean isDebit, boolean isPayment)
+	private void appendProcessedTransaction(String accountNumber,
+			BigDecimal signedAmount, boolean isDebit, boolean isPaymentChannel,
+			OriginJson origin)
+	{
+		long nextReference = processedTransactionRepository
+				.findMaxReference(BankConstants.SORT_CODE) + 1L;
+
+		ProcessedTransaction row = new ProcessedTransaction();
+		row.setId(new ProcessedTransactionId(BankConstants.SORT_CODE,
+				padLeftZero(Long.toString(nextReference), REFERENCE_WIDTH)));
+		row.setTransactionNumber(accountNumber);
+		row.setDate(LocalDate.now());
+		row.setTime(LocalTime.now());
+		row.setTypeCode(resolveTransactionType(isDebit, isPaymentChannel));
+		row.setDescription(
+				resolveDescription(isDebit, isPaymentChannel, origin));
+		row.setAmount(scale2(signedAmount));
+		row.setDeleted(false);
+		processedTransactionRepository.save(row);
+	}
+
+	/**
+	 * Resolves the four-way PROCTRAN type code from the movement direction and
+	 * channel ({@code DBCRFUN} L492/L499/L505/L512).
+	 *
+	 * @param isDebit          {@code true} for a debit, {@code false} for a credit
+	 * @param isPaymentChannel {@code true} on the PAYMENT channel (496)
+	 * @return {@link TransactionType#DEB}/{@link TransactionType#CRE} for the
+	 *         teller channel, {@link TransactionType#PDR}/{@link TransactionType#PCR}
+	 *         for the PAYMENT channel
+	 */
+	private TransactionType resolveTransactionType(boolean isDebit,
+			boolean isPaymentChannel)
 	{
 		if (isDebit)
 		{
-			return isPayment ? AUDIT_PAYMENT_DEBIT : AUDIT_DEBIT;
+			return isPaymentChannel ? TransactionType.PDR : TransactionType.DEB;
 		}
-		return isPayment ? AUDIT_PAYMENT_CREDIT : AUDIT_CREDIT;
+		return isPaymentChannel ? TransactionType.PCR : TransactionType.CRE;
 	}
 
 	/**
-	 * Resolves the PROCTRAN description. Teller movements use the fixed counter
-	 * strings; payments use the first fourteen characters of the origin
-	 * ({@code COMM-ORIGIN(1:14)} in {@code DBCRFUN}).
+	 * Resolves the forty-character PROCTRAN description ({@code DBCRFUN}
+	 * L493/L500-501/L506/L513-514). The teller channel uses the fixed counter
+	 * strings; the PAYMENT channel uses the first fourteen characters of the
+	 * origin ({@code COMM-ORIGIN(1:14)}). The result is right-padded/truncated to
+	 * the fixed COBOL field width.
 	 *
-	 * @param isDebit   {@code true} for a debit, {@code false} for a credit
-	 * @param isPayment {@code true} for a payment, {@code false} for a teller
-	 *                  movement
-	 * @param origin    the origin text (used only for payments)
-	 * @return the resolved description text
+	 * @param isDebit          {@code true} for a debit, {@code false} for a credit
+	 * @param isPaymentChannel {@code true} on the PAYMENT channel (496)
+	 * @param origin           the calling-channel origin (may be {@code null})
+	 * @return the fixed-width (40) description text
 	 */
-	private String resolveDescription(boolean isDebit, boolean isPayment,
-			String origin)
+	private String resolveDescription(boolean isDebit, boolean isPaymentChannel,
+			OriginJson origin)
 	{
-		if (isPayment)
+		String description;
+		if (isPaymentChannel)
 		{
-			String safeOrigin = (origin == null) ? "" : origin;
-			return safeOrigin.length() > ORIGIN_DESC_WIDTH
-					? safeOrigin.substring(0, ORIGIN_DESC_WIDTH)
-					: safeOrigin;
+			String originText = originText(origin);
+			description = originText.length() > ORIGIN_DESC_WIDTH
+					? originText.substring(0, ORIGIN_DESC_WIDTH)
+					: originText;
 		}
-		return isDebit ? DESC_DEBIT : DESC_CREDIT;
+		else
+		{
+			description = isDebit ? DESC_COUNTER_WITHDRAW
+					: DESC_COUNTER_RECEIVED;
+		}
+		return rightPadSpace(description, DESCRIPTION_WIDTH);
+	}
+
+	/**
+	 * Reconstructs the origin string ({@code COMM-ORIGIN}) as the application id
+	 * concatenated with the user id, the basis for the {@code COMM-ORIGIN(1:14)}
+	 * slice used as the payment-channel description.
+	 *
+	 * @param origin the calling-channel origin (may be {@code null})
+	 * @return the concatenated origin string (never {@code null})
+	 */
+	private static String originText(OriginJson origin)
+	{
+		if (origin == null)
+		{
+			return "";
+		}
+		String applid = (origin.getCommApplid() == null) ? ""
+				: origin.getCommApplid();
+		String userid = (origin.getCommUserid() == null) ? ""
+				: origin.getCommUserid();
+		return applid + userid;
+	}
+
+	/**
+	 * Resolves the facility type from the origin's {@code CommFaciltype},
+	 * defaulting to the PAYMENT facility type
+	 * ({@value com.ibm.cics.cip.bank.core.constants.BankConstants#PAYMENT_FACILITY_TYPE})
+	 * when the origin or its facility type is absent &mdash; the payment-channel
+	 * caller is the default for this endpoint.
+	 *
+	 * @param origin the calling-channel origin (may be {@code null})
+	 * @return the resolved facility type
+	 */
+	private static int resolveFacilityType(OriginJson origin)
+	{
+		if (origin == null || origin.getCommFaciltype() == null)
+		{
+			return BankConstants.PAYMENT_FACILITY_TYPE;
+		}
+		return origin.getCommFaciltype();
+	}
+
+	/**
+	 * Computes the overdraft floor as a scale-2, negated {@link BigDecimal}
+	 * (aligning the {@code Integer} overdraft limit with the scale-2 balances
+	 * before any comparison, per AAP&nbsp;&sect;0.6). A {@code null} limit is
+	 * treated as zero.
+	 *
+	 * @param overdraftLimit the account's overdraft limit (may be {@code null})
+	 * @return the negated, scale-2 overdraft floor (for example a limit of
+	 *         {@code 500} yields {@code -500.00})
+	 */
+	private static BigDecimal overdraftFloor(Integer overdraftLimit)
+	{
+		int limit = (overdraftLimit == null) ? 0 : overdraftLimit;
+		return new BigDecimal(limit).setScale(MONEY_SCALE, RoundingMode.HALF_UP)
+				.negate();
+	}
+
+	/**
+	 * Normalises a monetary value to scale 2 with {@link RoundingMode#HALF_UP},
+	 * treating {@code null} as zero. Used for every computed money result so no
+	 * binary floating-point arithmetic enters the pipeline.
+	 *
+	 * @param value the value to normalise (may be {@code null})
+	 * @return the value at scale 2, or {@code 0.00} when {@code null}
+	 */
+	private static BigDecimal scale2(BigDecimal value)
+	{
+		BigDecimal safe = (value == null) ? BigDecimal.ZERO : value;
+		return safe.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+	}
+
+	/**
+	 * Left-zero-pads a display-numeric identifier to a fixed width, preserving
+	 * the COBOL leading-zero convention. A value already at or beyond the width
+	 * is returned by its trailing {@code width} characters; a {@code null} or
+	 * blank value pads to all zeroes.
+	 *
+	 * @param value the value to pad (may be {@code null}; surrounding whitespace
+	 *              is trimmed)
+	 * @param width the target fixed width
+	 * @return the left-zero-padded, fixed-width string
+	 */
+	private static String padLeftZero(String value, int width)
+	{
+		String safe = (value == null) ? "" : value.trim();
+		if (safe.length() >= width)
+		{
+			return safe.substring(safe.length() - width);
+		}
+		StringBuilder builder = new StringBuilder(width);
+		for (int i = safe.length(); i < width; i++)
+		{
+			builder.append('0');
+		}
+		builder.append(safe);
+		return builder.toString();
+	}
+
+	/**
+	 * Right-pads a value with spaces to a fixed width (and truncates a longer
+	 * value), matching the COBOL {@code PIC X(n)} {@code MOVE} semantics for the
+	 * fixed-width description field.
+	 *
+	 * @param value the value to pad (may be {@code null}, treated as empty)
+	 * @param width the target fixed width
+	 * @return the fixed-width, right-space-padded string
+	 */
+	private static String rightPadSpace(String value, int width)
+	{
+		String safe = (value == null) ? "" : value;
+		if (safe.length() >= width)
+		{
+			return safe.substring(0, width);
+		}
+		StringBuilder builder = new StringBuilder(width);
+		builder.append(safe);
+		while (builder.length() < width)
+		{
+			builder.append(' ');
+		}
+		return builder.toString();
 	}
 
 }
