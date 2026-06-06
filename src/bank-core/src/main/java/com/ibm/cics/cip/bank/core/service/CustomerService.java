@@ -4,10 +4,17 @@
 package com.ibm.cics.cip.bank.core.service;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,9 +47,11 @@ import com.ibm.cics.cip.bank.core.util.BankFormat;
  * token, performs the asynchronous five-agency credit check, validates the date
  * of birth, allocates the next customer number from the control row and inserts
  * the customer, then appends an {@code OCC} PROCTRAN row &mdash; in that order,
- * so any failure rolls back the number allocation. The credit score is the
- * average returned by {@link CreditAgencyService} (never a hard-coded zero) and
- * the credit-score review date is today plus a random 1&ndash;21 days.</p>
+ * so any failure rolls back the number allocation. The credit check fans out
+ * five concurrent {@link CreditAgencyService#requestCreditScore()} calls, waits
+ * up to three seconds, and averages the scores that replied in time (never a
+ * hard-coded zero); if none reply it fails with code {@code 'C'}. The
+ * credit-score review date is today plus a random 1&ndash;21 days.</p>
  *
  * <p><strong>Update ({@code UPDCUST}).</strong> Only the name and address are
  * changed; balances and other fields are untouched and <em>no</em> PROCTRAN row
@@ -57,6 +66,10 @@ import com.ibm.cics.cip.bank.core.util.BankFormat;
 @Service
 public class CustomerService
 {
+
+	/** Logger for credit-agency deadline diagnostics during customer create. */
+	private static final Logger LOG = LoggerFactory
+			.getLogger(CustomerService.class);
 
 	/** Lowest acceptable year of birth, matching {@code CRECUST} ({@code < 1601}). */
 	private static final int MIN_BIRTH_YEAR = 1601;
@@ -84,6 +97,25 @@ public class CustomerService
 
 	/** Fail code: nothing to update (both name and address blank). */
 	private static final String FAIL_NOTHING_TO_UPDATE = "4";
+
+	/**
+	 * Number of credit agencies queried in parallel during create, reproducing
+	 * the five identical COBOL programs {@code CRDTAGY1}&ndash;{@code CRDTAGY5}.
+	 */
+	private static final int NUMBER_OF_AGENCIES = 5;
+
+	/**
+	 * Fixed deadline, in seconds, to wait for agency replies before averaging
+	 * whatever has arrived &mdash; the {@code EXEC CICS DELAY FOR SECONDS(3)}
+	 * that the COBOL {@code CRECUST} issues after fanning the agencies out.
+	 */
+	private static final int CREDIT_CHECK_DEADLINE_SECONDS = 3;
+
+	/**
+	 * Fail code raised when not a single credit agency replies inside the
+	 * deadline (the {@code CRECUST} {@code 'C'} path).
+	 */
+	private static final String FAIL_NO_AGENCY = "C";
 
 	private final CustomerRepository customerRepository;
 
@@ -148,9 +180,9 @@ public class CustomerService
 					"Invalid customer title: " + title);
 		}
 
-		// 2. Asynchronous credit check (CRECUST CREDIT-CHECK; throws 'C' if no
-		//    agency replied within the deadline).
-		int creditScore = creditAgencyService.requestCreditScore();
+		// 2. Asynchronous five-agency credit check (CRECUST CREDIT-CHECK; throws
+		//    'C' if no agency replied within the deadline).
+		int creditScore = performCreditCheck();
 		LocalDate reviewDate = LocalDate.now()
 				.plusDays(ThreadLocalRandom.current()
 						.nextInt(REVIEW_DAYS_MIN, REVIEW_DAYS_MAX + 1));
@@ -293,6 +325,95 @@ public class CustomerService
 		return customerRepository.findById(new CustomerId(
 				BankConstants.SORT_CODE,
 				BankFormat.customerNumber(customerNumber)));
+	}
+
+	/**
+	 * Runs the asynchronous five-agency credit check and returns the averaged
+	 * score, reproducing the {@code CRECUST} credit-check section (feature
+	 * F-017).
+	 *
+	 * <p>{@value #NUMBER_OF_AGENCIES} concurrent
+	 * {@link CreditAgencyService#requestCreditScore()} tasks are fanned out onto
+	 * the dedicated credit-agency executor; the method then waits up to
+	 * {@value #CREDIT_CHECK_DEADLINE_SECONDS} seconds for them to complete (the
+	 * COBOL {@code EXEC CICS DELAY FOR SECONDS(3)}). The scores of the agencies
+	 * that finished within the deadline are averaged using truncating integer
+	 * division, exactly matching the COBOL
+	 * {@code COMPUTE WS-ACTUAL-CS-SCR = WS-TOTAL-CS-SCR / WS-RETRIEVED-CNT}. A
+	 * deadline timeout is expected and benign &mdash; it simply means one or more
+	 * agencies did not reply, so whatever did arrive is averaged. An agency that
+	 * completed exceptionally (for example, interrupted mid-delay) is not
+	 * counted. If <em>no</em> agency replied in time the create fails with code
+	 * {@value #FAIL_NO_AGENCY}.</p>
+	 *
+	 * @return the averaged credit score (1&ndash;999) of the agencies that
+	 *         replied within the deadline
+	 * @throws BusinessRuleException with fail code {@value #FAIL_NO_AGENCY} if no
+	 *                               agency replied within the deadline, or if the
+	 *                               wait was interrupted
+	 */
+	private int performCreditCheck()
+	{
+		List<CompletableFuture<Integer>> futures = new ArrayList<>(
+				NUMBER_OF_AGENCIES);
+		for (int agency = 0; agency < NUMBER_OF_AGENCIES; agency++)
+		{
+			futures.add(creditAgencyService.requestCreditScore());
+		}
+
+		// Wait for the fixed deadline, mirroring EXEC CICS DELAY FOR SECONDS(3).
+		CompletableFuture<Void> all = CompletableFuture
+				.allOf(futures.toArray(new CompletableFuture[0]));
+		try
+		{
+			all.get(CREDIT_CHECK_DEADLINE_SECONDS, TimeUnit.SECONDS);
+		}
+		catch (TimeoutException timeout)
+		{
+			// Expected and benign: one or more agencies did not reply in time,
+			// so we fall through and average whatever did arrive.
+			LOG.debug(
+					"Credit-agency deadline of {}s reached before all replied; "
+							+ "averaging those that did",
+					CREDIT_CHECK_DEADLINE_SECONDS);
+		}
+		catch (InterruptedException interrupted)
+		{
+			Thread.currentThread().interrupt();
+			throw new BusinessRuleException(FAIL_NO_AGENCY,
+					"Interrupted while awaiting credit-agency replies");
+		}
+		catch (ExecutionException execution)
+		{
+			// An individual agency failing is tolerated; the per-future
+			// inspection below counts only the agencies that completed normally.
+			LOG.debug("A credit-agency task completed exceptionally: {}",
+					execution.getMessage());
+		}
+
+		long total = 0L;
+		int retrieved = 0;
+		for (CompletableFuture<Integer> future : futures)
+		{
+			if (future.isDone() && !future.isCompletedExceptionally())
+			{
+				Integer score = future.getNow(null);
+				if (score != null)
+				{
+					total += score;
+					retrieved++;
+				}
+			}
+		}
+
+		if (retrieved == 0)
+		{
+			throw new BusinessRuleException(FAIL_NO_AGENCY,
+					"No credit agency responded within the deadline");
+		}
+
+		// Truncating integer division, exactly as the COBOL COMPUTE does.
+		return (int) (total / retrieved);
 	}
 
 	/**

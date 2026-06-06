@@ -81,8 +81,9 @@ spring:
 
   # ---------------------------------------------------------------------------
   # Asynchronous task executor - credit-agency fan-out (F-017 / sec. 0.6).
-  # CreditAgencyService dispatches five CompletableFuture tasks (one per legacy
-  # CRDTAGY1-5 program) that must run concurrently within a 3-second deadline.
+  # CustomerService dispatches five async CreditAgencyService tasks (one per
+  # legacy CRDTAGY1-5 program) that must run concurrently within a 3-second
+  # deadline.
   # core-size must be >= 5 so all five start immediately rather than queueing,
   # which would otherwise blow the orTimeout(3s) budget. These values configure
   # Spring Boot's auto-configured ThreadPoolTaskExecutor and stay aligned with

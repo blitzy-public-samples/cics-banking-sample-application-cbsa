@@ -23,8 +23,9 @@ import org.springframework.scheduling.annotation.EnableAsync;
  *
  * <p>{@link EnableAsync @EnableAsync} switches on Spring's asynchronous method
  * execution. It is required by the credit-agency fan-out, where
- * {@code CreditAgencyService} dispatches five {@code CompletableFuture} tasks
- * and aggregates their scores under a three-second deadline. The dedicated
+ * {@code CustomerService} dispatches five asynchronous
+ * {@code CreditAgencyService} tasks and aggregates their scores under a
+ * three-second deadline. The dedicated
  * {@code ThreadPoolTaskExecutor} backing those tasks is contributed by
  * {@code config/AsyncConfig} and tuned through the
  * {@code spring.task.execution.pool.*} properties in {@code application.yml};

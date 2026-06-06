@@ -3,58 +3,63 @@
 /*                                                                        */
 package com.ibm.cics.cip.bank.core.service;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadLocalRandom;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import com.ibm.cics.cip.bank.core.config.AsyncConfig;
-import com.ibm.cics.cip.bank.core.exception.BusinessRuleException;
 
 /**
- * Reimplements the legacy asynchronous credit-agency check that the COBOL
- * customer-create flow ({@code CRECUST}) performs against five identical dummy
- * agency programs ({@code CRDTAGY1}&ndash;{@code CRDTAGY5}) over the CICS Async
- * API on channel {@code CIPCREDCHANN} (feature F-017).
+ * Credit-agency scoring service &mdash; the Java rendering of the five identical
+ * COBOL "dummy credit agency" programs {@code CRDTAGY1}&ndash;{@code CRDTAGY5}
+ * (feature F-017).
  *
- * <p><strong>Legacy behaviour reproduced.</strong> {@code CRECUST} fans out
- * five asynchronous requests and then issues {@code EXEC CICS DELAY FOR
- * SECONDS(3)} before fetching whatever replies have arrived. Each agency
- * ({@code CRDTAGY1.cbl}) first computes a random delay of zero-to-three seconds
- * ({@code COMPUTE WS-DELAY-AMT = ((3 - 1) * FUNCTION RANDOM(...)) + 1}) and then
- * returns a credit score in the range 1&ndash;999. After the three-second
- * window the parent averages the scores of the agencies that replied
- * ({@code COMPUTE WS-ACTUAL-CS-SCR = WS-TOTAL-CS-SCR / WS-RETRIEVED-CNT}, an
- * integer division that truncates) and uses that as the customer credit score.
- * If <em>no</em> agency replied within the window the parent sets fail code
- * {@code 'C'} and abandons the create (CRECUST {@code NOTFINISHED} /
- * zero-retrieved path).</p>
+ * <p><strong>What the legacy programs do.</strong> Each {@code CRDTAGYn}
+ * program is byte-identical apart from its program and container names. Driven
+ * over the CICS Async API on channel {@code CIPCREDCHANN}, a single agency:
+ * (1) computes a random delay of zero-to-three seconds
+ * ({@code COMPUTE WS-DELAY-AMT = ((3 - 1) * FUNCTION RANDOM(WS-SEED)) + 1}) and
+ * issues {@code EXEC CICS DELAY FOR SECONDS(WS-DELAY-AMT)} to emulate the
+ * latency of a real bureau call, and (2) generates a random credit score in the
+ * range 1&ndash;999
+ * ({@code COMPUTE WS-NEW-CREDSCORE = ((999 - 1) * FUNCTION RANDOM) + 1}) and
+ * returns it. The deliberate delay means an individual agency may or may not
+ * reply inside the parent's fixed three-second window, emulating a bureau that
+ * cannot always answer in time.</p>
  *
- * <p><strong>Java mapping.</strong> The five agencies become five
- * {@link CompletableFuture} tasks submitted to the dedicated
- * {@link AsyncConfig#CREDIT_AGENCY_EXECUTOR} pool, each sleeping a random
- * 0&ndash;3000&nbsp;ms and returning a 1&ndash;999 score. The parent waits up
- * to {@value #DEADLINE_SECONDS} seconds for them all; whichever have completed
- * by the deadline are averaged with truncating integer division, exactly
- * matching the COBOL. When none have completed a
- * {@link BusinessRuleException} carrying fail code {@value #FAIL_CODE_NO_AGENCY}
- * is thrown so the caller can reproduce the COBOL {@code 'C'} outcome and roll
- * the create back.</p>
+ * <p><strong>What survives the migration.</strong> Only the observable
+ * behaviour is reproduced: the random delay and the random 1&ndash;999 score.
+ * The CICS plumbing &mdash; the {@code CIPCREDCHANN} channel, the {@code CIPA}
+ * container, the {@code EIBTASKN} random seed, and the abend handling &mdash; is
+ * intentionally dropped because it has no place in the Spring Boot runtime.</p>
  *
- * <p>This service holds no persistent state and performs no database work; it
- * is therefore deliberately free of any transactional annotation. The review
- * date that {@code CRECUST} derives on success (today plus a random 1&ndash;21
- * days) is intentionally <em>not</em> computed here &mdash; it is the
- * orchestrating {@code CustomerService}'s concern, keeping this bean a faithful,
- * single-responsibility analogue of the agency fan-out alone.</p>
+ * <p><strong>Why this is the single-agency task only.</strong> The five legacy
+ * programs collapse into this one service: every concurrent agency call is a
+ * separate invocation of {@link #requestCreditScore()}. The orchestration that
+ * surrounds those calls &mdash; fanning out five requests, enforcing the
+ * three-second deadline, averaging the scores that replied in time, and raising
+ * fail code {@code 'C'} when none reply &mdash; is owned by
+ * {@code CustomerService} (the {@code CRECUST} analogue), <em>not</em> by this
+ * bean. Keeping the aggregation out of here makes each agency a faithful,
+ * single-responsibility analogue of one {@code CRDTAGYn} program and lets the
+ * caller decide the fan-out and deadline policy.</p>
+ *
+ * <p><strong>Why {@link Async @Async} on the dedicated executor.</strong> The
+ * method runs on the {@link AsyncConfig#CREDIT_AGENCY_EXECUTOR} pool, whose core
+ * size is fixed at five (see {@link AsyncConfig}). Routing every agency call to
+ * that pool guarantees that five concurrent invocations all start immediately
+ * and run in parallel, so each gets its full chance to finish inside the
+ * caller's three-second budget. Were these tasks to share a smaller or
+ * contended pool they could be serialised, silently skewing the averaged result
+ * and the "none replied" path. Spring's asynchronous-method support is enabled
+ * once, on {@code BankCoreApplication} ({@code @EnableAsync}).</p>
+ *
+ * <p>This service holds no state and performs no database or transactional work;
+ * the random score is an {@code int} (never a floating-point value), consistent
+ * with the module-wide prohibition on floating-point types in any financial
+ * path.</p>
  *
  * @see AsyncConfig
  */
@@ -62,170 +67,97 @@ import com.ibm.cics.cip.bank.core.exception.BusinessRuleException;
 public class CreditAgencyService
 {
 
-	/** Logger for diagnostic and deadline-miss reporting. */
-	private static final Logger LOG = LoggerFactory
-			.getLogger(CreditAgencyService.class);
-
 	/**
-	 * Number of credit agencies queried in parallel, reproducing the five
-	 * identical COBOL programs {@code CRDTAGY1}&ndash;{@code CRDTAGY5}.
+	 * Lower bound (inclusive) of the simulated agency processing delay, in
+	 * milliseconds. Zero models an agency that replies effectively instantly.
 	 */
-	private static final int NUMBER_OF_AGENCIES = 5;
+	private static final int MIN_DELAY_MILLIS = 0;
 
 	/**
-	 * Lowest credit score an agency may return, matching the COBOL agencies'
-	 * 1&ndash;999 range.
-	 */
-	private static final int MIN_SCORE = 1;
-
-	/**
-	 * Highest credit score an agency may return, matching the COBOL agencies'
-	 * 1&ndash;999 range.
-	 */
-	private static final int MAX_SCORE = 999;
-
-	/**
-	 * Upper bound (exclusive of the extra millisecond) of an individual
-	 * agency's simulated processing delay, in milliseconds &mdash; the Java
-	 * analogue of {@code CRDTAGY1}'s zero-to-three-second random delay.
+	 * Upper bound (inclusive) of the simulated agency processing delay, in
+	 * milliseconds &mdash; three seconds, the top of {@code CRDTAGY1}'s
+	 * zero-to-three-second random delay. A delay at this bound coincides with
+	 * the caller's three-second deadline, reproducing the legacy behaviour where
+	 * the slowest agencies just miss the window.
 	 */
 	private static final int MAX_DELAY_MILLIS = 3000;
 
 	/**
-	 * Fixed deadline, in seconds, the parent waits for replies before averaging
-	 * whatever has arrived &mdash; the {@code EXEC CICS DELAY FOR SECONDS(3)} in
-	 * {@code CRECUST}.
+	 * Lowest credit score an agency may return, matching the COBOL
+	 * 1&ndash;999 range.
 	 */
-	private static final int DEADLINE_SECONDS = 3;
+	private static final int MIN_CREDIT_SCORE = 1;
 
 	/**
-	 * COBOL fail code raised when not a single agency replies inside the
-	 * deadline (the {@code CRECUST} {@code 'C'} path).
+	 * Highest credit score an agency may return, matching the COBOL
+	 * 1&ndash;999 range.
 	 */
-	private static final String FAIL_CODE_NO_AGENCY = "C";
-
-	/** Dedicated executor that runs the five agency tasks concurrently. */
-	private final Executor creditAgencyExecutor;
+	private static final int MAX_CREDIT_SCORE = 999;
 
 	/**
-	 * Constructs the service with the dedicated credit-agency fan-out executor.
+	 * Performs a single asynchronous credit-agency check, reproducing one
+	 * {@code CRDTAGYn} program (feature F-017).
 	 *
-	 * @param creditAgencyExecutor the {@link AsyncConfig#CREDIT_AGENCY_EXECUTOR}
-	 *                             thread pool sized so all five agency tasks
-	 *                             start immediately
+	 * <p>The task sleeps for a random interval of {@value #MIN_DELAY_MILLIS} to
+	 * {@value #MAX_DELAY_MILLIS}&nbsp;ms (the {@code EXEC CICS DELAY} that
+	 * emulates bureau latency) and then returns a random credit score between
+	 * {@value #MIN_CREDIT_SCORE} and {@value #MAX_CREDIT_SCORE} inclusive
+	 * (matching {@code COMPUTE WS-NEW-CREDSCORE = ((999 - 1) * FUNCTION RANDOM)
+	 * + 1}). {@link ThreadLocalRandom} is used so the five concurrent agency
+	 * threads never contend on a shared generator, replacing the COBOL
+	 * {@code FUNCTION RANDOM} seeded from {@code EIBTASKN}.</p>
+	 *
+	 * <p>Because the method is annotated
+	 * {@link Async @Async(AsyncConfig.CREDIT_AGENCY_EXECUTOR)}, Spring executes
+	 * the entire body &mdash; including the {@link Thread#sleep(long) sleep}
+	 * &mdash; on a {@link AsyncConfig#CREDIT_AGENCY_EXECUTOR} thread and adapts
+	 * the returned {@link CompletableFuture} into the asynchronous result the
+	 * caller observes. The caller ({@code CustomerService}) fans out five of
+	 * these calls and enforces the overall three-second deadline; this method
+	 * therefore never blocks longer than its own random delay.</p>
+	 *
+	 * <p><strong>Interruption.</strong> If the worker thread is interrupted
+	 * while sleeping (for example during an executor shutdown), the interrupt
+	 * status is restored and the call completes <em>exceptionally</em> rather
+	 * than returning a fabricated score. An exceptionally-completed future is
+	 * naturally excluded by the caller's "count only the agencies that completed
+	 * normally" aggregation, so an interrupted agency simply does not contribute
+	 * to the average &mdash; it never silently injects a bogus value.</p>
+	 *
+	 * @return a completed {@link CompletableFuture} carrying a random credit
+	 *         score in the range
+	 *         {@value #MIN_CREDIT_SCORE}&ndash;{@value #MAX_CREDIT_SCORE}; or an
+	 *         exceptionally-completed future if the task was interrupted while
+	 *         simulating its delay
 	 */
-	public CreditAgencyService(
-			@Qualifier(AsyncConfig.CREDIT_AGENCY_EXECUTOR) Executor creditAgencyExecutor)
+	@Async(AsyncConfig.CREDIT_AGENCY_EXECUTOR)
+	public CompletableFuture<Integer> requestCreditScore()
 	{
-		this.creditAgencyExecutor = creditAgencyExecutor;
-	}
-
-	/**
-	 * Performs the asynchronous five-agency credit check and returns the
-	 * averaged credit score, reproducing the {@code CRECUST} credit-check
-	 * section.
-	 *
-	 * <p>Five tasks are submitted concurrently; the method then waits up to
-	 * {@value #DEADLINE_SECONDS} seconds for them to finish. The scores of the
-	 * agencies that completed within the deadline are averaged using truncating
-	 * integer division (matching the COBOL {@code COMPUTE ... / WS-RETRIEVED-CNT}).
-	 * If none completed in time, a {@link BusinessRuleException} carrying fail
-	 * code {@value #FAIL_CODE_NO_AGENCY} is thrown.</p>
-	 *
-	 * @return the averaged credit score (1&ndash;999) of the agencies that
-	 *         replied within the deadline
-	 * @throws BusinessRuleException with fail code {@value #FAIL_CODE_NO_AGENCY}
-	 *                               if no agency replied within the deadline
-	 */
-	public int requestCreditScore()
-	{
-		List<CompletableFuture<Integer>> futures = new ArrayList<>(
-				NUMBER_OF_AGENCIES);
-		for (int agency = 0; agency < NUMBER_OF_AGENCIES; agency++)
-		{
-			futures.add(CompletableFuture.supplyAsync(this::queryAgency,
-					creditAgencyExecutor));
-		}
-
-		// Wait for the fixed deadline, mirroring EXEC CICS DELAY FOR SECONDS(3).
-		// A timeout is expected and benign: it simply means one or more agencies
-		// did not reply in time, so we proceed to average whatever did arrive.
-		CompletableFuture<Void> all = CompletableFuture
-				.allOf(futures.toArray(new CompletableFuture[0]));
-		try
-		{
-			all.get(DEADLINE_SECONDS, TimeUnit.SECONDS);
-		}
-		catch (TimeoutException timeout)
-		{
-			LOG.debug("Credit-agency deadline of {}s reached before all "
-					+ "agencies replied; averaging those that did",
-					DEADLINE_SECONDS);
-		}
-		catch (InterruptedException interrupted)
-		{
-			Thread.currentThread().interrupt();
-			throw new BusinessRuleException(FAIL_CODE_NO_AGENCY,
-					"Interrupted while awaiting credit-agency replies");
-		}
-		catch (java.util.concurrent.ExecutionException execution)
-		{
-			// An individual task failing is tolerated here; the per-future
-			// inspection below counts only the agencies that completed normally.
-			LOG.debug("A credit-agency task completed exceptionally: {}",
-					execution.getMessage());
-		}
-
-		long total = 0L;
-		int retrieved = 0;
-		for (CompletableFuture<Integer> future : futures)
-		{
-			if (future.isDone() && !future.isCompletedExceptionally())
-			{
-				Integer score = future.getNow(null);
-				if (score != null)
-				{
-					total += score;
-					retrieved++;
-				}
-			}
-		}
-
-		if (retrieved == 0)
-		{
-			LOG.warn("No credit agency replied within {}s; failing with "
-					+ "code '{}'", DEADLINE_SECONDS, FAIL_CODE_NO_AGENCY);
-			throw new BusinessRuleException(FAIL_CODE_NO_AGENCY,
-					"No credit agency responded within the deadline");
-		}
-
-		// Truncating integer division, exactly as the COBOL COMPUTE does.
-		return (int) (total / retrieved);
-	}
-
-	/**
-	 * Simulates a single credit agency ({@code CRDTAGY1}&ndash;{@code CRDTAGY5}):
-	 * sleeps for a random zero-to-three-second interval and then returns a
-	 * random credit score between {@value #MIN_SCORE} and {@value #MAX_SCORE}.
-	 *
-	 * @return a random credit score in the range
-	 *         {@value #MIN_SCORE}&ndash;{@value #MAX_SCORE}
-	 */
-	private int queryAgency()
-	{
+		// 1. Emulate bureau latency: sleep a random 0-3 second interval.
+		//    (COBOL: EXEC CICS DELAY FOR SECONDS(WS-DELAY-AMT), 0-3s.)
 		int delayMillis = ThreadLocalRandom.current()
-				.nextInt(MAX_DELAY_MILLIS + 1);
+				.nextInt(MIN_DELAY_MILLIS, MAX_DELAY_MILLIS + 1);
 		try
 		{
 			Thread.sleep(delayMillis);
 		}
-		catch (InterruptedException interrupted)
+		catch (InterruptedException interruptedException)
 		{
+			// Restore the interrupt status so the pool/JVM can observe it, then
+			// surface the interruption as an exceptional result the aggregator
+			// ignores. Never swallow the interrupt.
 			Thread.currentThread().interrupt();
-			throw new IllegalStateException(
-					"Credit-agency task interrupted", interrupted);
+			return CompletableFuture.failedFuture(interruptedException);
 		}
-		return ThreadLocalRandom.current().nextInt(MIN_SCORE, MAX_SCORE + 1);
+
+		// 2. Generate the random credit score in 1-999 inclusive.
+		//    (COBOL: COMPUTE WS-NEW-CREDSCORE = ((999 - 1) * FUNCTION RANDOM) + 1.)
+		int creditScore = ThreadLocalRandom.current()
+				.nextInt(MIN_CREDIT_SCORE, MAX_CREDIT_SCORE + 1);
+
+		// 3. Hand the score back as the already-completed async result; the
+		//    @Async proxy delivers it to the caller on the executor thread.
+		return CompletableFuture.completedFuture(creditScore);
 	}
 
 }

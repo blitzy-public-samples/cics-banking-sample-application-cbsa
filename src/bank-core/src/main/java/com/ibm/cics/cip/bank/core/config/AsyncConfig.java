@@ -19,12 +19,14 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
  * interval of zero to three seconds with a credit score between 1 and 999,
  * while the parent waits a fixed three seconds &mdash; so any individual agency
  * has roughly a one-in-four chance of replying inside the window. The Java
- * reimplementation reproduces this with a {@code CreditAgencyService} that fans
- * out five asynchronous tasks, averages whatever results arrive within a
- * three-second deadline, and falls back to fail code {@code 'C'} when none do
- * (feature F-017). This class supplies only the thread pool those tasks run on;
- * it deliberately contains <em>no</em> timing, rating, or orchestration logic
- * &mdash; that behaviour lives entirely in {@code CreditAgencyService}.</p>
+ * reimplementation reproduces this with {@code CustomerService} fanning out five
+ * asynchronous {@code CreditAgencyService.requestCreditScore()} tasks, averaging
+ * whatever results arrive within a three-second deadline, and falling back to
+ * fail code {@code 'C'} when none do (feature F-017). Each
+ * {@code CreditAgencyService} call models one agency &mdash; a random delay plus
+ * a random 1&ndash;999 score. This class supplies only the thread pool those
+ * agency tasks run on; it deliberately contains <em>no</em> timing, rating, or
+ * orchestration logic.</p>
  *
  * <p><strong>Why {@code corePoolSize == 5} is mandatory.</strong> All five
  * tasks are submitted simultaneously. Because the queue has capacity (see
