@@ -3,149 +3,210 @@
 /*                                                                        */
 package com.ibm.cics.cip.bank.core.exception;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.util.stream.Collectors;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.ConstraintViolationException;
+
 /**
  * Centralised REST-boundary exception translation for the {@code bank-core}
- * controllers, reproducing the COBOL {@code ABNDPROC} role of turning a failure
- * into a structured outcome rather than letting it propagate raw.
+ * module &mdash; the Java analogue of the legacy {@code ABNDPROC} COBOL program,
+ * whose stated purpose was to process abends "from one place, without having to
+ * go hunting for them". This {@code @RestControllerAdvice} is that single,
+ * centralised place: it converts an exception thrown anywhere beneath the
+ * controllers into a structured, contract-faithful HTTP response rather than
+ * letting it propagate raw.
  *
- * <h2>Division of responsibility with the controllers</h2>
- * <p>Each mutating controller already catches {@link BusinessRuleException}
- * itself and renders the failure onto its <em>own</em> frozen response envelope
- * (for example a create-account failure sets {@code CommSuccess="N"} and
- * {@code CommFailCode} inside the {@code CreAcc} envelope, while a delete sets an
- * integer {@code DelAccFailCd}). That per-endpoint handling is required because
- * the ten frozen z/OS Connect envelopes each carry their fail indicator in a
- * different field with a different type and a different "success" sentinel
- * (empty string, {@code "Y"}/{@code "N"}, numeric {@code "0"}, or an
- * {@code int}); a single advice cannot reproduce all of those shapes.</p>
+ * <h2>The non-obvious rule: a business fail code is HTTP 200, not 4xx/5xx</h2>
+ * <p>Every legacy CBSA business program reports its outcome through two trailing
+ * commarea fields &mdash; {@code COMM-SUCCESS PIC X} ({@code "Y"}/{@code "N"})
+ * and {@code COMM-FAIL-CODE PIC X}. Under the frozen z/OS Connect contract those
+ * <em>business</em> outcomes (both success and failure) ride inside the
+ * <strong>HTTP&nbsp;200 JSON body</strong>; consumers inspect the body, not the
+ * HTTP status, to decide whether a request was rejected. The existing consumer
+ * {@code WebController} proves this: it calls
+ * {@code WebClient ... .retrieve().bodyToMono(String.class).block()} and only
+ * runs its {@code checkIfResponseValid*} fail-code logic on a successful (2xx)
+ * body; a non-2xx status instead makes {@code WebClient} throw a
+ * {@code WebClientResponseException}, which the consumer treats as a generic
+ * connection/request error rather than as a fail code.</p>
  *
- * <p>This advice is therefore a <strong>defensive safety net</strong> for the
- * cases the controllers do not (and should not) shape themselves:</p>
- * <ul>
- *   <li>a {@link BusinessRuleException} that nonetheless escapes a controller
- *       &mdash; rendered as a minimal generic outcome so the fail code is never
- *       lost (HTTP 200, because consumers parse the body rather than the status
- *       for business outcomes);</li>
- *   <li>request <strong>validation</strong> failures
- *       ({@link MethodArgumentNotValidException}) and <strong>unreadable</strong>
- *       request bodies ({@link HttpMessageNotReadableException}) &mdash; genuine
- *       client errors, rendered as HTTP 400;</li>
- *   <li>any other unexpected exception &mdash; rendered as HTTP 500 without
- *       leaking stack traces into the response envelope.</li>
- * </ul>
+ * <p>Consequently a {@link BusinessRuleException} that reaches this advice MUST
+ * be rendered as HTTP&nbsp;200 with a body that flags failure and carries the
+ * <em>exact</em> fail code. Returning 4xx/5xx for a normal business fail code
+ * would break both the React/Carbon UI and the interface modules that branch on
+ * the body, defeating the "re-point only, no rewrite" promise of the migration.</p>
+ *
+ * <h2>Why this advice is deliberately decoupled from per-endpoint envelopes</h2>
+ * <p>Primary envelope fidelity belongs to the controller layer: each
+ * {@code controller/*Controller} catches {@link BusinessRuleException} (or
+ * otherwise sets {@code COMM-SUCCESS="N"} + {@code COMM-FAIL-CODE}) and returns
+ * its <em>own</em> endpoint-specific response DTO so the per-endpoint envelope is
+ * byte-for-byte correct. Those DTO types live in sibling packages and each
+ * carries its fail indicator in a different field, with a different type and a
+ * different "success" sentinel; a single advice cannot reproduce all of those
+ * shapes. This class is therefore a <strong>cross-cutting safety net</strong>
+ * for (a) any {@link BusinessRuleException} that escapes a controller uncaught,
+ * (b) Bean Validation failures (F-021), and (c) genuinely unexpected exceptions.
+ * It must never depend on an endpoint DTO, so it emits a small, generic,
+ * JSON-serialisable {@link ErrorResponse} body instead.</p>
+ *
+ * <p>Component scanning discovers this advice automatically: {@code
+ * BankCoreApplication} sits at the package root
+ * {@code com.ibm.cics.cip.bank.core} with default scanning, so this
+ * {@code exception} subpackage is picked up with no extra configuration.</p>
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler
 {
 
-	/** Logger for diagnostic context (failures are logged, not echoed verbatim). */
-	private static final Logger LOG = LoggerFactory
-			.getLogger(GlobalExceptionHandler.class);
-
-	/** Response key carrying the success flag in the generic fallback body. */
-	private static final String KEY_SUCCESS = "success";
-
-	/** Response key carrying the fail code in the generic fallback body. */
-	private static final String KEY_FAIL_CODE = "failCode";
-
-	/** Response key carrying a human-readable message in error bodies. */
-	private static final String KEY_ERROR = "error";
-
-	/** Success-flag value denoting failure, matching the COBOL {@code COMM-SUCCESS='N'}. */
-	private static final String FLAG_FAILURE = "N";
+	/**
+	 * Fail-code value used when no COBOL business fail code applies (for example
+	 * for malformed-input or unexpected-error responses). An empty string is the
+	 * contract-faithful "no failure code" marker: the legacy consumer treats an
+	 * empty {@code COMM-FAIL-CODE} as "no failure" (see
+	 * {@code WebController.checkIfResponseValidCreateCust}). A new code is never
+	 * invented.
+	 */
+	private static final String NO_FAIL_CODE = "";
 
 	/**
-	 * Defensive fallback for a {@link BusinessRuleException} that escaped a
-	 * controller's own envelope handling. Renders a minimal, generic outcome
-	 * body carrying the verbatim fail code with HTTP 200, because consumers of
-	 * the frozen contract inspect the response body (not the HTTP status) to
-	 * detect a business rejection.
+	 * Generic, user-safe message returned for any unexpected server-side error.
+	 * Deliberately free of stack traces, SQL, exception class names, and any
+	 * internal or mainframe detail.
+	 */
+	private static final String UNEXPECTED_ERROR_MESSAGE = "An unexpected error occurred.";
+
+	/**
+	 * Fallback message used when a validation failure carries no inspectable
+	 * field error or constraint violation to aggregate.
+	 */
+	private static final String VALIDATION_FAILED_MESSAGE = "Validation failed.";
+
+	/** Separator used when aggregating multiple validation messages into one. */
+	private static final String MESSAGE_DELIMITER = "; ";
+
+	/**
+	 * Defensive translation of a {@link BusinessRuleException} that escaped a
+	 * controller's own envelope handling. Renders a minimal, generic outcome body
+	 * that carries the verbatim COBOL fail code.
 	 *
-	 * @param ex the escaped business-rule exception
-	 * @return an HTTP 200 response whose body reports failure and the fail code
+	 * <p><strong>Status is HTTP&nbsp;200 by design.</strong> Frozen-contract
+	 * consumers detect a business rejection by reading the response body (the
+	 * success flag and fail code), not the HTTP status; returning 4xx/5xx here
+	 * would be misread as a transport error and break those consumers.</p>
+	 *
+	 * @param ex the escaped business-rule exception (never {@code null})
+	 * @return an HTTP&nbsp;200 response whose body reports {@code success=false}
+	 *         and the exact {@link BusinessRuleException#getFailCode() fail code}
 	 */
 	@ExceptionHandler(BusinessRuleException.class)
-	public ResponseEntity<Map<String, Object>> handleBusinessRule(
+	public ResponseEntity<ErrorResponse> handleBusinessRuleException(
 			BusinessRuleException ex)
 	{
-		LOG.warn("Unhandled business-rule failure reached advice: failCode={}",
-				ex.getFailCode());
-		Map<String, Object> body = new LinkedHashMap<>();
-		body.put(KEY_SUCCESS, FLAG_FAILURE);
-		body.put(KEY_FAIL_CODE, ex.getFailCode());
+		// HTTP 200 (not 4xx/5xx): the fail code is a business outcome carried in
+		// the body, exactly as the legacy z/OS Connect contract delivers it.
+		ErrorResponse body = new ErrorResponse(false, ex.getFailCode(),
+				ex.getMessage());
 		return ResponseEntity.ok(body);
 	}
 
 	/**
-	 * Handles bean-validation failures on {@code @Valid} request bodies, mapping
-	 * the first field error onto an HTTP 400 response.
+	 * Translates a Bean Validation failure raised for a {@code @Valid}
+	 * {@code @RequestBody} DTO into an HTTP&nbsp;400 response. The individual
+	 * field errors are aggregated into a single concise, user-safe message; no
+	 * business fail code applies, so the fail code is left empty (never invented).
 	 *
-	 * @param ex the validation exception
-	 * @return an HTTP 400 response describing the first validation error
+	 * <p>HTTP&nbsp;400 is correct here: the request never reached business logic,
+	 * so this is a genuine client error, distinct from a COBOL business fail
+	 * code.</p>
+	 *
+	 * @param ex the binding/validation exception for the request body
+	 * @return an HTTP&nbsp;400 response describing the field-level errors
 	 */
 	@ExceptionHandler(MethodArgumentNotValidException.class)
-	public ResponseEntity<Map<String, Object>> handleValidation(
+	public ResponseEntity<ErrorResponse> handleMethodArgumentNotValid(
 			MethodArgumentNotValidException ex)
 	{
-		String message = "Validation failed";
-		if (ex.getBindingResult().getFieldError() != null)
+		String message = ex.getBindingResult().getFieldErrors().stream()
+				.map(fieldError -> fieldError.getField() + ": "
+						+ fieldError.getDefaultMessage())
+				.collect(Collectors.joining(MESSAGE_DELIMITER));
+		if (message.isEmpty())
 		{
-			message = ex.getBindingResult().getFieldError().getField() + ": "
-					+ ex.getBindingResult().getFieldError()
-							.getDefaultMessage();
+			message = VALIDATION_FAILED_MESSAGE;
 		}
-		LOG.info("Request validation failed: {}", message);
-		Map<String, Object> body = new LinkedHashMap<>();
-		body.put(KEY_ERROR, message);
+		ErrorResponse body = new ErrorResponse(false, NO_FAIL_CODE, message);
 		return ResponseEntity.badRequest().body(body);
 	}
 
 	/**
-	 * Handles an unreadable or malformed request body (for example invalid JSON),
-	 * mapping it onto an HTTP 400 response.
+	 * Translates a Jakarta Bean Validation failure raised for {@code @Validated}
+	 * method parameters (path / query parameters, F-021) into an HTTP&nbsp;400
+	 * response. The constraint violations are aggregated into a single concise,
+	 * user-safe message; no business fail code applies, so the fail code is left
+	 * empty.
 	 *
-	 * @param ex the message-not-readable exception
-	 * @return an HTTP 400 response indicating a malformed request body
+	 * @param ex the constraint-violation exception for the request parameters
+	 * @return an HTTP&nbsp;400 response describing the constraint violations
 	 */
-	@ExceptionHandler(HttpMessageNotReadableException.class)
-	public ResponseEntity<Map<String, Object>> handleUnreadable(
-			HttpMessageNotReadableException ex)
+	@ExceptionHandler(ConstraintViolationException.class)
+	public ResponseEntity<ErrorResponse> handleConstraintViolation(
+			ConstraintViolationException ex)
 	{
-		LOG.info("Malformed request body: {}", ex.getMostSpecificCause()
-				.getMessage());
-		Map<String, Object> body = new LinkedHashMap<>();
-		body.put(KEY_ERROR, "Malformed request body");
+		String message = ex.getConstraintViolations().stream()
+				.map((ConstraintViolation<?> violation) -> violation
+						.getPropertyPath() + ": " + violation.getMessage())
+				.collect(Collectors.joining(MESSAGE_DELIMITER));
+		if (message.isEmpty())
+		{
+			message = VALIDATION_FAILED_MESSAGE;
+		}
+		ErrorResponse body = new ErrorResponse(false, NO_FAIL_CODE, message);
 		return ResponseEntity.badRequest().body(body);
 	}
 
 	/**
-	 * Final catch-all for any other exception. Logs the full detail server-side
-	 * and returns a sanitised HTTP 500 response that never exposes a stack trace
-	 * or internal message to the caller.
+	 * Final catch-all for any other (unexpected) exception. Returns a sanitised
+	 * HTTP&nbsp;500 response that never exposes a stack trace, SQL, exception
+	 * class name, or any internal / mainframe detail to the caller. The original
+	 * exception is intentionally not echoed into the body.
 	 *
-	 * @param ex the unexpected exception
-	 * @return an HTTP 500 response with a generic message
+	 * @param ex the unexpected exception (intentionally not surfaced to the client)
+	 * @return an HTTP&nbsp;500 response with a generic, safe message
 	 */
 	@ExceptionHandler(Exception.class)
-	public ResponseEntity<Map<String, Object>> handleUnexpected(Exception ex)
+	public ResponseEntity<ErrorResponse> handleUnexpected(Exception ex)
 	{
-		LOG.error("Unexpected error processing request", ex);
-		Map<String, Object> body = new LinkedHashMap<>();
-		body.put(KEY_ERROR, "Internal server error");
+		ErrorResponse body = new ErrorResponse(false, NO_FAIL_CODE,
+				UNEXPECTED_ERROR_MESSAGE);
 		return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
 				.body(body);
 	}
 
+	/**
+	 * Compact, contract-safe error body emitted by this advice. It exposes only
+	 * the fields a frozen-contract consumer looks for and is deliberately
+	 * decoupled from every endpoint-specific DTO, so the advice compiles and
+	 * behaves correctly in isolation.
+	 *
+	 * <p>Serialises to {@code {"success":false,"failCode":"...","message":"..."}}.
+	 * The {@code failCode} carries the verbatim {@link BusinessRuleException}
+	 * code for a business rejection and an empty string when no business code
+	 * applies.</p>
+	 *
+	 * @param success  the success flag; always {@code false} for an error body
+	 * @param failCode the verbatim COBOL fail code, or empty when none applies
+	 * @param message  a user-safe description of the failure
+	 */
+	private static record ErrorResponse(boolean success, String failCode,
+			String message)
+	{
+	}
 }
