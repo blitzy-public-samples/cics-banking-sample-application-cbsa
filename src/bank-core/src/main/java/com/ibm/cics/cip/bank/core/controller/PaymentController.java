@@ -104,31 +104,24 @@ public class PaymentController
 
 	/**
 	 * Resolves the facility type from the origin's {@code CommFaciltype} (for
-	 * example {@code "0496"} &rarr; {@code 496}). Defaults to the payment
-	 * facility type when the origin or its facility type is absent or
-	 * unparseable, matching the payment-channel caller.
+	 * example {@code 496}). Defaults to the payment facility type when the origin
+	 * or its facility type is absent, matching the payment-channel caller.
+	 *
+	 * <p>{@code CommFaciltype} is modelled as an {@link Integer} (the frozen
+	 * schema declares it {@code type=integer}), so no string parsing is required:
+	 * a present value is returned directly and an absent ({@code null}) value
+	 * falls back to {@link BankConstants#PAYMENT_FACILITY_TYPE}.</p>
 	 *
 	 * @param origin the request origin, possibly {@code null}
 	 * @return the resolved facility type
 	 */
 	private int resolveFacilityType(OriginJson origin)
 	{
-		if (origin == null || origin.getCommFacilType() == null
-				|| origin.getCommFacilType().trim().isEmpty())
+		if (origin == null || origin.getCommFaciltype() == null)
 		{
 			return BankConstants.PAYMENT_FACILITY_TYPE;
 		}
-		try
-		{
-			return Integer.parseInt(origin.getCommFacilType().trim());
-		}
-		catch (NumberFormatException ex)
-		{
-			LOG.warn("Unparseable facility type '{}', defaulting to {}",
-					origin.getCommFacilType(),
-					BankConstants.PAYMENT_FACILITY_TYPE);
-			return BankConstants.PAYMENT_FACILITY_TYPE;
-		}
+		return origin.getCommFaciltype();
 	}
 
 	/**

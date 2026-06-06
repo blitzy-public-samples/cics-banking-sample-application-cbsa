@@ -4,60 +4,110 @@
 package com.ibm.cics.cip.bank.core.dto.payment;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.annotation.JsonNaming;
+import com.ibm.cics.cip.bank.core.config.JacksonConfig;
 
 /**
- * Frozen z/OS Connect payment <em>origin</em> envelope ({@code OriginJson}),
- * reproduced field-for-field from the Payment-Interface module's class of the
- * same name (feature F-019). Nested inside {@link DbcrJson} under the
- * {@code CommOrigin} key.
+ * Frozen z/OS Connect payment <em>origin/channel</em> object ({@code CommOrigin})
+ * of the make-payment (debit/credit) payload, reproduced verbatim from the
+ * Payment-Interface module's {@code OriginJson} (feature F-019). It maps the
+ * {@code COMM-ORIGIN} group of {@code PAYDBCR.cpy} and is nested inside
+ * {@link DbcrJson} under the {@code CommOrigin} key on both request and response.
  *
- * <p>This structure conveys the calling channel identity. On a request the
- * {@code bank-core} {@code PaymentController} derives two pieces of information
- * from it:</p>
+ * <p><strong>Wire contract is frozen.</strong> Every field carries an explicit
+ * {@link JsonProperty @JsonProperty} pinning its verbatim wire name
+ * ({@code CommApplid}, {@code CommUserid}, {@code CommFacilityName},
+ * {@code CommNetwrkId}, {@code CommFaciltype}, {@code Fill0}). The class is
+ * annotated {@link JsonNaming @JsonNaming} with
+ * {@link JacksonConfig.EnvelopeNamingStrategy} for consistency with the other
+ * {@code core/dto} envelopes; because each member also declares an explicit
+ * {@code @JsonProperty}, Jackson honours that explicit name and the strategy
+ * does not alter it &mdash; matching the legacy behaviour precisely and keeping
+ * the serialised object byte-for-byte compatible with the
+ * {@code CommOrigin} block of {@code PayRequest.json} / {@code PayResponse.json}.</p>
+ *
+ * <h2>Channel identity conveyed</h2>
  * <ul>
- *   <li>the <strong>facility type</strong> from {@code CommFaciltype} (the legacy
- *       value {@code "0496"} parses to the integer {@code 496}, which
- *       {@code PaymentService} uses to apply the payment-channel debit/credit
- *       restrictions reproduced from {@code DBCRFUN});</li>
+ *   <li>the <strong>facility type</strong> from {@code CommFaciltype} (defaulted
+ *       to {@code 496}), which {@code PaymentService} uses to apply the
+ *       facility-type-496 debit/credit channel restrictions reproduced from
+ *       {@code DBCRFUN};</li>
  *   <li>the <strong>origin string</strong> from {@code CommApplid} concatenated
- *       with {@code CommUserid} (16 characters), of which the leading 14 form the
- *       PROCTRAN description for payment-channel movements (types {@code PDR} /
- *       {@code PCR}).</li>
+ *       with {@code CommUserid} (16 characters), which the payment service slices
+ *       for the PROCTRAN description of payment-channel movements.</li>
  * </ul>
  *
+ * <h2>Type fidelity ({@code CommFaciltype})</h2>
+ * <p>The COBOL field is {@code COMM-FACILTYPE PIC S9(8) COMP} (a binary integer)
+ * and the frozen schema declares {@code CommFaciltype} as
+ * {@code {"type":"integer","minimum":-99999999,"maximum":99999999}}. This DTO
+ * therefore models it as an {@link Integer} (defaulted to {@code 496}), unlike
+ * the legacy interface module which carried it as the {@code String "0496"}. A
+ * {@code String} would serialise as {@code "CommFaciltype":"496"} and fail the
+ * integer schema; an {@code Integer} renders as the bare JSON number
+ * {@code 496}, satisfying the contract.</p>
+ *
  * <p>The remaining fields ({@code CommFacilityName}, {@code CommNetwrkId},
- * {@code Fill0}) are preserved verbatim with their legacy default values so the
- * envelope round-trips unchanged.</p>
+ * {@code Fill0}) are preserved verbatim with their legacy space-padded default
+ * values so the envelope round-trips unchanged.</p>
+ *
+ * @see JacksonConfig.EnvelopeNamingStrategy
+ * @see DbcrJson
  */
+@JsonNaming(JacksonConfig.EnvelopeNamingStrategy.class)
 public class OriginJson
 {
 
-	/** Application id (first 8 characters of the origin). */
+	/**
+	 * Application id &mdash; the first eight characters of the inbound
+	 * organisation. {@code COMM-APPLID PIC X(8)}. Left {@code null} by the no-arg
+	 * constructor; populated by the organisation split.
+	 */
 	@JsonProperty("CommApplid")
 	private String commApplid;
 
-	/** User id (second 8 characters of the origin). */
+	/**
+	 * User id &mdash; the second eight characters of the inbound organisation.
+	 * {@code COMM-USERID PIC X(8)}. Left {@code null} by the no-arg constructor;
+	 * populated by the organisation split.
+	 */
 	@JsonProperty("CommUserid")
 	private String commUserid;
 
-	/** Facility name (preserved default). */
+	/**
+	 * Facility name. {@code COMM-FACILITY-NAME PIC X(8)}. Defaulted to eight
+	 * spaces to match the legacy wire value.
+	 */
 	@JsonProperty("CommFacilityName")
 	private String commFacilityName = "        ";
 
-	/** Network id (preserved default). */
+	/**
+	 * Network id. {@code COMM-NETWRK-ID PIC X(8)}. Defaulted to eight spaces to
+	 * match the legacy wire value.
+	 */
 	@JsonProperty("CommNetwrkId")
 	private String commNetwrkId = "        ";
 
-	/** Facility type; the legacy default {@code "0496"} denotes the payment channel. */
+	/**
+	 * Facility type. {@code COMM-FACILTYPE PIC S9(8) COMP} &rarr; {@link Integer}
+	 * (frozen schema {@code type=integer}). Defaulted to {@code 496}, the
+	 * facility-type sentinel that drives the FACILTYPE-496 channel rules in
+	 * {@code PaymentService}.
+	 */
 	@JsonProperty("CommFaciltype")
-	private String commFaciltype = "0496";
+	private Integer commFaciltype = 496;
 
-	/** Filler (preserved default). */
+	/**
+	 * Trailing filler. {@code FILLER PIC X(4)}. Defaulted to four spaces to match
+	 * the legacy wire value.
+	 */
 	@JsonProperty("Fill0")
 	private String fill0 = "    ";
 
 	/**
-	 * Default constructor for Jackson (de)serialisation.
+	 * No-argument constructor required for Jackson deserialisation. Leaves
+	 * {@code commApplid} and {@code commUserid} {@code null} and the remaining
+	 * fields at their space-padded / {@code 496} defaults.
 	 */
 	public OriginJson()
 	{
@@ -65,9 +115,49 @@ public class OriginJson
 	}
 
 	/**
-	 * Returns the application id.
+	 * Constructs the origin from an inbound organisation string. Both the
+	 * application id and the user id carry the organisation data, so it is
+	 * left-justified into sixteen characters (right-padded with spaces) and split
+	 * into two eight-character halves: characters {@code 0..7} become the
+	 * application id and characters {@code 8..15} become the user id.
 	 *
-	 * @return the application id
+	 * <p>An organisation of sixteen or more characters is truncated to its first
+	 * sixteen by the {@code substring} calls, reproducing the legacy behaviour
+	 * exactly. (Callers upstream constrain the organisation to at most sixteen
+	 * characters, so the truncation is defensive.)</p>
+	 *
+	 * @param organisation the inbound organisation string (may be shorter than
+	 *                      sixteen characters; will be right-padded with spaces)
+	 */
+	public OriginJson(String organisation)
+	{
+		// APPLID and USERID both carry the organisation data, so it is split
+		// into two 8-character strings.
+		String paddedOrg = String.format("%-16s", organisation);
+		commApplid = paddedOrg.substring(0, 8);
+		commUserid = paddedOrg.substring(8);
+	}
+
+	/**
+	 * Re-applies the organisation split after construction, using the identical
+	 * idiom as {@link #OriginJson(String)}: the organisation is left-justified
+	 * into sixteen characters and split into the eight-character application id
+	 * and the eight-character user id.
+	 *
+	 * @param organisation the inbound organisation string (may be shorter than
+	 *                      sixteen characters; will be right-padded with spaces)
+	 */
+	public void setOrganisation(String organisation)
+	{
+		String paddedOrg = String.format("%-16s", organisation);
+		commApplid = paddedOrg.substring(0, 8);
+		commUserid = paddedOrg.substring(8);
+	}
+
+	/**
+	 * Returns the application id (first eight characters of the origin).
+	 *
+	 * @return the application id, or {@code null} if not yet set
 	 */
 	public String getCommApplid()
 	{
@@ -85,9 +175,9 @@ public class OriginJson
 	}
 
 	/**
-	 * Returns the user id.
+	 * Returns the user id (second eight characters of the origin).
 	 *
-	 * @return the user id
+	 * @return the user id, or {@code null} if not yet set
 	 */
 	public String getCommUserid()
 	{
@@ -107,7 +197,7 @@ public class OriginJson
 	/**
 	 * Returns the facility name.
 	 *
-	 * @return the facility name
+	 * @return the facility name (defaults to eight spaces)
 	 */
 	public String getCommFacilityName()
 	{
@@ -127,7 +217,7 @@ public class OriginJson
 	/**
 	 * Returns the network id.
 	 *
-	 * @return the network id
+	 * @return the network id (defaults to eight spaces)
 	 */
 	public String getCommNetwrkId()
 	{
@@ -145,20 +235,12 @@ public class OriginJson
 	}
 
 	/**
-	 * Returns the facility type (e.g. {@code "0496"}).
-	 *
-	 * <p>The {@code @JsonProperty("CommFaciltype")} here is required: the getter
-	 * name ({@code getCommFacilType}, capital {@code T}) does not follow from the
-	 * field name ({@code commFaciltype}, lower-case {@code t}) by JavaBean
-	 * convention, so without the explicit annotation Jackson would treat the
-	 * field and the getter as two separate properties and emit <em>two</em> keys.
-	 * Annotating the field, getter, and setter with the same name merges them
-	 * into the single {@code CommFaciltype} key.</p>
+	 * Returns the facility type. Defaults to {@code 496}, the facility-type
+	 * sentinel keyed by {@code PaymentService}'s channel rules.
 	 *
 	 * @return the facility type
 	 */
-	@JsonProperty("CommFaciltype")
-	public String getCommFacilType()
+	public Integer getCommFaciltype()
 	{
 		return commFaciltype;
 	}
@@ -166,18 +248,17 @@ public class OriginJson
 	/**
 	 * Sets the facility type.
 	 *
-	 * @param commFacilType the facility type
+	 * @param commFaciltypeIn the facility type
 	 */
-	@JsonProperty("CommFaciltype")
-	public void setCommFacilType(String commFacilType)
+	public void setCommFaciltype(Integer commFaciltypeIn)
 	{
-		commFaciltype = commFacilType;
+		commFaciltype = commFaciltypeIn;
 	}
 
 	/**
-	 * Returns the filler.
+	 * Returns the trailing filler.
 	 *
-	 * @return the filler
+	 * @return the filler (defaults to four spaces)
 	 */
 	public String getFill0()
 	{
@@ -185,7 +266,7 @@ public class OriginJson
 	}
 
 	/**
-	 * Sets the filler.
+	 * Sets the trailing filler.
 	 *
 	 * @param fill0In the filler
 	 */
@@ -194,4 +275,17 @@ public class OriginJson
 		fill0 = fill0In;
 	}
 
+	/**
+	 * Returns a diagnostic string rendering all six fields of the origin object.
+	 *
+	 * @return a string representation of this {@code OriginJson}
+	 */
+	@Override
+	public String toString()
+	{
+		return "OriginJson [CommApplid=" + commApplid + ", CommUserid="
+				+ commUserid + ", CommFacilityName=" + commFacilityName
+				+ ", CommNetwrkId=" + commNetwrkId + ", CommFaciltype="
+				+ commFaciltype + ", Fill0=" + fill0 + "]";
+	}
 }
