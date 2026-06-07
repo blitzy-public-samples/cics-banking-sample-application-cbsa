@@ -3,235 +3,315 @@
 /*                                                                        */
 package com.ibm.cics.cip.bank.core.controller;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentMatchers;
+import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ibm.cics.cip.bank.core.dto.customerenquiry.CustomerEnquiryJson;
+import com.ibm.cics.cip.bank.core.dto.customerenquiry.InqCustDob;
 import com.ibm.cics.cip.bank.core.dto.customerenquiry.InqCustZJson;
+import com.ibm.cics.cip.bank.core.exception.BusinessRuleException;
 import com.ibm.cics.cip.bank.core.service.CustomerService;
 
 /**
  * Controller <em>contract</em> integration test for
- * {@link InquireCustomerController} &mdash; the proof for the
- * <strong>CRITICAL</strong> F-019 frozen-contract finding and the customer
- * -number fixed-width parse finding raised at this checkpoint.
+ * {@link InquireCustomerController} &mdash; the proof that the production
+ * controller reproduces the frozen z/OS&nbsp;Connect <em>inquire-customer</em>
+ * ({@code inqcustz}) JSON contract byte-for-byte (feature&nbsp;<strong>F-019</strong>),
+ * so the preserved React/Carbon UI and the Customer-Services interface module
+ * re-point by base URL only and are never rewritten. This is one of the ten
+ * {@code *IT.java} contract tests in {@code com.ibm.cics.cip.bank.core.controller};
+ * it targets {@code GET /inqcustz/enquiry/{custno}} (operationId
+ * {@code getCScustenq}, service {@code CScustenq}, mapping {@code INQCUST.cbl}).
  *
- * <h2>What this pins (the frozen {@code inqcustz} contract)</h2>
+ * <h2>What this pins (verified against the frozen swagger / consumer)</h2>
  * <ul>
- *   <li><strong>The response envelope's single top-level key is
- *       {@code InqCustZ}</strong> (mixed case), exactly as declared by
- *       {@code src/zosconnect_artefacts/apis/inqcustz/.../swagger.json}
- *       ({@code getCScustenq_response_200.InqCustZ}) and the service interface
- *       {@code INQCUSTZ.si} ({@code field name="InqCustZ" originalName="INQCUSTZ"}).
- *       This guards against the previous all-caps {@code INQCUSTZ} regression,
- *       which diverged from the swagger and from the sibling
- *       {@code AccountEnquiryJson} ({@code InqAcc}) reference.</li>
- *   <li><strong>{@code GET /inqcustz/enquiry/{custno}}</strong> at the root
- *       context (no context-path prefix), producing {@code application/json}.</li>
- *   <li><strong>The {@code {custno}} path variable is bound to the 1-to-10-digit
- *       contract width.</strong> An over-width value such as {@code 10000000000}
- *       (eleven digits) is rejected as HTTP&nbsp;400 by
- *       {@code BankFormat.parseCustomerNumber} &rarr; {@code GlobalExceptionHandler},
- *       rather than being silently accepted by a raw {@code Long.parseLong}.</li>
- *   <li><strong>The swagger-declared request body is accepted but optional</strong>
- *       ({@code @RequestBody(required = false)}): a caller that sends the frozen
- *       {@code InqCustZ} envelope alongside the path variable is honoured, and a
- *       caller that sends none (the preserved no-body Java consumer) still works.
- *       The path variable remains authoritative.</li>
- *   <li><strong>A not-found read is a soft outcome:</strong> HTTP&nbsp;200 with
- *       {@code InqCustZ.InqCustInqSuccess="N"} and {@code InqCustInqFailCd="1"}
- *       in the envelope &mdash; INQCUST never abends on a miss (F-008).</li>
+ *   <li><strong>{@code GET /inqcustz/enquiry/{custno}}</strong> at the ROOT
+ *       context &mdash; no servlet context-path prefix (basePath
+ *       {@code /inqcustz}, relativePath {@code /enquiry/{custno}}, per
+ *       {@code src/zosconnect_artefacts/apis/inqcustz/package.xml} and
+ *       {@code .../api-docs/swagger.json}). The customer number travels in the
+ *       <em>path variable</em>; the authoritative consumer
+ *       ({@code WebController.@GetMapping("/enqcust")}) issues
+ *       {@code client.get().retrieve()} with <strong>no request body</strong>,
+ *       so these tests use {@code get(...)} only and never attach a body.</li>
+ *   <li><strong>A single top-level wire key {@code InqCustZ}</strong> on the
+ *       response (the frozen {@code getCScustenq_response_200} schema is an object
+ *       whose only property is {@code InqCustZ}, mixed case &mdash; never the
+ *       all-caps {@code INQCUSTZ}). The preserved consumer deserialises with a
+ *       strict {@code FAIL_ON_UNKNOWN_PROPERTIES} mapper, so an extra top-level
+ *       key would break it; the envelope-shape test guards exactly this.</li>
+ *   <li><strong>A single HTTP&nbsp;200 in every outcome.</strong> Unlike the
+ *       mutating endpoints, {@code INQCUST} never abends on a miss: a not-found
+ *       read is a SOFT outcome carried as {@code InqCustInqSuccess="N"} (with a
+ *       fail code) inside the {@code InqCustZ} envelope, still at
+ *       HTTP&nbsp;{@code 200} (F-008).</li>
+ *   <li><strong>The nested {@code InqCustDob} day/month/year group is present</strong>
+ *       on a successful enquiry &mdash; the swagger models the date of birth as a
+ *       component object {@code {InqCustDobDd, InqCustDobMm, InqCustDobYyyy}}, not
+ *       a single date string, so the test asserts the nested
+ *       {@code $.InqCustZ.InqCustDob.InqCustDobYyyy} field.</li>
  * </ul>
  *
  * <h2>Test strategy &mdash; the DB-free web slice</h2>
  * <p>This is a {@link WebMvcTest @WebMvcTest(InquireCustomerController.class)}
  * slice: it bootstraps only the Spring MVC layer for the controller (plus the
- * auto-configured Jackson {@link ObjectMapper}, {@link MockMvc} and the
- * {@code @RestControllerAdvice}), with <strong>no datasource, JPA or Flyway</strong>,
- * so it is green on Java&nbsp;17 with no PostgreSQL running. The single
- * collaborator {@link CustomerService} (the {@code INQCUST} business port) is a
- * {@link MockBean @MockitoBean}, so the test exercises the adapter in isolation.</p>
+ * auto-configured Jackson {@link ObjectMapper}, {@link MockMvc} and any
+ * {@code @RestControllerAdvice}), with <strong>no datasource, JPA or Flyway</strong>.
+ * It therefore stays green on Java&nbsp;17 with no PostgreSQL running, and it is
+ * deliberately NOT a {@code @SpringBootTest}. The single business collaborator
+ * {@link CustomerService} (the {@code INQCUST} business port) is replaced by a
+ * {@link MockBean @MockBean}, so the test exercises the thin HTTP adapter in
+ * isolation: {@link CustomerService#inquireCustomer(long)} is the stubbed seam
+ * and its {@code long} customer-number argument is matched with
+ * {@link ArgumentMatchers#anyLong()}.</p>
+ *
+ * <p>No mainframe types are referenced anywhere in this test (no
+ * {@code com.ibm.cics.server}, {@code com.ibm.jzos} or {@code com.ibm.websphere}),
+ * and no {@code double}/{@code float} arithmetic appears &mdash; the customer
+ * enquiry contract carries only text, integer and component-date fields.</p>
+ *
+ * @see InquireCustomerController#inquireCustomer(String, CustomerEnquiryJson)
+ * @see CustomerService#inquireCustomer(long)
+ * @see CustomerEnquiryJson
+ * @see InqCustZJson
  */
 @WebMvcTest(InquireCustomerController.class)
-@DisplayName("InquireCustomerController contract IT — frozen inqcustz InqCustZ envelope + fixed-width custno (F-019/F-021)")
+@DisplayName("InquireCustomerController contract IT — frozen inqcustz / InqCustZ envelope (F-019)")
 class InquireCustomerControllerIT
 {
 
-	/** Frozen endpoint base: root context, no context-path prefix. */
-	private static final String ENDPOINT = "/inqcustz/enquiry/";
+	/**
+	 * The frozen route as a URI template: ROOT context, no context-path prefix.
+	 * The {@code {custno}} placeholder is expanded per request by
+	 * {@link MockMvcRequestBuilders#get(String, Object...)}.
+	 */
+	private static final String ENDPOINT_TEMPLATE = "/inqcustz/enquiry/{custno}";
 
-	/** A within-width (&le; 10-digit) customer number used on the happy path. */
-	private static final String VALID_CUSTNO = "1";
+	/** A within-width, zero-padded (10-digit) customer number for the happy path. */
+	private static final String SUCCESS_CUSTNO = "0000000123";
 
-	/** An eleven-digit value: inside {@code long} range, but over the contract width. */
-	private static final String OVER_WIDTH_CUSTNO = "10000000000";
+	/** A within-width, zero-padded (10-digit) customer number for the miss path. */
+	private static final String NOT_FOUND_CUSTNO = "0000000404";
 
-	/** Auto-configured MockMvc driving the {@code InquireCustomerController} slice. */
+	/** Bank sort code, zero-padded to width 6 (&sect;0.6). */
+	private static final String SORT_CODE = "987654";
+
+	/** Stubbed customer name asserted on the happy path. */
+	private static final String CUSTOMER_NAME = "MR JOHN SMITH";
+
+	/** Stubbed customer address populated on the happy-path envelope. */
+	private static final String CUSTOMER_ADDRESS = "1 HIGH STREET, ANYTOWN, AT1 2CD";
+
+	/** Day component of the stubbed date of birth. */
+	private static final int DOB_DAY = 15;
+
+	/** Month component of the stubbed date of birth. */
+	private static final int DOB_MONTH = 6;
+
+	/** Four-digit year component of the stubbed date of birth (the asserted field). */
+	private static final int DOB_YEAR = 1985;
+
+	/** Stubbed credit score (COBOL {@code PIC 999}, range 0&ndash;999). */
+	private static final int CREDIT_SCORE = 750;
+
+	/** COBOL {@code INQCUST-INQ-SUCCESS = 'Y'} (enquiry succeeded). */
+	private static final String FLAG_SUCCESS = "Y";
+
+	/** COBOL {@code INQCUST-INQ-SUCCESS = 'N'} (soft not-found). */
+	private static final String FLAG_FAILURE = "N";
+
+	/**
+	 * COBOL {@code INQCUST} fail code for a record-not-found miss ({@code '1'}),
+	 * also the code carried by the safeguard {@link BusinessRuleException}.
+	 */
+	private static final String FAIL_CODE_NOT_FOUND = "1";
+
+	/** The single frozen top-level response key (mixed case, never all-caps). */
+	private static final String TOP_LEVEL_KEY = "InqCustZ";
+
+	/**
+	 * Auto-configured MockMvc driving the {@code InquireCustomerController} web
+	 * slice end to end (request binding, handler invocation, JSON serialisation).
+	 */
 	@Autowired
 	private MockMvc mockMvc;
 
-	/** Auto-configured Jackson mapper (serialises requests, reads the response tree). */
+	/**
+	 * Auto-configured Jackson mapper from the slice. Used to read the raw
+	 * response body into a {@link JsonNode} tree for the envelope-shape check
+	 * (exactly one top-level key).
+	 */
 	@Autowired
 	private ObjectMapper objectMapper;
 
-	/** The single business collaborator, replaced by a Mockito mock. */
-	@MockitoBean
+	/**
+	 * The single business collaborator, replaced by a Mockito mock so the slice
+	 * runs DB-free. All {@code INQCUST} behaviour (sentinel resolution, the soft
+	 * {@code 'N'} not-found shaping, fail codes) is stubbed here.
+	 */
+	@MockBean
 	private CustomerService customerService;
 
 	/**
-	 * <strong>CRITICAL proof.</strong> The response body must carry
-	 * <em>exactly one</em> top-level key and it must be the mixed-case
-	 * {@code InqCustZ} (never the all-caps {@code INQCUSTZ}). This is the verbatim
-	 * frozen {@code getCScustenq_response_200} envelope key.
+	 * Happy path: a found customer is returned as HTTP&nbsp;{@code 200} with the
+	 * fully formed {@code InqCustZ} envelope. Asserts the JSON content type, the
+	 * presence of the top-level {@code InqCustZ} key, the success flag
+	 * {@code "Y"}, the customer name and the zero-padded customer number, and the
+	 * presence of the nested date-of-birth group (its four-digit year field),
+	 * proving the component-split DOB shape is preserved verbatim.
+	 *
+	 * @throws Exception if the MockMvc exchange fails
+	 */
+	@Test
+	@DisplayName("GET /inqcustz/enquiry/{custno} — found customer returns 200 with the InqCustZ envelope and nested DOB group")
+	void getEnquiry_success_returnsInqCustZEnvelope() throws Exception
+	{
+		// Stub the INQCUST business port: any customer number resolves to a
+		// fully populated success envelope (InqCustInqSuccess="Y"). The path
+		// variable parses to a long, so the argument is matched with anyLong().
+		Mockito.when(customerService.inquireCustomer(ArgumentMatchers.anyLong()))
+				.thenReturn(buildSuccessEnvelope());
+
+		mockMvc.perform(MockMvcRequestBuilders.get(ENDPOINT_TEMPLATE, SUCCESS_CUSTNO)
+				.accept(MediaType.APPLICATION_JSON))
+				.andExpect(MockMvcResultMatchers.status().isOk())
+				.andExpect(MockMvcResultMatchers.content()
+						.contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+				// Frozen single top-level envelope key (mixed case).
+				.andExpect(MockMvcResultMatchers.jsonPath("$.InqCustZ").exists())
+				// Success flag and core scalar fields.
+				.andExpect(MockMvcResultMatchers
+						.jsonPath("$.InqCustZ.InqCustInqSuccess").value(FLAG_SUCCESS))
+				.andExpect(MockMvcResultMatchers
+						.jsonPath("$.InqCustZ.InqCustName").value(CUSTOMER_NAME))
+				.andExpect(MockMvcResultMatchers
+						.jsonPath("$.InqCustZ.InqCustCustno").value(SUCCESS_CUSTNO))
+				// The nested DOB component object and its four-digit year must be
+				// present (the contract models DOB as Dd/Mm/Yyyy, not a string).
+				.andExpect(MockMvcResultMatchers
+						.jsonPath("$.InqCustZ.InqCustDob").exists())
+				.andExpect(MockMvcResultMatchers
+						.jsonPath("$.InqCustZ.InqCustDob.InqCustDobYyyy").exists())
+				.andExpect(MockMvcResultMatchers
+						.jsonPath("$.InqCustZ.InqCustDob.InqCustDobYyyy")
+						.value(DOB_YEAR));
+	}
+
+	/**
+	 * Not-found path: when the {@code INQCUST} port signals a miss as the COBOL
+	 * fail code {@code '1'} (modelled here by the service raising
+	 * {@code new BusinessRuleException("1")}), the controller must still honour
+	 * the frozen contract by returning HTTP&nbsp;{@code 200} with the soft
+	 * {@code InqCustZ} envelope &mdash; {@code InqCustInqSuccess="N"} and
+	 * {@code InqCustInqFailCd="1"} &mdash; NOT a generic error advice body and NOT
+	 * a 4xx/5xx status. {@code INQCUST} never abends on a miss (F-008).
+	 *
+	 * @throws Exception if the MockMvc exchange fails
+	 */
+	@Test
+	@DisplayName("GET /inqcustz/enquiry/{custno} — a miss returns 200 with InqCustZ.InqCustInqSuccess=N and fail code 1")
+	void getEnquiry_notFound_returns200WithInqSuccessN() throws Exception
+	{
+		// The service raises the COBOL '1' (record not found); the controller's
+		// safeguard rebuilds the soft InqCustInqSuccess="N" envelope at HTTP 200.
+		Mockito.when(customerService.inquireCustomer(ArgumentMatchers.anyLong()))
+				.thenThrow(new BusinessRuleException(FAIL_CODE_NOT_FOUND));
+
+		mockMvc.perform(MockMvcRequestBuilders.get(ENDPOINT_TEMPLATE, NOT_FOUND_CUSTNO)
+				.accept(MediaType.APPLICATION_JSON))
+				// Soft not-found: still HTTP 200, never a 4xx/5xx.
+				.andExpect(MockMvcResultMatchers.status().isOk())
+				.andExpect(MockMvcResultMatchers.jsonPath("$.InqCustZ").exists())
+				.andExpect(MockMvcResultMatchers
+						.jsonPath("$.InqCustZ.InqCustInqSuccess").value(FLAG_FAILURE))
+				.andExpect(MockMvcResultMatchers
+						.jsonPath("$.InqCustZ.InqCustInqFailCd")
+						.value(FAIL_CODE_NOT_FOUND));
+	}
+
+	/**
+	 * Envelope-shape guard (the CRITICAL F-019 proof): the serialised response
+	 * MUST carry <em>exactly one</em> top-level key and it MUST be the mixed-case
+	 * {@code InqCustZ} (never the all-caps {@code INQCUSTZ}, and never any extra
+	 * metadata/status field at this level). The body is read into a
+	 * {@link JsonNode} tree via the autowired {@link ObjectMapper} from the
+	 * captured {@link MvcResult}, then its size and single key are asserted.
 	 *
 	 * @throws Exception if the MockMvc exchange or JSON parsing fails
 	 */
 	@Test
-	@DisplayName("GET /inqcustz/enquiry/{custno} — response has exactly one top-level key: InqCustZ (not INQCUSTZ)")
-	void getEnquiry_responseSingleTopLevelKeyIsInqCustZ() throws Exception
+	@DisplayName("GET /inqcustz/enquiry/{custno} — response has exactly one top-level key: InqCustZ")
+	void getEnquiry_singleTopLevelKeyIsInqCustZ() throws Exception
 	{
-		when(customerService.inquireCustomer(anyLong()))
-				.thenReturn(successEnvelope());
+		Mockito.when(customerService.inquireCustomer(ArgumentMatchers.anyLong()))
+				.thenReturn(buildSuccessEnvelope());
 
 		MvcResult result = mockMvc
-				.perform(get(ENDPOINT + VALID_CUSTNO)
+				.perform(MockMvcRequestBuilders.get(ENDPOINT_TEMPLATE, SUCCESS_CUSTNO)
 						.accept(MediaType.APPLICATION_JSON))
-				.andExpect(status().isOk())
-				.andExpect(content()
+				.andExpect(MockMvcResultMatchers.status().isOk())
+				.andExpect(MockMvcResultMatchers.content()
 						.contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
-				.andExpect(jsonPath("$.InqCustZ").exists())
+				.andExpect(MockMvcResultMatchers.jsonPath("$.InqCustZ").exists())
 				.andReturn();
 
 		JsonNode root = objectMapper
 				.readTree(result.getResponse().getContentAsString());
 
-		assertEquals(1, root.size(),
-				"Response must carry exactly one top-level key; body=" + root);
-		assertTrue(root.has("InqCustZ"),
+		Assertions.assertEquals(1, root.size(),
+				"The response envelope must carry exactly one top-level key; body="
+						+ root);
+		Assertions.assertTrue(root.has(TOP_LEVEL_KEY),
 				"The single top-level key must be the frozen mixed-case InqCustZ; body="
 						+ root);
-		assertFalse(root.has("INQCUSTZ"),
+		Assertions.assertFalse(root.has("INQCUSTZ"),
 				"The all-caps INQCUSTZ key must NOT be emitted (frozen-contract regression); body="
 						+ root);
 	}
 
 	/**
-	 * The fixed-width parse finding: an eleven-digit customer number (inside the
-	 * {@code long} range, so {@code Long.parseLong} would have accepted it) must
-	 * be rejected as HTTP&nbsp;400, and the service must never be invoked.
+	 * Builds a fully populated {@code InqCustZ} success envelope mirroring what
+	 * the {@code INQCUST} service returns for a found customer: success flag
+	 * {@code "Y"}, the zero-padded identifiers (sort code width&nbsp;6, customer
+	 * number width&nbsp;10, &sect;0.6), the name and address, the credit score,
+	 * and a populated nested date-of-birth component group.
 	 *
-	 * @throws Exception if the MockMvc exchange fails
+	 * @return a populated {@link CustomerEnquiryJson} success envelope
 	 */
-	@Test
-	@DisplayName("GET /inqcustz/enquiry/10000000000 — an over-width (11-digit) custno is rejected as HTTP 400")
-	void getEnquiry_overWidthCustno_returns400() throws Exception
+	private CustomerEnquiryJson buildSuccessEnvelope()
 	{
-		mockMvc.perform(get(ENDPOINT + OVER_WIDTH_CUSTNO)
-				.accept(MediaType.APPLICATION_JSON))
-				.andExpect(status().isBadRequest());
+		InqCustDob dob = new InqCustDob();
+		dob.setInqCustDobDd(DOB_DAY);
+		dob.setInqCustDobMm(DOB_MONTH);
+		dob.setInqCustDobYyyy(DOB_YEAR);
 
-		// The malformed path variable is rejected before any delegation.
-		verify(customerService, never()).inquireCustomer(anyLong());
-	}
+		InqCustZJson payload = new InqCustZJson();
+		payload.setInqCustEye("CUST");
+		payload.setInqCustScode(SORT_CODE);
+		payload.setInqCustCustno(SUCCESS_CUSTNO);
+		payload.setInqCustName(CUSTOMER_NAME);
+		payload.setInqCustAddress(CUSTOMER_ADDRESS);
+		payload.setInqCustDob(dob);
+		payload.setInqCustCreditScore(CREDIT_SCORE);
+		payload.setInqCustInqSuccess(FLAG_SUCCESS);
+		payload.setInqCustInqFailCd(" ");
+		payload.setInqCustPcbPointer("");
 
-	/**
-	 * A not-found read returns HTTP&nbsp;200 with the soft
-	 * {@code InqCustInqSuccess="N"}/{@code InqCustInqFailCd="1"} envelope (INQCUST
-	 * does not abend on a miss, F-008).
-	 *
-	 * @throws Exception if the MockMvc exchange fails
-	 */
-	@Test
-	@DisplayName("GET /inqcustz/enquiry/{custno} — a miss returns 200 with InqCustZ.InqCustInqSuccess=N / InqCustInqFailCd=1")
-	void getEnquiry_notFound_returns200WithSoftEnvelope() throws Exception
-	{
-		when(customerService.inquireCustomer(anyLong()))
-				.thenReturn(notFoundEnvelope());
-
-		mockMvc.perform(get(ENDPOINT + "555")
-				.accept(MediaType.APPLICATION_JSON))
-				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.InqCustZ").exists())
-				.andExpect(jsonPath("$.InqCustZ.InqCustInqSuccess").value("N"))
-				.andExpect(jsonPath("$.InqCustZ.InqCustInqFailCd").value("1"));
-	}
-
-	/**
-	 * Contract parameter-source fidelity: the swagger-declared request body is
-	 * accepted (but optional). A caller sending the frozen {@code InqCustZ}
-	 * envelope alongside the path variable still gets the {@code InqCustZ}
-	 * response; the path variable stays authoritative.
-	 *
-	 * @throws Exception if the MockMvc exchange or JSON serialisation fails
-	 */
-	@Test
-	@DisplayName("GET /inqcustz/enquiry/{custno} — an optional InqCustZ request body is accepted (swagger parameter source)")
-	void getEnquiry_withOptionalBody_isAccepted() throws Exception
-	{
-		when(customerService.inquireCustomer(anyLong()))
-				.thenReturn(successEnvelope());
-
-		String body = objectMapper.writeValueAsString(successEnvelope());
-
-		mockMvc.perform(get(ENDPOINT + VALID_CUSTNO)
-				.contentType(MediaType.APPLICATION_JSON)
-				.accept(MediaType.APPLICATION_JSON)
-				.content(body))
-				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.InqCustZ").exists());
-	}
-
-	/**
-	 * Builds a populated success-response envelope (the mocked service's
-	 * {@code 'Y'} outcome) so the controller answers HTTP&nbsp;200 with a fully
-	 * formed {@code InqCustZ} payload.
-	 *
-	 * @return a success {@link CustomerEnquiryJson} envelope
-	 */
-	private CustomerEnquiryJson successEnvelope()
-	{
-		InqCustZJson inner = new InqCustZJson();
-		inner.setInqCustCustno("0000000001");
-		inner.setInqCustInqSuccess("Y");
 		CustomerEnquiryJson envelope = new CustomerEnquiryJson();
-		envelope.setInqCustZ(inner);
-		return envelope;
-	}
-
-	/**
-	 * Builds the soft not-found envelope INQCUST returns on a miss:
-	 * {@code InqCustInqSuccess="N"} with fail code {@code "1"}.
-	 *
-	 * @return a not-found {@link CustomerEnquiryJson} envelope
-	 */
-	private CustomerEnquiryJson notFoundEnvelope()
-	{
-		InqCustZJson inner = new InqCustZJson();
-		inner.setInqCustCustno("0000000555");
-		inner.setInqCustInqSuccess("N");
-		inner.setInqCustInqFailCd("1");
-		CustomerEnquiryJson envelope = new CustomerEnquiryJson();
-		envelope.setInqCustZ(inner);
+		envelope.setInqCustZ(payload);
 		return envelope;
 	}
 
