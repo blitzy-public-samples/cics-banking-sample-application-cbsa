@@ -7,6 +7,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -14,6 +15,9 @@ import com.ibm.cics.cip.bank.core.dto.deletecustomer.DelcusJson;
 import com.ibm.cics.cip.bank.core.dto.deletecustomer.DeleteCustomerJson;
 import com.ibm.cics.cip.bank.core.exception.BusinessRuleException;
 import com.ibm.cics.cip.bank.core.service.CustomerService;
+import com.ibm.cics.cip.bank.core.util.BankFormat;
+
+import jakarta.validation.Valid;
 
 /**
  * REST controller reproducing the frozen z/OS Connect <em>delete-customer</em>
@@ -51,12 +55,18 @@ import com.ibm.cics.cip.bank.core.service.CustomerService;
  *   <li><strong>Response envelope:</strong> the outer wrapper
  *       {@link DeleteCustomerJson} serialises to exactly one top-level key,
  *       {@code DelCus}, over the inner {@link DelcusJson} payload.</li>
- *   <li><strong>No request body:</strong> although the swagger lists a body
- *       parameter, the real consumer ({@code WebController}) invokes the
- *       endpoint with {@code client.delete().retrieve()} and <em>no</em> body
- *       (zero-padding the customer number to width&nbsp;10 in the path), so this
- *       handler accepts ONLY the {@code {custno}} path variable and declares no
- *       {@code @RequestBody}.</li>
+ *   <li><strong>Parameter source (path + optional body):</strong> the swagger
+ *       declares both the {@code {custno}} path variable and a body parameter
+ *       {@code deleteCScustdel_request} carrying the {@code DelCus} envelope. The
+ *       real consumer ({@code WebController}) invokes the endpoint with
+ *       {@code client.delete().retrieve()} and <em>no</em> body (zero-padding the
+ *       customer number to width&nbsp;10 in the path), so the {@code {custno}}
+ *       path variable is the AUTHORITATIVE parameter source and identifies the
+ *       customer. For frozen-contract fidelity the handler ALSO accepts the
+ *       swagger-declared {@code DelCus} body as an OPTIONAL ({@code required =
+ *       false}), {@code @Valid}-checked {@link DeleteCustomerJson} so that
+ *       swagger-shaped callers are not rejected; a present body is structurally
+ *       validated but does not override the authoritative path variable.</li>
  * </ul>
  *
  * <h2>Success / failure convention (byte-for-byte envelope fidelity)</h2>
@@ -78,10 +88,11 @@ import com.ibm.cics.cip.bank.core.service.CustomerService;
  * not the HTTP status).</p>
  *
  * <p>A blank, non-numeric or over-width {@code {custno}} raises
- * {@link NumberFormatException} from {@link Long#parseLong(String)}; that is
- * deliberately <em>not</em> caught here so it propagates to
- * {@code GlobalExceptionHandler} (rendered as HTTP&nbsp;400). Only
- * {@link BusinessRuleException} is caught.</p>
+ * {@link NumberFormatException} from
+ * {@link BankFormat#parseCustomerNumber(String)}, which enforces the
+ * 1-to-10-digit contract width; that is deliberately <em>not</em> caught here so
+ * it propagates to {@code GlobalExceptionHandler} (rendered as HTTP&nbsp;400).
+ * Only {@link BusinessRuleException} is caught.</p>
  *
  * <p><strong>No mainframe coupling.</strong> This controller imports only Spring
  * MVC and {@code bank-core} types; it never references
@@ -127,8 +138,9 @@ public class DeleteCustomerController
 	 * the frozen {@code DELETE /delcus/remove/{custno}} contract.
 	 *
 	 * <p>The path variable is parsed to a {@code long} via
-	 * {@link Long#parseLong(String)} (the customer number is a display-numeric
-	 * value up to ten digits wide) and delegated unchanged to
+	 * {@link BankFormat#parseCustomerNumber(String)} (the customer number is a
+	 * display-numeric value of 1 to 10 digits, whose width is enforced) and
+	 * delegated unchanged to
 	 * {@link CustomerService#deleteCustomer(long)}, which carries the
 	 * authoritative {@code DELCUS} behaviour (account cascade with per-account
 	 * close {@code PROCTRAN} appends, physical customer-row removal, and a
@@ -148,20 +160,30 @@ public class DeleteCustomerController
 	 *
 	 * @param custno the display-numeric customer number from the path (the
 	 *               caller zero-pads it to width&nbsp;10)
+	 * @param body   the OPTIONAL swagger-declared {@code DelCus} request envelope
+	 *               ({@code required = false}); accepted and {@code @Valid}-checked
+	 *               for frozen-contract fidelity but NOT authoritative &mdash; the
+	 *               {@code {custno}} path variable identifies the customer. May be
+	 *               {@code null} (the real no-body consumer path).
 	 * @return the delete-customer response envelope at HTTP&nbsp;{@code 200},
 	 *         {@code application/json}
 	 */
 	@DeleteMapping(value = "/remove/{custno}",
 			produces = MediaType.APPLICATION_JSON_VALUE)
 	public ResponseEntity<DeleteCustomerJson> deleteCustomer(
-			@PathVariable("custno") String custno)
+			@PathVariable("custno") String custno,
+			@RequestBody(required = false) @Valid DeleteCustomerJson body)
 	{
-		// Parse OUTSIDE the try: the customer number is display-numeric (up to
-		// ten digits). A blank, non-numeric or over-width path variable raises
-		// NumberFormatException, intentionally left to reach GlobalExceptionHandler
-		// as HTTP 400 rather than being shaped into the business-failure envelope.
-		// Only BusinessRuleException is caught below.
-		long customerNumber = Long.parseLong(custno);
+		// Parse OUTSIDE the try: the customer number is display-numeric (1 to ten
+		// digits). BankFormat.parseCustomerNumber enforces the contract width, so
+		// a blank, non-numeric or over-width path variable (e.g. "10000000000")
+		// raises NumberFormatException, intentionally left to reach
+		// GlobalExceptionHandler as HTTP 400 rather than being shaped into the
+		// business-failure envelope (unlike Long.parseLong, which would accept an
+		// 11-digit value inside the long range). Only BusinessRuleException is
+		// caught below. The optional swagger body is accepted for contract
+		// fidelity; the path variable stays authoritative.
+		long customerNumber = BankFormat.parseCustomerNumber(custno);
 		try
 		{
 			// Thin pass-through: all DELCUS logic (account cascade with per-account

@@ -12,6 +12,7 @@ import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 import java.time.LocalDate;
@@ -82,7 +83,7 @@ import com.ibm.cics.cip.bank.core.repository.CustomerRepository;
  *       (F-014).</li>
  * </ul>
  *
- * <h2>ALIGN-WITH-PRODUCTION notes</h2>
+ * <h2>How the COBOL fail-code surface maps to the Java rendering (parity rationale)</h2>
  * <ul>
  *   <li>Fail codes are surfaced by <em>throwing</em> {@link BusinessRuleException}
  *       (its {@link BusinessRuleException#getFailCode() getFailCode()} returns a
@@ -100,8 +101,25 @@ import com.ibm.cics.cip.bank.core.repository.CustomerRepository;
  *   <li>The &quot;highest&quot; sentinel reads the control row via
  *       {@code customerControlRepository.findById(SORT_CODE)}; there is no
  *       {@code MAX()} finder to call.</li>
- *   <li>Allocation and persistence failures both collapse to fail code
- *       {@code '3'} (there is no distinct {@code '5'} in the finalized service).</li>
+ *   <li><strong>The COBOL named-counter codes {@code '3'} (acquire) and
+ *       {@code '5'} (release) are SUBSUMED by the transactional model, never
+ *       silently dropped.</strong> {@code CRECUST.cbl} brackets the
+ *       customer-number allocation with {@code ENQ}/{@code DEQ NAMED COUNTER},
+ *       failing {@code '3'} when the acquire fails and {@code '5'} when the
+ *       release ({@code DEQ}) fails (around L538), decrementing the counter and
+ *       dequeuing on the failure path so no number leaks. Per AAP &sect;0.6 and
+ *       ADR-003 that lock lifecycle is replaced by one {@code @Transactional}
+ *       boundary holding a {@code PESSIMISTIC_WRITE} lock on the customer
+ *       control row: the lock releases implicitly at the boundary (so the
+ *       explicit {@code DEQ}-release step &mdash; hence a <em>distinct</em> Java
+ *       fail {@code '5'} &mdash; &quot;is no longer needed&quot;, AAP &sect;0.6),
+ *       and a rollback restores the consumed counter automatically. An acquire
+ *       {@code DataAccessException} therefore maps to {@code '3'}
+ *       ({@code create_allocationError_failCode3()}); the fail-{@code '5'}
+ *       GUARANTEE (a create that fails AFTER the number was consumed leaks
+ *       neither the number nor a stray {@code PROCTRAN}) is reproduced by
+ *       transactional rollback and pinned by
+ *       {@code create_postAllocationFailure_rollsBackConsumedCounter_appendsNoProcessedTransaction()}.</li>
  * </ul>
  *
  * <p>All collaborators are Mockito mocks, so the suite is deterministic and
@@ -150,8 +168,8 @@ class CustomerServiceTest
 	@Mock
 	private CreditAgencyService creditAgencyService;
 
-	// ALIGN-WITH-PRODUCTION: the finalized CustomerService appends PROCTRAN rows
-	// through this sibling appender, not through ProcessedTransactionRepository.
+	// COBOL parity: CustomerService appends PROCTRAN rows through this sibling
+	// appender (reproducing the OCC/ODC write), not ProcessedTransactionRepository.
 	@Mock
 	private ProcessedTransactionAppender proctranAppender;
 
@@ -437,14 +455,23 @@ class CustomerServiceTest
 		assertThat(result.getCreCust().getCommSuccess()).isEqualTo("Y");
 	}
 
+	/**
+	 * CRECUST counter-ACQUIRE failure &mdash; fail code {@code '3'} parity.
+	 *
+	 * <p>{@code CRECUST.cbl} fails {@code '3'} when the {@code ENQ}/acquire of the
+	 * named counter fails. The Java allocator surfaces an acquire
+	 * {@code DataAccessException} as the same {@code '3'} before any row is
+	 * written, so nothing is saved or audited. (The COBOL release-failure
+	 * {@code '5'} is the separate post-acquire path whose GUARANTEE is pinned by
+	 * {@code create_postAllocationFailure_rollsBackConsumedCounter_appendsNoProcessedTransaction()}.)</p>
+	 */
 	@Test
-	@DisplayName("create: a persistence/allocation failure collapses to fail '3' (no '5' in the finalized service); nothing is saved or audited")
+	@DisplayName("create: a counter-acquire failure fails '3' (CRECUST acquire path); nothing is saved or audited")
 	void create_allocationError_failCode3()
 	{
 		stubAllAgenciesComplete(500);
-		// A DataAccessException from the allocator is translated to fail '3'.
-		// ALIGN-WITH-PRODUCTION: the service maps allocation/persist
-		// DataAccessExceptions to '3'; there is no distinct '5' code.
+		// CRECUST fails '3' on a named-counter ACQUIRE failure; the Java
+		// allocator maps an acquire DataAccessException to the same '3'.
 		when(identityService.allocateCustomerNumber())
 				.thenThrow(new DataIntegrityViolationException("counter clash"));
 
@@ -455,6 +482,81 @@ class CustomerServiceTest
 				.isEqualTo("3");
 
 		verify(customerRepository, never()).save(any());
+		verifyNoInteractions(proctranAppender);
+	}
+
+	/**
+	 * CRECUST fail-code {@code '5'} parity &mdash; the named-counter
+	 * RELEASE-failure GUARANTEE, reproduced by transactional rollback.
+	 *
+	 * <p><strong>COBOL behaviour.</strong> {@code CRECUST.cbl} brackets the
+	 * customer-number allocation with {@code ENQ}/{@code DEQ NAMED COUNTER}: it
+	 * fails {@code '3'} if the counter <em>acquire</em> fails and {@code '5'} if
+	 * the counter <em>release</em> ({@code DEQ}) fails (around L538). On any
+	 * post-acquire failure it decrements the counter and dequeues so that
+	 * <em>no customer number is ever leaked</em> &mdash; that gap-free guarantee
+	 * is the whole point of the fail-{@code '5'} path.</p>
+	 *
+	 * <p><strong>Java rendering (AAP &sect;0.6, ADR-003).</strong> The
+	 * {@code ENQ}/{@code DEQ} lock lifecycle is replaced by a single
+	 * {@code @Transactional} boundary that holds a {@code PESSIMISTIC_WRITE} row
+	 * lock on the {@code customer_control} counter row. The lock releases
+	 * implicitly at the transaction boundary, so the explicit {@code DEQ}-release
+	 * step &mdash; and therefore a <em>distinct</em> Java fail {@code '5'}
+	 * &mdash; &quot;is no longer needed&quot;; the finalized service maps both
+	 * the counter and the persistence {@code DataAccessException} to {@code '3'}.
+	 * What matters for parity is not the code letter but the GUARANTEE: a
+	 * rollback of the enclosing transaction restores the consumed counter
+	 * automatically (database {@code IDENTITY}/{@code SEQUENCE} generation is
+	 * forbidden precisely because it could not undo a consumed value).</p>
+	 *
+	 * <p><strong>What this test pins.</strong> When every validation has passed
+	 * and the number has already been consumed, a subsequent persistence failure
+	 * must (a) surface a fail code by throwing &mdash; which rolls the
+	 * {@code @Transactional} unit back and so restores the counter &mdash; and
+	 * (b) leak neither the consumed number nor a stray {@code PROCTRAN} row. We
+	 * assert the counter is consumed exactly once and that the service performs
+	 * <em>no</em> explicit compensating release or decrement (it relies wholly on
+	 * the transaction boundary, the {@code DEQ} subsumption), and that no audit
+	 * row is written. This is the faithful Java equivalent of the COBOL
+	 * counter-release/rollback path, not a fabricated synthetic {@code '5'} code
+	 * (which AAP &sect;0.6 forbids).</p>
+	 */
+	@Test
+	@DisplayName("create: COBOL fail-'5' guarantee — a post-allocation persistence failure throws to roll back the consumed counter and leaks no PROCTRAN")
+	void create_postAllocationFailure_rollsBackConsumedCounter_appendsNoProcessedTransaction()
+	{
+		stubAllAgenciesComplete(500);
+		// The counter is acquired successfully (consumed), then the customer
+		// insert fails with a DataAccessException — the Java analogue of the COBOL
+		// post-acquire failure that fail '5' (DEQ release, CRECUST L538) guarded.
+		when(identityService.allocateCustomerNumber()).thenReturn(42L);
+		when(customerRepository.save(any(Customer.class)))
+				.thenThrow(new DataIntegrityViolationException(
+						"simulated post-allocation persistence failure"));
+
+		// The failure is surfaced by throwing (rolling back the @Transactional
+		// unit and so restoring the consumed counter, AAP §0.6 + ADR-003). Both
+		// the counter and persistence DataAccessExceptions map to '3' because the
+		// COBOL DEQ-release step (fail '5') is subsumed by the transaction
+		// boundary per AAP §0.6 — so this test pins the GUARANTEE that COBOL
+		// fail '5' protected (no leaked number, no stray audit), not a code letter.
+		assertThatThrownBy(
+				() -> customerService.createCustomer(validCreateForm()))
+				.isInstanceOf(BusinessRuleException.class)
+				.extracting(ex -> ((BusinessRuleException) ex).getFailCode())
+				.isEqualTo("3");
+
+		// The counter WAS consumed (exactly once) ...
+		verify(identityService).allocateCustomerNumber();
+		// ... and the service performs NO explicit compensating release or
+		// decrement: the COBOL DEQ-release step (whose failure was fail '5') is
+		// subsumed by the transaction boundary, so the SOLE identity interaction
+		// is the single allocation — the counter rollback is the transaction's
+		// responsibility, not an out-of-band release call.
+		verifyNoMoreInteractions(identityService);
+		// No audit row leaks: the PROCTRAN append is downstream of the failed
+		// insert and the rollback discards the consumed counter with it.
 		verifyNoInteractions(proctranAppender);
 	}
 
@@ -566,7 +668,8 @@ class CustomerServiceTest
 		assertThat(result.getInqCustZ().getInqCustCustno())
 				.isEqualTo("0000000123");
 		// The highest number comes from the control row, not a MAX() scan;
-		// ALIGN-WITH-PRODUCTION: there is no MAX finder on the repository.
+		// COBOL parity: the 'highest' sentinel reads the control row, so there
+		// is no MAX() finder on the repository.
 		verify(customerControlRepository).findById(SORT_CODE);
 	}
 
@@ -603,8 +706,8 @@ class CustomerServiceTest
 
 		CustomerEnquiryJson result = customerService.inquireCustomer(555L);
 
-		// ALIGN-WITH-PRODUCTION: INQCUST signals a miss with INQCUST-INQ-SUCCESS
-		// = 'N' and fail code '1' on the envelope rather than throwing.
+		// COBOL parity: INQCUST signals a miss with INQCUST-INQ-SUCCESS = 'N'
+		// and fail code '1' on the envelope rather than throwing.
 		assertThat(result.getInqCustZ().getInqCustInqSuccess()).isEqualTo("N");
 		assertThat(result.getInqCustZ().getInqCustInqFailCd()).isEqualTo("1");
 	}

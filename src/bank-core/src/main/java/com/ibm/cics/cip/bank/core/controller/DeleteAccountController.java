@@ -7,6 +7,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -15,6 +16,8 @@ import com.ibm.cics.cip.bank.core.dto.deleteaccount.DeleteAccountJson;
 import com.ibm.cics.cip.bank.core.exception.BusinessRuleException;
 import com.ibm.cics.cip.bank.core.service.AccountService;
 import com.ibm.cics.cip.bank.core.util.BankFormat;
+
+import jakarta.validation.Valid;
 
 /**
  * REST controller reproducing the frozen z/OS Connect <em>delete-account</em>
@@ -49,11 +52,18 @@ import com.ibm.cics.cip.bank.core.util.BankFormat;
  *   <li><strong>Response envelope:</strong> the outer wrapper
  *       {@link DeleteAccountJson} serialises to exactly one top-level key,
  *       {@code DelAcc}, over the inner {@link DelaccJson} payload.</li>
- *   <li><strong>No request body:</strong> although the swagger lists a body
- *       parameter, the real consumer ({@code WebController}) invokes the
- *       endpoint with {@code client.delete().retrieve()} and <em>no</em> body,
- *       so this handler accepts ONLY the {@code {accno}} path variable and
- *       declares no {@code @RequestBody}.</li>
+ *   <li><strong>Parameter source (path + optional body):</strong> the swagger
+ *       declares both the {@code {accno}} path variable and a body parameter
+ *       {@code deleteCSaccdel_request} carrying the {@code DelAcc} envelope. The
+ *       real consumer ({@code WebController}) invokes the endpoint with
+ *       {@code client.delete().retrieve()} and <em>no</em> body, so the
+ *       {@code {accno}} path variable is the AUTHORITATIVE parameter source and
+ *       identifies the account. For frozen-contract fidelity the handler ALSO
+ *       accepts the swagger-declared {@code DelAcc} body as an OPTIONAL
+ *       ({@code required = false}), {@code @Valid}-checked
+ *       {@link DeleteAccountJson} so that swagger-shaped callers are not
+ *       rejected; a present body is structurally validated but does not override
+ *       the authoritative path variable.</li>
  * </ul>
  *
  * <h2>Success / failure convention (byte-for-byte envelope fidelity)</h2>
@@ -153,13 +163,19 @@ public class DeleteAccountController
 	 * propagate to the global exception handler (HTTP&nbsp;400).</p>
 	 *
 	 * @param accno the 8-digit account number from the path
+	 * @param body  the OPTIONAL swagger-declared {@code DelAcc} request envelope
+	 *              ({@code required = false}); accepted and {@code @Valid}-checked
+	 *              for frozen-contract fidelity but NOT authoritative &mdash; the
+	 *              {@code {accno}} path variable identifies the account. May be
+	 *              {@code null} (the real no-body consumer path).
 	 * @return the delete-account response envelope at HTTP&nbsp;{@code 200},
 	 *         {@code application/json}
 	 */
 	@DeleteMapping(value = "/remove/{accno}",
 			produces = MediaType.APPLICATION_JSON_VALUE)
 	public ResponseEntity<DeleteAccountJson> deleteAccount(
-			@PathVariable("accno") String accno)
+			@PathVariable("accno") String accno,
+			@RequestBody(required = false) @Valid DeleteAccountJson body)
 	{
 		// Parse OUTSIDE the try via BankFormat.parseAccountNumber, which enforces
 		// the eight-digit contract width: a blank, non-numeric or over-width path

@@ -7,6 +7,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -15,6 +16,8 @@ import com.ibm.cics.cip.bank.core.dto.listaccounts.ListAccountsJson;
 import com.ibm.cics.cip.bank.core.exception.BusinessRuleException;
 import com.ibm.cics.cip.bank.core.service.AccountService;
 import com.ibm.cics.cip.bank.core.util.BankFormat;
+
+import jakarta.validation.Valid;
 
 /**
  * REST controller reproducing the frozen z/OS Connect
@@ -50,11 +53,18 @@ import com.ibm.cics.cip.bank.core.util.BankFormat;
  *       {@code CustomerNumber}, {@code CommSuccess}, {@code CommFailCode},
  *       {@code CustomerFound}, {@code CommPcbPointer}, and the
  *       {@code AccountDetails} array).</li>
- *   <li><strong>No request body:</strong> although the swagger lists a body
- *       parameter, the real consumer ({@code WebController}) calls
- *       {@code client.get().retrieve()} with <em>no</em> body, so this handler
- *       accepts ONLY the {@code {custno}} path variable and declares no
- *       {@code @RequestBody}.</li>
+ *   <li><strong>Parameter source (path + optional body):</strong> the swagger
+ *       declares both the {@code {custno}} path variable and a body parameter
+ *       {@code getCScustacc_request} carrying the {@code InqAccZ} envelope. The
+ *       real consumer ({@code WebController}) calls
+ *       {@code client.get().retrieve()} with <em>no</em> body, so the
+ *       {@code {custno}} path variable is the AUTHORITATIVE parameter source and
+ *       identifies the customer. For frozen-contract fidelity the handler ALSO
+ *       accepts the swagger-declared {@code InqAccZ} body as an OPTIONAL
+ *       ({@code required = false}), {@code @Valid}-checked
+ *       {@link ListAccountsJson} so that swagger-shaped callers are not rejected;
+ *       a present body is structurally validated but does not override the
+ *       authoritative path variable.</li>
  * </ul>
  *
  * <h2>Dual outcome handling (byte-for-byte envelope fidelity)</h2>
@@ -145,13 +155,19 @@ public class InquireCustomerAccountsController
 	 * exception handler (HTTP&nbsp;400).</p>
 	 *
 	 * @param custno the 10-digit customer number from the path
+	 * @param body   the OPTIONAL swagger-declared {@code InqAccZ} request envelope
+	 *               ({@code required = false}); accepted and {@code @Valid}-checked
+	 *               for frozen-contract fidelity but NOT authoritative &mdash; the
+	 *               {@code {custno}} path variable identifies the customer. May be
+	 *               {@code null} (the real no-body consumer path).
 	 * @return the list-customer-accounts response envelope at HTTP&nbsp;{@code 200},
 	 *         {@code application/json}
 	 */
 	@GetMapping(value = "/list/{custno}",
 			produces = MediaType.APPLICATION_JSON_VALUE)
 	public ResponseEntity<ListAccountsJson> listAccounts(
-			@PathVariable("custno") String custno)
+			@PathVariable("custno") String custno,
+			@RequestBody(required = false) @Valid ListAccountsJson body)
 	{
 		// Parse outside the try via BankFormat.parseCustomerNumber, which
 		// enforces the ten-digit contract width: a blank, non-numeric or

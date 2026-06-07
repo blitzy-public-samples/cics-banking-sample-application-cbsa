@@ -7,6 +7,9 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import com.ibm.cics.cip.bank.core.config.JacksonConfig;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
+
 /**
  * Outer JSON envelope wire DTO for the frozen z/OS Connect
  * <em>update-customer</em> ({@code updcust}) REST contract (feature F-019).
@@ -49,8 +52,24 @@ public class UpdateCustomerJson
 	 * The nested update-customer payload, serialised under the frozen envelope
 	 * key {@code UpdCust}. The explicit {@link JsonProperty} pins this wire name
 	 * regardless of the class-level naming strategy.
+	 *
+	 * <p><strong>Validation (F-021).</strong> {@link NotNull @NotNull} rejects an
+	 * explicit {@code {"UpdCust": null}} request body with HTTP&nbsp;{@code 400}
+	 * (via {@code MethodArgumentNotValidException} &rarr;
+	 * {@code GlobalExceptionHandler}). It does NOT fire for an empty {@code {}}
+	 * body, because the no-argument constructor eagerly initialises this field to
+	 * a non-{@code null} {@link UpdcustJson} (see below), so {@code {}} continues
+	 * to degrade gracefully to the COBOL fail-code path at HTTP&nbsp;{@code 200}.
+	 * {@link Valid @Valid} cascades Bean Validation into the inner
+	 * {@link UpdcustJson} (which already carries {@code @Size} width constraints)
+	 * so that over-length structural violations surface as {@code 400}. These are
+	 * STRUCTURAL/FORMAT checks only; the {@code UPDCUST} business outcome remains
+	 * a COBOL fail-code envelope at HTTP&nbsp;{@code 200}, never converted to
+	 * {@code 400}.</p>
 	 */
 	@JsonProperty("UpdCust")
+	@NotNull
+	@Valid
 	private UpdcustJson updcust;
 
 	/**

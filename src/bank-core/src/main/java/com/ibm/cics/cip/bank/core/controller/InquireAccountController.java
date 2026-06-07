@@ -7,6 +7,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -15,6 +16,8 @@ import com.ibm.cics.cip.bank.core.dto.accountenquiry.InqaccJson;
 import com.ibm.cics.cip.bank.core.exception.BusinessRuleException;
 import com.ibm.cics.cip.bank.core.service.AccountService;
 import com.ibm.cics.cip.bank.core.util.BankFormat;
+
+import jakarta.validation.Valid;
 
 /**
  * REST controller reproducing the frozen z/OS Connect <em>inquire-account</em>
@@ -46,11 +49,18 @@ import com.ibm.cics.cip.bank.core.util.BankFormat;
  *   <li><strong>Response envelope:</strong> the outer wrapper
  *       {@link AccountEnquiryJson} serialises to exactly one top-level key,
  *       {@code InqAcc}, over the inner {@link InqaccJson} payload.</li>
- *   <li><strong>No request body:</strong> although the swagger lists a body
- *       parameter, the real consumer ({@code WebController}) calls
- *       {@code client.get().retrieve()} with <em>no</em> body, so this handler
- *       accepts ONLY the {@code {accno}} path variable and declares no
- *       {@code @RequestBody}.</li>
+ *   <li><strong>Parameter source (path + optional body):</strong> the swagger
+ *       declares both the {@code {accno}} path variable and a body parameter
+ *       {@code getCSaccenq_request} carrying the {@code InqAcc} envelope. The
+ *       real consumer ({@code WebController}) calls
+ *       {@code client.get().retrieve()} with <em>no</em> body, so the
+ *       {@code {accno}} path variable is the AUTHORITATIVE parameter source and
+ *       identifies the account. For frozen-contract fidelity the handler ALSO
+ *       accepts the swagger-declared {@code InqAcc} body as an OPTIONAL
+ *       ({@code required = false}), {@code @Valid}-checked
+ *       {@link AccountEnquiryJson} so that swagger-shaped callers are not
+ *       rejected; a present body is structurally validated but does not override
+ *       the authoritative path variable.</li>
  * </ul>
  *
  * <h2>Success / not-found convention</h2>
@@ -134,13 +144,19 @@ public class InquireAccountController
 	 * @param accno the 8-digit account number from the path (the sentinel
 	 *              {@code 99999999} is passed through unchanged for the service to
 	 *              interpret)
+	 * @param body  the OPTIONAL swagger-declared {@code InqAcc} request envelope
+	 *              ({@code required = false}); accepted and {@code @Valid}-checked
+	 *              for frozen-contract fidelity but NOT authoritative &mdash; the
+	 *              {@code {accno}} path variable identifies the account. May be
+	 *              {@code null} (the real no-body consumer path).
 	 * @return the account-enquiry response envelope at HTTP&nbsp;{@code 200},
 	 *         {@code application/json}
 	 */
 	@GetMapping(value = "/enquiry/{accno}",
 			produces = MediaType.APPLICATION_JSON_VALUE)
 	public ResponseEntity<AccountEnquiryJson> inquireAccount(
-			@PathVariable("accno") String accno)
+			@PathVariable("accno") String accno,
+			@RequestBody(required = false) @Valid AccountEnquiryJson body)
 	{
 		// Parse outside the try so the value is definitely assigned for the catch
 		// block. BankFormat.parseAccountNumber enforces the eight-digit contract

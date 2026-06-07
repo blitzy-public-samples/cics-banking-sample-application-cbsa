@@ -7,6 +7,9 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import com.ibm.cics.cip.bank.core.config.JacksonConfig;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
+
 /**
  * Outer <em>envelope</em> wire DTO for the frozen z/OS Connect
  * <em>update-account</em> ({@code updacc}) contract (feature F-019). It wraps
@@ -51,8 +54,27 @@ public class UpdateAccountJson
 	 * The nested update-account commarea payload. The explicit
 	 * {@code @JsonProperty("UpdAcc")} pins the contract-critical top-level
 	 * envelope key verbatim, overriding the class-level naming strategy.
+	 *
+	 * <p><strong>Validation (F-021).</strong> {@link NotNull @NotNull} rejects
+	 * both a missing nested payload (an empty {@code {}} body, where Jackson
+	 * leaves this field {@code null} because the no-argument constructor performs
+	 * no eager initialisation) and an explicit {@code {"UpdAcc": null}} body with
+	 * HTTP&nbsp;{@code 400} (via {@code MethodArgumentNotValidException} &rarr;
+	 * {@code GlobalExceptionHandler}) BEFORE the controller dereferences the
+	 * payload, eliminating the {@code NullPointerException}&rarr;{@code 500} path
+	 * on {@code request.getUpdAcc().getCommCustno()}. {@link Valid @Valid}
+	 * cascades Bean Validation into the inner {@link UpdaccJson} so that
+	 * over-width / over-scale structural violations also surface as {@code 400}.
+	 * These are STRUCTURAL/FORMAT checks only; the {@code UPDACC} business
+	 * outcome (account-not-found, restricted-field rules) remains a COBOL
+	 * fail-code envelope at HTTP&nbsp;{@code 200}, never converted to
+	 * {@code 400}. The no-argument constructor deliberately leaves the field
+	 * {@code null} (no eager initialisation) so that an empty body is rejected
+	 * rather than silently degrading.</p>
 	 */
 	@JsonProperty("UpdAcc")
+	@NotNull
+	@Valid
 	private UpdaccJson updAcc;
 
 	/**
@@ -61,6 +83,9 @@ public class UpdateAccountJson
 	public UpdateAccountJson()
 	{
 		// No initialisation required; Jackson populates the field on deserialise.
+		// The field is intentionally left null so that an empty {} or explicit
+		// {"UpdAcc":null} body fails the @NotNull guard with HTTP 400 (F-021)
+		// rather than reaching the controller and risking a NullPointerException.
 	}
 
 	/**

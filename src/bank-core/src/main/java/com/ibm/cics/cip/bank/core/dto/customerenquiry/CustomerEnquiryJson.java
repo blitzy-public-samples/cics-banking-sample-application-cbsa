@@ -11,33 +11,36 @@ import com.ibm.cics.cip.bank.core.config.JacksonConfig;
  * Outer JSON envelope for the frozen z/OS Connect {@code inqcustz}
  * (INQUIRE&nbsp;CUSTOMER) response contract (feature F-019). This wrapper carries
  * a single nested object &mdash; the inner {@link InqCustZJson} commarea payload
- * &mdash; under the outer key {@code INQCUSTZ}, reproducing the z/OS Connect
+ * &mdash; under the outer key {@code InqCustZ}, reproducing the z/OS Connect
  * {@code getCScustenq_response_200} envelope VERBATIM so that the preserved
  * Customer-Services interface module consumes a {@code bank-core} response with
  * ZERO client change.
  *
- * <p><strong>Outer key is {@code INQCUSTZ} (all caps), NOT {@code InqCustZ}.</strong>
- * Two authoritative sources disagree on the casing of this single envelope key:
- * the frozen swagger ({@code src/zosconnect_artefacts/apis/inqcustz/api-docs/swagger.json},
- * object {@code getCScustenq_response_200.InqCustZ}) documents the mixed-case
- * {@code InqCustZ}, whereas the preserved on-the-wire consumer &mdash; the legacy
- * interface-module {@code CustomerEnquiryJson} &mdash; hard-codes
- * {@code @JsonProperty("INQCUSTZ")} on its single field and is deserialised by
- * {@code WebController} through a plain default {@code new ObjectMapper()}
- * ({@code FAIL_ON_UNKNOWN_PROPERTIES = true}, with no
- * {@code @JsonIgnoreProperties}). Because the actual Java consumer is the binding
- * authority for backward compatibility, the all-caps {@code INQCUSTZ} form is
- * emitted here and the swagger's {@code InqCustZ} casing is intentionally
- * overridden. This choice is locked by the REQUIRED controller contract
- * integration test (IT) under {@code src/bank-core/src/test/java/**}, which
- * round-trips a {@code bank-core}-serialised response into the preserved
- * interface-module {@code CustomerEnquiryJson} via
- * {@code new ObjectMapper().readValue(...)} and asserts that {@code getInqCustZ()}
- * returns a non-{@code null} inner payload.</p>
+ * <p><strong>Outer key is {@code InqCustZ} (mixed case), per the frozen
+ * contract.</strong> The authoritative wire name is fixed by two artefacts that
+ * agree: the frozen swagger
+ * ({@code src/zosconnect_artefacts/apis/inqcustz/api-docs/swagger.json}, object
+ * {@code getCScustenq_response_200.InqCustZ}) and the z/OS Connect service
+ * interface ({@code INQCUSTZ.si}, which declares
+ * {@code field name="InqCustZ" originalName="INQCUSTZ"}). The mixed-case
+ * {@code InqCustZ} is therefore the JSON wire name; {@code INQCUSTZ} is only the
+ * COBOL copybook {@code originalName} and never appears on the wire. This matches
+ * the sibling reference envelope {@code AccountEnquiryJson}, which pins
+ * {@code @JsonProperty("InqAcc")} to its own swagger casing. Per AAP &sect;0.4.1
+ * and F-019, the frozen contract is reproduced verbatim, so this field is pinned
+ * to {@code InqCustZ}.
+ *
+ * <p>The preserved interface-module consumer remains fully backward compatible:
+ * its {@code CustomerEnquiryJson} is annotated
+ * {@code @JsonNaming(JsonPropertyNamingStrategy.class)} (a {@code substring(3)}
+ * strategy) and exposes {@code getInqCustZ()}/{@code setInqCustZ(...)}, so its
+ * default {@code ObjectMapper} accepts the {@code InqCustZ} key as a valid alias
+ * and populates the inner payload. Emitting the contract-correct {@code InqCustZ}
+ * therefore does not break the preserved consumer.</p>
  *
  * <p><strong>Exactly one top-level key.</strong> The preserved consumer
  * deserialises with a default mapper that fails on unknown properties, so the
- * serialised envelope MUST contain ONLY the single key {@code INQCUSTZ} &mdash;
+ * serialised envelope MUST contain ONLY the single key {@code InqCustZ} &mdash;
  * never any additional metadata, status, or helper field at this level. The
  * inner payload obeys the same single-surface rule in {@link InqCustZJson}.</p>
  *
@@ -47,9 +50,9 @@ import com.ibm.cics.cip.bank.core.config.JacksonConfig;
  * legacy class declared {@code @JsonNaming(JsonPropertyNamingStrategy.class)}).
  * The strategy strips a conventional 3-character member-name prefix
  * ({@code substring(3)}); however, the single field carries an explicit
- * {@link JsonProperty @JsonProperty("INQCUSTZ")}, and an explicit
+ * {@link JsonProperty @JsonProperty("InqCustZ")}, and an explicit
  * {@code @JsonProperty} always wins over the class-level strategy. The emitted
- * outer key is therefore exactly {@code INQCUSTZ}, regardless of the Java field
+ * outer key is therefore exactly {@code InqCustZ}, regardless of the Java field
  * name or the {@code substring(3)} rule &mdash; the strategy can never produce an
  * unexpected key here.</p>
  *
@@ -69,12 +72,12 @@ public class CustomerEnquiryJson
 
 	/**
 	 * The single nested commarea payload of the {@code inqcustz} response. Pinned
-	 * to the verbatim outer wire key {@code INQCUSTZ} (all caps) by the explicit
-	 * {@link JsonProperty @JsonProperty}, which takes precedence over the
-	 * class-level {@code substring(3)} naming strategy. This is the only
+	 * to the verbatim frozen-contract outer wire key {@code InqCustZ} (mixed case)
+	 * by the explicit {@link JsonProperty @JsonProperty}, which takes precedence
+	 * over the class-level {@code substring(3)} naming strategy. This is the only
 	 * serialised member of the envelope.
 	 */
-	@JsonProperty("INQCUSTZ")
+	@JsonProperty("InqCustZ")
 	private InqCustZJson inqCustZ;
 
 	/**
@@ -116,7 +119,7 @@ public class CustomerEnquiryJson
 	@Override
 	public String toString()
 	{
-		return "CustomerEnquiryJson [INQCUSTZ=" + inqCustZ + "]";
+		return "CustomerEnquiryJson [InqCustZ=" + inqCustZ + "]";
 	}
 
 }

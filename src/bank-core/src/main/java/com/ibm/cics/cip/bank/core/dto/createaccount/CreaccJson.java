@@ -10,6 +10,14 @@ import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import com.ibm.cics.cip.bank.core.config.JacksonConfig;
 import com.ibm.cics.cip.bank.core.dto.common.CommKey;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Digits;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Size;
+
 /**
  * Inner commarea payload of the frozen z/OS Connect <em>create-account</em>
  * ({@code creacc}) contract (feature F-019). This DTO is the object nested under
@@ -113,6 +121,7 @@ public class CreaccJson
 	 * verbatim as {@code CommEyecatcher}.
 	 */
 	@JsonProperty("CommEyecatcher")
+	@Size(max = 4)
 	private String commEyecatcher = "    ";
 
 	/**
@@ -125,6 +134,7 @@ public class CreaccJson
 	 * {@code CommCustno}.
 	 */
 	@JsonProperty("CommCustno")
+	@Size(max = 10)
 	private String commCustno;
 
 	/**
@@ -137,6 +147,7 @@ public class CreaccJson
 	 * {@code CommKey}.
 	 */
 	@JsonProperty("CommKey")
+	@Valid
 	private CommKey commKey = new CommKey();
 
 	/**
@@ -147,6 +158,7 @@ public class CreaccJson
 	 * Serialised verbatim as {@code CommAccType}.
 	 */
 	@JsonProperty("CommAccType")
+	@Size(max = 8)
 	private String commAccType;
 
 	/**
@@ -159,6 +171,9 @@ public class CreaccJson
 	 * Serialised verbatim as {@code CommIntRt}.
 	 */
 	@JsonProperty("CommIntRt")
+	@Digits(integer = 4, fraction = 2)
+	@DecimalMin("0")
+	@DecimalMax("9999.99")
 	private BigDecimal commInterestRate;
 
 	/**
@@ -170,6 +185,8 @@ public class CreaccJson
 	 * Serialised verbatim as {@code CommOpened}.
 	 */
 	@JsonProperty("CommOpened")
+	@Min(0)
+	@Max(99999999)
 	private Integer commOpened;
 
 	/**
@@ -180,6 +197,8 @@ public class CreaccJson
 	 * {@code CommOverdrLim}.
 	 */
 	@JsonProperty("CommOverdrLim")
+	@Min(0)
+	@Max(99999999)
 	private Integer commOverdraftLimit;
 
 	/**
@@ -189,6 +208,8 @@ public class CreaccJson
 	 * {@code CommLastStmtDt}.
 	 */
 	@JsonProperty("CommLastStmtDt")
+	@Min(0)
+	@Max(99999999)
 	private Integer commLastStatementDate;
 
 	/**
@@ -198,6 +219,8 @@ public class CreaccJson
 	 * {@code CommNextStmtDt}.
 	 */
 	@JsonProperty("CommNextStmtDt")
+	@Min(0)
+	@Max(99999999)
 	private Integer commNextStatementDate;
 
 	/**
@@ -209,6 +232,9 @@ public class CreaccJson
 	 * collapsed with it (&sect;0.6). Serialised verbatim as {@code CommAvailBal}.
 	 */
 	@JsonProperty("CommAvailBal")
+	@Digits(integer = 10, fraction = 2)
+	@DecimalMin("-9999999999.99")
+	@DecimalMax("9999999999.99")
 	private BigDecimal commAvailableBalance;
 
 	/**
@@ -221,6 +247,9 @@ public class CreaccJson
 	 * {@code CommActBal}.
 	 */
 	@JsonProperty("CommActBal")
+	@Digits(integer = 10, fraction = 2)
+	@DecimalMin("-9999999999.99")
+	@DecimalMax("9999999999.99")
 	private BigDecimal commActualBalance;
 
 	/**
@@ -229,6 +258,7 @@ public class CreaccJson
 	 * {@code maxLength=1}). Serialised verbatim as {@code CommSuccess}.
 	 */
 	@JsonProperty("CommSuccess")
+	@Size(max = 1)
 	private String commSuccess;
 
 	/**
@@ -239,6 +269,7 @@ public class CreaccJson
 	 * Serialised verbatim as {@code CommFailCode}.
 	 */
 	@JsonProperty("CommFailCode")
+	@Size(max = 1)
 	private String commFailCode;
 
 	/**

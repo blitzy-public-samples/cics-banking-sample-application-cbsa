@@ -9,6 +9,13 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import com.ibm.cics.cip.bank.core.config.JacksonConfig;
 
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Digits;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Size;
+
 /**
  * Inner commarea payload for the frozen z/OS Connect <em>update-account</em>
  * ({@code updacc}) contract. It is the nested object wrapped by
@@ -91,14 +98,17 @@ public class UpdaccJson
 
 	/** Eye-catcher, {@code X(4)} (retained for wire parity). */
 	@JsonProperty("CommEye")
+	@Size(max = 4)
 	private String commEye;
 
 	/** Owning customer number, {@code X(10)}; left-zero-padded to width 10 by the mapper. */
 	@JsonProperty("CommCustno")
+	@Size(max = 10)
 	private String commCustno;
 
 	/** Sort code, {@code X(6)}; left-zero-padded to width 6 by the mapper. */
 	@JsonProperty("CommScode")
+	@Size(max = 6)
 	private String commSortcode;
 
 	/**
@@ -107,14 +117,20 @@ public class UpdaccJson
 	 * eight-digit value always fits an {@link Integer}.
 	 */
 	@JsonProperty("CommAccno")
+	@Min(0)
+	@Max(99999999)
 	private Integer commAccno;
 
 	/** Account type, {@code X(8)}; plain {@code String} (e.g. {@code CURRENT}), never an enum. */
 	@JsonProperty("CommAccType")
+	@Size(max = 8)
 	private String commAccountType;
 
 	/** Interest rate, {@code 9(4)V99}; {@link BigDecimal} at scale 2. */
 	@JsonProperty("CommIntRate")
+	@Digits(integer = 4, fraction = 2)
+	@DecimalMin("0")
+	@DecimalMax("9999.99")
 	private BigDecimal commInterestRate;
 
 	/**
@@ -123,10 +139,14 @@ public class UpdaccJson
 	 * supplied by the mapper via {@code DtoFormat.dateToInt}.
 	 */
 	@JsonProperty("CommOpened")
+	@Min(0)
+	@Max(99999999)
 	private Integer commOpened;
 
 	/** Overdraft limit, {@code 9(8)}; whole pounds as an {@link Integer} (not money). */
 	@JsonProperty("CommOverdraft")
+	@Min(0)
+	@Max(99999999)
 	private Integer commOverdraft;
 
 	/**
@@ -135,6 +155,8 @@ public class UpdaccJson
 	 * supplied by the mapper via {@code DtoFormat.dateToInt}.
 	 */
 	@JsonProperty("CommLastStmtDt")
+	@Min(0)
+	@Max(99999999)
 	private Integer commLastStatementDate;
 
 	/**
@@ -143,6 +165,8 @@ public class UpdaccJson
 	 * supplied by the mapper via {@code DtoFormat.dateToInt}.
 	 */
 	@JsonProperty("CommNextStmtDt")
+	@Min(0)
+	@Max(99999999)
 	private Integer commNextStatementDate;
 
 	/**
@@ -151,6 +175,9 @@ public class UpdaccJson
 	 * (F-012); echoed for context only.
 	 */
 	@JsonProperty("CommAvailBal")
+	@Digits(integer = 10, fraction = 2)
+	@DecimalMin("-9999999999.99")
+	@DecimalMax("9999999999.99")
 	private BigDecimal commAvailableBalance;
 
 	/**
@@ -158,10 +185,14 @@ public class UpdaccJson
 	 * Independent from the available balance &mdash; the two are never collapsed.
 	 */
 	@JsonProperty("CommActualBal")
+	@Digits(integer = 10, fraction = 2)
+	@DecimalMin("-9999999999.99")
+	@DecimalMax("9999999999.99")
 	private BigDecimal commActualBalance;
 
 	/** Success flag, {@code X(1)}. */
 	@JsonProperty("CommSuccess")
+	@Size(max = 1)
 	private String commSuccess;
 
 	/**

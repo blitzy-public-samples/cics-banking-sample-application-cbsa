@@ -7,6 +7,9 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import com.ibm.cics.cip.bank.core.config.JacksonConfig;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
+
 /**
  * Outer JSON envelope for the frozen z/OS Connect {@code crecust} (CREATE
  * CUSTOMER) contract (feature F-019).
@@ -69,8 +72,22 @@ public class CreateCustomerJson
 	 * single envelope key {@code "CreCust"}. The Java field name is
 	 * {@code creCust}; the explicit {@link JsonProperty} pins the verbatim wire
 	 * key and takes precedence over the class-level naming strategy.
+	 *
+	 * <p><strong>Validation (F-021).</strong> {@link NotNull @NotNull} rejects an
+	 * explicit {@code {"CreCust": null}} request body with HTTP&nbsp;{@code 400}
+	 * (via {@code MethodArgumentNotValidException} &rarr;
+	 * {@code GlobalExceptionHandler}) BEFORE the controller dereferences the
+	 * payload, eliminating the {@code NullPointerException}&rarr;{@code 500} path.
+	 * {@link Valid @Valid} cascades Bean Validation into the inner
+	 * {@link CrecustJson} so that over-width structural violations also surface as
+	 * {@code 400}. These are STRUCTURAL/FORMAT checks only; business rules
+	 * (invalid title {@code 'T'}, DOB-range {@code 'O'}, no-agency {@code 'C'})
+	 * remain COBOL fail-code envelopes at HTTP&nbsp;{@code 200}, never converted to
+	 * {@code 400}.</p>
 	 */
 	@JsonProperty("CreCust")
+	@NotNull
+	@Valid
 	private CrecustJson creCust;
 
 	/**

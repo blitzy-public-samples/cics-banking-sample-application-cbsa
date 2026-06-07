@@ -7,6 +7,9 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import com.ibm.cics.cip.bank.core.config.JacksonConfig;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
+
 /**
  * Outer JSON <em>envelope</em> wire DTO for the frozen z/OS Connect
  * <em>create-account</em> ({@code creacc}, CREATE&nbsp;ACCOUNT) REST contract
@@ -90,8 +93,22 @@ public class CreateAccountJson
 	 * envelope key {@code "CreAcc"}. The explicit {@link JsonProperty} annotation
 	 * pins the contract-critical top-level envelope key, overriding the
 	 * class-level {@code substring(3)} naming strategy.
+	 *
+	 * <p><strong>Validation (F-021).</strong> {@link NotNull @NotNull} rejects an
+	 * explicit {@code {"CreAcc": null}} request body with HTTP&nbsp;{@code 400}
+	 * (via {@code MethodArgumentNotValidException} &rarr;
+	 * {@code GlobalExceptionHandler}) BEFORE the controller dereferences the
+	 * payload, eliminating the {@code NullPointerException}&rarr;{@code 500} path.
+	 * {@link Valid @Valid} cascades Bean Validation into the inner
+	 * {@link CreaccJson} so that over-width / over-scale structural violations
+	 * also surface as {@code 400}. These are STRUCTURAL/FORMAT checks only;
+	 * business rules (customer-not-found {@code '1'}, max-ten-accounts {@code '8'},
+	 * invalid-account-type {@code 'A'}) remain COBOL fail-code envelopes at
+	 * HTTP&nbsp;{@code 200}, never converted to {@code 400}.</p>
 	 */
 	@JsonProperty("CreAcc")
+	@NotNull
+	@Valid
 	private CreaccJson creAcc;
 
 	/**

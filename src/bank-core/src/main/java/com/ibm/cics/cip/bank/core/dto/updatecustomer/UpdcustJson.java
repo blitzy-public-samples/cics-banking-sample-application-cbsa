@@ -6,6 +6,8 @@ package com.ibm.cics.cip.bank.core.dto.updatecustomer;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import com.ibm.cics.cip.bank.core.config.JacksonConfig;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Size;
 
 /**
@@ -110,6 +112,8 @@ public class UpdcustJson
 	 * converts the entity {@code LocalDate} to this integer.
 	 */
 	@JsonProperty("CommDob")
+	@Min(0)
+	@Max(99999999)
 	private Integer commDateOfBirth = 0;
 
 	/**
@@ -117,6 +121,8 @@ public class UpdcustJson
 	 * range 0&ndash;999). A small boxed {@link Integer}, never a monetary value.
 	 */
 	@JsonProperty("CommCreditScore")
+	@Min(0)
+	@Max(999)
 	private Integer commCreditScore = 0;
 
 	/**
@@ -124,6 +130,8 @@ public class UpdcustJson
 	 * an 8-digit {@code DDMMYYYY} integer (frozen schema range 0&ndash;99999999).
 	 */
 	@JsonProperty("CommCsReviewDate")
+	@Min(0)
+	@Max(99999999)
 	private Integer commCreditScoreReviewDate = 0;
 
 	/** Update-success flag (copybook {@code COMM-UPD-SUCCESS}, PIC X), single char. */

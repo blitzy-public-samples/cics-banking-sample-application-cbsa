@@ -8,6 +8,11 @@ import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import com.ibm.cics.cip.bank.core.config.JacksonConfig;
 import com.ibm.cics.cip.bank.core.dto.common.CommKey;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Size;
+
 /**
  * Inner commarea payload of the frozen z/OS Connect {@code crecust} (CREATE
  * CUSTOMER) contract (feature F-019), wrapped by {@link CreateCustomerJson}
@@ -79,6 +84,7 @@ public class CrecustJson
 	 * success. Defaults to four spaces to reproduce the legacy initial value.
 	 */
 	@JsonProperty("CommEyecatcher")
+	@Size(max = 4)
 	private String commEyecatcher = "    ";
 
 	/**
@@ -89,14 +95,17 @@ public class CrecustJson
 	 * the legacy default {@code "CommKey":{"CommSortcode":0,"CommNumber":0}}.
 	 */
 	@JsonProperty("CommKey")
+	@Valid
 	private CommKey commKey = new CommKey();
 
 	/** Customer name ({@code COMM-NAME PIC X(60)}; first token is the title). */
 	@JsonProperty("CommName")
+	@Size(max = 60)
 	private String commName;
 
 	/** Customer address ({@code COMM-ADDRESS PIC X(160)}). */
 	@JsonProperty("CommAddress")
+	@Size(max = 160)
 	private String commAddress;
 
 	/**
@@ -107,6 +116,7 @@ public class CrecustJson
 	 * runtime contract (locked by the controller IT). No slashes on the wire.
 	 */
 	@JsonProperty("CommDateOfBirth")
+	@Size(max = 8)
 	private String commDateOfBirth;
 
 	/**
@@ -115,6 +125,8 @@ public class CrecustJson
 	 * as a JSON number.
 	 */
 	@JsonProperty("CommCreditScore")
+	@Min(0)
+	@Max(999)
 	private int commCreditScore = 0;
 
 	/**
@@ -124,10 +136,12 @@ public class CrecustJson
 	 * value.
 	 */
 	@JsonProperty("CommCsReviewDate")
+	@Size(max = 8)
 	private String commCsReviewDate = "0";
 
 	/** Success flag ({@code COMM-SUCCESS PIC X}: {@code 'Y'}/{@code 'N'}). */
 	@JsonProperty("CommSuccess")
+	@Size(max = 1)
 	private String commSuccess;
 
 	/**
@@ -135,6 +149,7 @@ public class CrecustJson
 	 * success, for example {@code 'C'} when no credit agency responds.
 	 */
 	@JsonProperty("CommFailCode")
+	@Size(max = 1)
 	private String commFailCode;
 
 	/**

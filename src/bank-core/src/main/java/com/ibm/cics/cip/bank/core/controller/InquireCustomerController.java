@@ -7,6 +7,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -14,6 +15,9 @@ import com.ibm.cics.cip.bank.core.dto.customerenquiry.CustomerEnquiryJson;
 import com.ibm.cics.cip.bank.core.dto.customerenquiry.InqCustZJson;
 import com.ibm.cics.cip.bank.core.exception.BusinessRuleException;
 import com.ibm.cics.cip.bank.core.service.CustomerService;
+import com.ibm.cics.cip.bank.core.util.BankFormat;
+
+import jakarta.validation.Valid;
 
 /**
  * REST controller reproducing the frozen z/OS Connect <em>inquire-customer</em>
@@ -47,11 +51,18 @@ import com.ibm.cics.cip.bank.core.service.CustomerService;
  *       {@link CustomerEnquiryJson} serialises to exactly one top-level key over
  *       the inner {@link InqCustZJson} payload, reproducing the z/OS Connect
  *       {@code getCScustenq_response_200} envelope.</li>
- *   <li><strong>No request body:</strong> although the swagger lists a body
- *       parameter, the real consumer ({@code WebController}) calls
- *       {@code client.get().retrieve()} with <em>no</em> body, so this handler
- *       accepts ONLY the {@code {custno}} path variable and declares no
- *       {@code @RequestBody}.</li>
+ *   <li><strong>Parameter source (path + optional body):</strong> the swagger
+ *       declares both the {@code {custno}} path variable and a body parameter
+ *       {@code getCScustenq_request} carrying the {@code InqCustZ} envelope. The
+ *       real consumer ({@code WebController}) calls
+ *       {@code client.get().retrieve()} with <em>no</em> body, so the
+ *       {@code {custno}} path variable is the AUTHORITATIVE parameter source and
+ *       identifies the customer. For frozen-contract fidelity the handler ALSO
+ *       accepts the swagger-declared {@code InqCustZ} body as an OPTIONAL
+ *       ({@code required = false}), {@code @Valid}-checked
+ *       {@link CustomerEnquiryJson} so that swagger-shaped callers are not
+ *       rejected; a present body is structurally validated but does not override
+ *       the authoritative path variable.</li>
  * </ul>
  *
  * <h2>Success / not-found convention</h2>
@@ -73,9 +84,10 @@ import com.ibm.cics.cip.bank.core.service.CustomerService;
  * code via {@code InqCustInqFailCd}, again at HTTP&nbsp;{@code 200}. This mirrors
  * the service's own not-found shaping. Parameter-binding and generic exceptions
  * (for example a blank, non-numeric or over-width path variable raising
- * {@link NumberFormatException} from {@link Long#parseLong(String)}) are
- * deliberately NOT caught here; they propagate to {@code GlobalExceptionHandler},
- * which renders them as HTTP&nbsp;400.</p>
+ * {@link NumberFormatException} from
+ * {@link BankFormat#parseCustomerNumber(String)}, which enforces the 1-to-10
+ * digit contract width) are deliberately NOT caught here; they propagate to
+ * {@code GlobalExceptionHandler}, which renders them as HTTP&nbsp;400.</p>
  *
  * <p><strong>No mainframe coupling.</strong> This controller imports only Spring
  * MVC and {@code bank-core} types; it never references {@code com.ibm.cics.server}
@@ -119,7 +131,8 @@ public class InquireCustomerController
 	 * {@code GET /inqcustz/enquiry/{custno}} contract.
 	 *
 	 * <p>The path variable is parsed to a {@code long} via
-	 * {@link Long#parseLong(String)} and delegated unchanged to
+	 * {@link BankFormat#parseCustomerNumber(String)} (which enforces the
+	 * 1-to-10-digit contract width) and delegated unchanged to
 	 * {@link CustomerService#inquireCustomer(long)} &mdash; including the
 	 * {@code 0000000000} sentinel (random customer) and the {@code 9999999999}
 	 * sentinel (highest existing customer), which the service interprets via the
@@ -140,20 +153,30 @@ public class InquireCustomerController
 	 * @param custno the 10-digit customer number from the path (the sentinels
 	 *              {@code 0000000000} and {@code 9999999999} are passed through
 	 *              unchanged for the service to interpret)
+	 * @param body  the OPTIONAL swagger-declared {@code InqCustZ} request envelope
+	 *              ({@code required = false}); accepted and {@code @Valid}-checked
+	 *              for frozen-contract fidelity but NOT authoritative &mdash; the
+	 *              {@code {custno}} path variable identifies the customer. May be
+	 *              {@code null} (the real no-body consumer path).
 	 * @return the customer-enquiry response envelope at HTTP&nbsp;{@code 200},
 	 *         {@code application/json}
 	 */
 	@GetMapping(value = "/enquiry/{custno}",
 			produces = MediaType.APPLICATION_JSON_VALUE)
 	public ResponseEntity<CustomerEnquiryJson> inquireCustomer(
-			@PathVariable("custno") String custno)
+			@PathVariable("custno") String custno,
+			@RequestBody(required = false) @Valid CustomerEnquiryJson body)
 	{
 		// Parse outside the try so a malformed path variable surfaces as a
 		// NumberFormatException to GlobalExceptionHandler (HTTP 400) rather than
-		// being absorbed by the business-rule safeguard below. The sentinels
-		// 0000000000 / 9999999999 parse cleanly and are passed through unchanged
-		// for CustomerService to interpret (F-008).
-		long customerNumber = Long.parseLong(custno);
+		// being absorbed by the business-rule safeguard below. BankFormat
+		// .parseCustomerNumber enforces the 1-to-10-digit contract width, so an
+		// over-width value such as "10000000000" is rejected as 400 (unlike
+		// Long.parseLong, which would accept it). The sentinels 0000000000 /
+		// 9999999999 parse cleanly and are passed through unchanged for
+		// CustomerService to interpret (F-008). The optional swagger body is
+		// accepted for contract fidelity; the path variable stays authoritative.
+		long customerNumber = BankFormat.parseCustomerNumber(custno);
 		try
 		{
 			// Thin pass-through: INQCUST logic (incl. the sentinel resolution and
