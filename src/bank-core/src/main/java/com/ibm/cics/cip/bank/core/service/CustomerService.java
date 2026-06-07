@@ -11,6 +11,7 @@ import java.util.Optional;
 import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
@@ -134,6 +135,26 @@ public class CustomerService
 
 	/** Width of the compact {@code DDMMYYYY} date-of-birth string. */
 	private static final int DOB_STRING_WIDTH = 8;
+
+	/**
+	 * Fixed storage width of the customer name, matching COBOL
+	 * {@code CUSTOMER-NAME PIC X(60)} / {@code COMM-NAME PIC X(60)} and the
+	 * {@code customer.name VARCHAR(60)} column. An over-length value is truncated
+	 * to this width before persist, reproducing the COBOL fixed-width
+	 * {@code MOVE} (which silently truncates into a {@code PIC X(60)} field)
+	 * rather than letting the database reject it &mdash; behavioural parity, not
+	 * enhancement (AAP &sect;0.6/&sect;0.7).
+	 */
+	private static final int NAME_MAX_WIDTH = 60;
+
+	/**
+	 * Fixed storage width of the customer address, matching COBOL
+	 * {@code CUSTOMER-ADDRESS PIC X(160)} / {@code COMM-ADDRESS PIC X(160)} and
+	 * the {@code customer.address VARCHAR(160)} column. Truncated to this width
+	 * before persist for the same COBOL fixed-width {@code MOVE} parity reason as
+	 * {@link #NAME_MAX_WIDTH}.
+	 */
+	private static final int ADDRESS_MAX_WIDTH = 160;
 
 	/**
 	 * Number of credit agencies queried in parallel during create, reproducing
@@ -287,8 +308,15 @@ public class CustomerService
 			isolation = Isolation.READ_COMMITTED)
 	public CreateCustomerJson createCustomer(CreateCustomerForm form)
 	{
-		String name = form.getCustName();
-		String address = form.getCustAddress();
+		// Truncate to the COBOL fixed-field widths (COMM-NAME PIC X(60),
+		// COMM-ADDRESS PIC X(160)) up front, so the truncated value flows
+		// identically into title validation, the entity, the PROCTRAN audit row,
+		// and the response envelope -- exactly as the single fixed-width COBOL
+		// commarea field behaves. This reproduces the COBOL MOVE's silent
+		// truncation (behavioural parity) and prevents an over-length input from
+		// reaching the VARCHAR column and being rejected by the database.
+		String name = truncate(form.getCustName(), NAME_MAX_WIDTH);
+		String address = truncate(form.getCustAddress(), ADDRESS_MAX_WIDTH);
 
 		// 1. Title validation (CRECUST: fail 'T'). A blank title is valid.
 		if (!Title.isValidTitle(firstToken(name)))
@@ -435,8 +463,14 @@ public class CustomerService
 	public UpdateCustomerJson updateCustomer(UpdateCustomerForm form)
 	{
 		long customerNumber = parseCustomerNumber(form.getCustNumber());
-		String newName = form.getCustName();
-		String newAddress = form.getCustAddress();
+		// Truncate to the COBOL fixed-field widths (COMM-NAME PIC X(60),
+		// COMM-ADDRESS PIC X(160)) before the blank rules and the rewrite, so an
+		// over-length name or address is silently truncated (COBOL MOVE parity)
+		// instead of reaching the VARCHAR column and being rejected by the
+		// database. truncate(...) is null-safe, so a null field is preserved for
+		// the blank-rule and title checks below.
+		String newName = truncate(form.getCustName(), NAME_MAX_WIDTH);
+		String newAddress = truncate(form.getCustAddress(), ADDRESS_MAX_WIDTH);
 
 		// 1. Title validation first (UPDCUST order). A blank name yields a blank
 		//    title token, which is valid.
@@ -607,7 +641,27 @@ public class CustomerService
 				NUMBER_OF_AGENCIES);
 		for (int agency = 0; agency < NUMBER_OF_AGENCIES; agency++)
 		{
-			futures.add(creditAgencyService.requestCreditScore());
+			try
+			{
+				futures.add(creditAgencyService.requestCreditScore());
+			}
+			catch (RejectedExecutionException rejected)
+			{
+				// The dedicated credit-agency executor is saturated (all threads
+				// busy and the bounded queue full), so this agency task could not
+				// even be started. Treat it exactly like an agency that did not
+				// reply: do not add a future for it. If every agency is rejected
+				// the futures list is empty, the deadline wait below returns
+				// immediately, retrieved stays zero, and the create degrades to
+				// fail code 'C' -- the intended "no agency replied" outcome
+				// (F-006/F-017) -- instead of surfacing a raw
+				// RejectedExecutionException as an HTTP 500. Spring's
+				// TaskRejectedException is a RejectedExecutionException, so this
+				// catch covers it too.
+				LOG.debug(
+						"Credit-agency executor saturated; agency request "
+								+ "rejected and treated as no reply");
+			}
 		}
 
 		// Wait for the fixed deadline, mirroring EXEC CICS DELAY FOR SECONDS(3).
@@ -1078,6 +1132,36 @@ public class CustomerService
 	private boolean isProvided(String value)
 	{
 		return value != null && !value.isEmpty() && value.charAt(0) != ' ';
+	}
+
+	/**
+	 * Truncates a value to a fixed maximum width, reproducing the COBOL
+	 * fixed-width {@code MOVE} into a {@code PIC X(n)} field &mdash; which keeps
+	 * the leftmost {@code n} characters and silently discards the rest rather
+	 * than raising an error.
+	 *
+	 * <p>This is behavioural parity, not enhancement (AAP &sect;0.6/&sect;0.7):
+	 * the legacy commarea fields {@code COMM-NAME PIC X(60)} and
+	 * {@code COMM-ADDRESS PIC X(160)} are fixed width, so an over-length value
+	 * could never overflow them. Applying the same ceiling here keeps an
+	 * over-length name or address from reaching the {@code VARCHAR(60)} /
+	 * {@code VARCHAR(160)} column and being rejected by the database. The method
+	 * is {@code null}-safe (a {@code null} or already-short value is returned
+	 * unchanged) so the caller's blank-rule and title checks see the value
+	 * exactly as supplied.</p>
+	 *
+	 * @param value    the value to truncate, or {@code null}
+	 * @param maxWidth the fixed field width (the COBOL {@code PIC X(maxWidth)})
+	 * @return the value truncated to at most {@code maxWidth} characters, or the
+	 *         original value when it is {@code null} or already within the width
+	 */
+	private String truncate(String value, int maxWidth)
+	{
+		if (value == null || value.length() <= maxWidth)
+		{
+			return value;
+		}
+		return value.substring(0, maxWidth);
 	}
 
 }

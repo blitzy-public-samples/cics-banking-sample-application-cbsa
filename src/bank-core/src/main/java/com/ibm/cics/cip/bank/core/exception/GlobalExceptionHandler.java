@@ -5,6 +5,8 @@ package com.ibm.cics.cip.bank.core.exception;
 
 import java.util.stream.Collectors;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -14,6 +16,8 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.NoHandlerFoundException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
@@ -71,6 +75,18 @@ public class GlobalExceptionHandler
 {
 
 	/**
+	 * Logger for this advice. Genuinely unexpected exceptions (those reaching the
+	 * {@link #handleUnexpected(Exception) catch-all}) are logged server-side at
+	 * {@code ERROR} so an HTTP&nbsp;500 is always traceable to its root cause in
+	 * the application log, while the client still receives only the generic,
+	 * sanitised {@link #UNEXPECTED_ERROR_MESSAGE} body (no stack trace, SQL, or
+	 * exception class name is ever exposed &mdash; CWE-209 safe). This is the
+	 * Java analogue of {@code ABNDPROC} recording an abend "from one place".
+	 */
+	private static final Logger LOG = LoggerFactory
+			.getLogger(GlobalExceptionHandler.class);
+
+	/**
 	 * Fail-code value used when no COBOL business fail code applies (for example
 	 * for malformed-input or unexpected-error responses). An empty string is the
 	 * contract-faithful "no failure code" marker: the legacy consumer treats an
@@ -120,6 +136,13 @@ public class GlobalExceptionHandler
 	 * Generic so it never echoes the offending value or any internal detail.
 	 */
 	private static final String INVALID_PARAMETER_MESSAGE = "Invalid request parameter.";
+
+	/**
+	 * User-safe message returned when no route matches the requested path
+	 * (HTTP&nbsp;404). Generic so it never echoes the offending URL or any
+	 * routing internal.
+	 */
+	private static final String NOT_FOUND_MESSAGE = "The requested resource was not found.";
 
 	/** Separator used when aggregating multiple validation messages into one. */
 	private static final String MESSAGE_DELIMITER = "; ";
@@ -319,10 +342,48 @@ public class GlobalExceptionHandler
 	}
 
 	/**
+	 * Translates a request for a path that matches no route &mdash; Spring MVC's
+	 * {@link NoResourceFoundException} (raised since Spring&nbsp;6.1 when no
+	 * handler and no static resource match the path) or the legacy
+	 * {@link NoHandlerFoundException} &mdash; into an HTTP&nbsp;404 (Not Found)
+	 * response.
+	 *
+	 * <p>Without this dedicated handler an unknown route would fall through to
+	 * the {@link #handleUnexpected(Exception) catch-all} and be mislabelled as
+	 * HTTP&nbsp;500, because that catch-all is declared for {@code Exception} and
+	 * would otherwise intercept these "no route" exceptions. A missing resource
+	 * is a client addressing mistake, not a server fault, so the correct status
+	 * is&nbsp;404. Spring resolves the most specific {@code @ExceptionHandler}
+	 * first, so declaring these types here takes precedence over the broad
+	 * catch-all. No COBOL business fail code applies (the request never reached a
+	 * business program), so the fail code is left empty (never invented), and the
+	 * body is generic so it never echoes the offending URL or any routing
+	 * internal (CWE-209 safe).</p>
+	 *
+	 * @param ex the no-route exception (intentionally not surfaced to the client)
+	 * @return an HTTP&nbsp;404 response with a generic, safe message
+	 */
+	@ExceptionHandler({ NoResourceFoundException.class,
+			NoHandlerFoundException.class })
+	public ResponseEntity<ErrorResponse> handleNotFound(Exception ex)
+	{
+		ErrorResponse body = new ErrorResponse(false, NO_FAIL_CODE,
+				NOT_FOUND_MESSAGE);
+		return ResponseEntity.status(HttpStatus.NOT_FOUND).body(body);
+	}
+
+	/**
 	 * Final catch-all for any other (unexpected) exception. Returns a sanitised
 	 * HTTP&nbsp;500 response that never exposes a stack trace, SQL, exception
 	 * class name, or any internal / mainframe detail to the caller. The original
 	 * exception is intentionally not echoed into the body.
+	 *
+	 * <p>The exception <em>is</em> logged server-side at {@code ERROR} (with its
+	 * stack trace) so that every HTTP&nbsp;500 is traceable to its root cause in
+	 * the application log &mdash; the catch-all is deliberately a last resort, and
+	 * a 500 reaching it signals a condition that should be investigated. Logging
+	 * happens only in the server log; the client response body remains the
+	 * generic {@link #UNEXPECTED_ERROR_MESSAGE} (CWE-209 safe).</p>
 	 *
 	 * @param ex the unexpected exception (intentionally not surfaced to the client)
 	 * @return an HTTP&nbsp;500 response with a generic, safe message
@@ -330,6 +391,9 @@ public class GlobalExceptionHandler
 	@ExceptionHandler(Exception.class)
 	public ResponseEntity<ErrorResponse> handleUnexpected(Exception ex)
 	{
+		// Record the genuine root cause server-side (never to the client) so an
+		// unexpected 500 is always traceable, not silent.
+		LOG.error("Unexpected error handling request", ex);
 		ErrorResponse body = new ErrorResponse(false, NO_FAIL_CODE,
 				UNEXPECTED_ERROR_MESSAGE);
 		return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)

@@ -56,10 +56,22 @@ public class UpdateCustomerJson
 	/**
 	 * Default constructor required by Jackson for deserialisation of an inbound
 	 * {@code updcust} request body.
+	 *
+	 * <p><strong>Eager initialisation.</strong> The inner {@link UpdcustJson}
+	 * payload is eagerly instantiated so that {@link #getUpdcust()} is never
+	 * {@code null} in controller/service code, mirroring the
+	 * {@code CreateCustomerJson} sibling convention. This makes a request body
+	 * with no {@code UpdCust} key (for example an empty {@code {}} object)
+	 * degrade gracefully through the normal business path &mdash; the controller
+	 * copies the (all-null) fields into the service form and the service reports
+	 * the appropriate COBOL fail code at HTTP&nbsp;200 &mdash; instead of raising
+	 * a {@link NullPointerException} that the global advice would mislabel as
+	 * HTTP&nbsp;500. The serialised shape is unchanged: an empty inner payload
+	 * still serialises under the {@code UpdCust} key.</p>
 	 */
 	public UpdateCustomerJson()
 	{
-		// No-arg constructor required by Jackson.
+		this.updcust = new UpdcustJson();
 	}
 
 	/**
