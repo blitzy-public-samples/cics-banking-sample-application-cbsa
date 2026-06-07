@@ -14,6 +14,7 @@ import com.ibm.cics.cip.bank.core.dto.accountenquiry.AccountEnquiryJson;
 import com.ibm.cics.cip.bank.core.dto.accountenquiry.InqaccJson;
 import com.ibm.cics.cip.bank.core.exception.BusinessRuleException;
 import com.ibm.cics.cip.bank.core.service.AccountService;
+import com.ibm.cics.cip.bank.core.util.BankFormat;
 
 /**
  * REST controller reproducing the frozen z/OS Connect <em>inquire-account</em>
@@ -67,10 +68,12 @@ import com.ibm.cics.cip.bank.core.service.AccountService;
  * read path, the controller still honours the contract by returning a fresh
  * {@link AccountEnquiryJson} whose inner payload echoes the requested account
  * number and sets {@code InqAccSuccess = "N"}, again at HTTP&nbsp;{@code 200}.
- * This mirrors the service's own not-found shaping. Validation and generic
- * exceptions (for example a non-numeric path variable raising
- * {@link NumberFormatException}) are deliberately NOT caught here; they propagate
- * to {@code GlobalExceptionHandler}.</p>
+ * This mirrors the service's own not-found shaping. Parameter-binding and
+ * generic exceptions (for example a blank, non-numeric or over-width path
+ * variable raising {@link NumberFormatException} from
+ * {@link BankFormat#parseAccountNumber(String)}) are deliberately NOT caught
+ * here; they propagate to {@code GlobalExceptionHandler}, which renders them as
+ * HTTP&nbsp;400.</p>
  *
  * <p><strong>No mainframe coupling.</strong> This controller imports only Spring
  * MVC and {@code bank-core} types; it never references {@code com.ibm.cics.server}
@@ -112,7 +115,9 @@ public class InquireAccountController
 	 * Inquires on a single account, reproducing the frozen
 	 * {@code GET /inqaccz/enquiry/{accno}} contract.
 	 *
-	 * <p>The path variable is parsed to a {@code long} and delegated unchanged to
+	 * <p>The path variable is parsed to a {@code long} via
+	 * {@link BankFormat#parseAccountNumber(String)} (which enforces the
+	 * eight-digit contract width) and delegated unchanged to
 	 * {@link AccountService#inquireAccount(long)} &mdash; including the
 	 * {@code 99999999} sentinel, which the service interprets as a request for the
 	 * highest existing account. The service returns the fully populated
@@ -122,9 +127,9 @@ public class InquireAccountController
 	 *
 	 * <p>A {@link BusinessRuleException} is caught as a safeguard and shaped into
 	 * a contract-faithful {@code InqAccSuccess = "N"} envelope echoing the
-	 * requested account number, also at HTTP&nbsp;{@code 200}. A non-numeric
-	 * {@code accno} raises {@link NumberFormatException}, which is left to
-	 * propagate to the global exception handler.</p>
+	 * requested account number, also at HTTP&nbsp;{@code 200}. A blank,
+	 * non-numeric or over-width {@code accno} raises {@link NumberFormatException},
+	 * which is left to propagate to the global exception handler (HTTP&nbsp;400).</p>
 	 *
 	 * @param accno the 8-digit account number from the path (the sentinel
 	 *              {@code 99999999} is passed through unchanged for the service to
@@ -138,9 +143,11 @@ public class InquireAccountController
 			@PathVariable("accno") String accno)
 	{
 		// Parse outside the try so the value is definitely assigned for the catch
-		// block; a non-numeric path variable raises NumberFormatException, which
-		// is intentionally left to reach GlobalExceptionHandler.
-		long accountNumber = Long.parseLong(accno);
+		// block. BankFormat.parseAccountNumber enforces the eight-digit contract
+		// width: a blank, non-numeric or over-width {accno} raises
+		// NumberFormatException (rather than silently overflowing the int echo),
+		// which GlobalExceptionHandler renders as HTTP 400 (F-009-B / F-009-C).
+		long accountNumber = BankFormat.parseAccountNumber(accno);
 		try
 		{
 			// Thin pass-through: INQACC logic (incl. the 99999999 sentinel and

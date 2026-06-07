@@ -8,9 +8,12 @@ import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
@@ -98,6 +101,25 @@ public class GlobalExceptionHandler
 	 * detail, or any exception class name (avoiding CWE-209 information exposure).
 	 */
 	private static final String MALFORMED_BODY_MESSAGE = "Malformed request body.";
+
+	/**
+	 * User-safe message returned when the HTTP method is not supported for the
+	 * target route (HTTP&nbsp;405). Generic so it leaks no routing internals.
+	 */
+	private static final String METHOD_NOT_SUPPORTED_MESSAGE = "Request method not supported.";
+
+	/**
+	 * User-safe message returned when the request's content type is not
+	 * supported (HTTP&nbsp;415). Generic so it leaks no internals.
+	 */
+	private static final String MEDIA_TYPE_NOT_SUPPORTED_MESSAGE = "Unsupported media type.";
+
+	/**
+	 * User-safe message returned when a request parameter (for example a path
+	 * variable) cannot be parsed or bound to its target type (HTTP&nbsp;400).
+	 * Generic so it never echoes the offending value or any internal detail.
+	 */
+	private static final String INVALID_PARAMETER_MESSAGE = "Invalid request parameter.";
 
 	/** Separator used when aggregating multiple validation messages into one. */
 	private static final String MESSAGE_DELIMITER = "; ";
@@ -210,6 +232,89 @@ public class GlobalExceptionHandler
 		// sanitised so no payload or parser internal is exposed (CWE-209 safe).
 		ErrorResponse body = new ErrorResponse(false, NO_FAIL_CODE,
 				MALFORMED_BODY_MESSAGE);
+		return ResponseEntity.badRequest().body(body);
+	}
+
+	/**
+	 * Translates an unsupported HTTP method on an otherwise-valid route into an
+	 * HTTP&nbsp;405 (Method Not Allowed) response, populating the {@code Allow}
+	 * header with the methods the route does support.
+	 *
+	 * <p>Without this dedicated handler Spring's
+	 * {@link HttpRequestMethodNotSupportedException} would fall through to the
+	 * {@link #handleUnexpected(Exception) catch-all} and be mislabelled as
+	 * HTTP&nbsp;500. A wrong method is a client error, not a server fault; no
+	 * COBOL business fail code applies, so the fail code is left empty.</p>
+	 *
+	 * @param ex the method-not-supported exception
+	 * @return an HTTP&nbsp;405 response with the {@code Allow} header set
+	 */
+	@ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+	public ResponseEntity<ErrorResponse> handleMethodNotSupported(
+			HttpRequestMethodNotSupportedException ex)
+	{
+		ErrorResponse body = new ErrorResponse(false, NO_FAIL_CODE,
+				METHOD_NOT_SUPPORTED_MESSAGE);
+		ResponseEntity.BodyBuilder builder = ResponseEntity
+				.status(HttpStatus.METHOD_NOT_ALLOWED);
+		if (ex.getSupportedHttpMethods() != null)
+		{
+			builder.allow(ex.getSupportedHttpMethods()
+					.toArray(new org.springframework.http.HttpMethod[0]));
+		}
+		return builder.body(body);
+	}
+
+	/**
+	 * Translates an unsupported request content type into an HTTP&nbsp;415
+	 * (Unsupported Media Type) response.
+	 *
+	 * <p>Without this dedicated handler Spring's
+	 * {@link HttpMediaTypeNotSupportedException} (raised, for example, when a
+	 * {@code POST}/{@code PUT} arrives with no or a wrong {@code Content-Type})
+	 * would fall through to the {@link #handleUnexpected(Exception) catch-all}
+	 * and be mislabelled as HTTP&nbsp;500. It is a client error; no COBOL
+	 * business fail code applies, so the fail code is left empty.</p>
+	 *
+	 * @param ex the media-type-not-supported exception
+	 * @return an HTTP&nbsp;415 response with a generic, safe message
+	 */
+	@ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+	public ResponseEntity<ErrorResponse> handleMediaTypeNotSupported(
+			HttpMediaTypeNotSupportedException ex)
+	{
+		ErrorResponse body = new ErrorResponse(false, NO_FAIL_CODE,
+				MEDIA_TYPE_NOT_SUPPORTED_MESSAGE);
+		return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE)
+				.body(body);
+	}
+
+	/**
+	 * Translates a request-parameter binding failure &mdash; a
+	 * {@link MethodArgumentTypeMismatchException} (Spring cannot coerce a path or
+	 * query parameter to its declared type) or a {@link NumberFormatException}
+	 * (a controller's own {@code BankFormat.parse*} guard rejected a blank,
+	 * non-numeric or over-width identifier path variable) &mdash; into an
+	 * HTTP&nbsp;400 (Bad Request) response.
+	 *
+	 * <p>Without this handler such failures would reach the
+	 * {@link #handleUnexpected(Exception) catch-all} and be reported as
+	 * HTTP&nbsp;500, mislabelling a client input mistake as a server fault
+	 * (QA&nbsp;F-009-B/F-010-B/F-013-B/F-009-C). The request never reached
+	 * business logic, so no COBOL business fail code applies and the fail code is
+	 * left empty; the body is generic so it never echoes the offending value
+	 * (CWE-209 safe).</p>
+	 *
+	 * @param ex the type-mismatch or number-format exception (not surfaced)
+	 * @return an HTTP&nbsp;400 response with a generic, safe message
+	 */
+	@ExceptionHandler({ MethodArgumentTypeMismatchException.class,
+			NumberFormatException.class })
+	public ResponseEntity<ErrorResponse> handleParameterTypeMismatch(
+			Exception ex)
+	{
+		ErrorResponse body = new ErrorResponse(false, NO_FAIL_CODE,
+				INVALID_PARAMETER_MESSAGE);
 		return ResponseEntity.badRequest().body(body);
 	}
 

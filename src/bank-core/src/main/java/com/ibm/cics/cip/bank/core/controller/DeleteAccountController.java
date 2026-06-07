@@ -14,6 +14,7 @@ import com.ibm.cics.cip.bank.core.dto.deleteaccount.DelaccJson;
 import com.ibm.cics.cip.bank.core.dto.deleteaccount.DeleteAccountJson;
 import com.ibm.cics.cip.bank.core.exception.BusinessRuleException;
 import com.ibm.cics.cip.bank.core.service.AccountService;
+import com.ibm.cics.cip.bank.core.util.BankFormat;
 
 /**
  * REST controller reproducing the frozen z/OS Connect <em>delete-account</em>
@@ -67,18 +68,19 @@ import com.ibm.cics.cip.bank.core.service.AccountService;
  * the generic {@code GlobalExceptionHandler} body; instead it reconstructs the
  * frozen {@code DelAcc} envelope so the wire shape stays byte-for-byte intact.
  * It builds a fresh {@link DeleteAccountJson} whose inner {@link DelaccJson}
- * echoes the requested account number, flags both the primary
- * {@code DelAccSuccess} and the secondary {@code DelAccDelSuccess} as
- * {@code "N"}, and carries the verbatim fail code in {@code DelAccDelFailCd}.
- * That envelope is returned at HTTP&nbsp;{@code 200}, exactly as the legacy z/OS
- * Connect contract delivers a business outcome (the consumer inspects the body,
- * not the HTTP status).</p>
+ * echoes the requested account number, blank-fills the primary
+ * {@code DelAccSuccess} and flags the operative {@code DelAccDelSuccess} as
+ * {@code "N"} (matching {@code DELACC.cbl}, which leaves {@code DELACC-SUCCESS}
+ * blank on every failure path), and carries the verbatim fail code in
+ * {@code DelAccDelFailCd}. That envelope is returned at HTTP&nbsp;{@code 200},
+ * exactly as the legacy z/OS Connect contract delivers a business outcome (the
+ * consumer inspects the body, not the HTTP status).</p>
  *
- * <p>A non-numeric {@code {accno}} raises {@link NumberFormatException} from the
- * {@link Long#parseLong(String)} parse; that is deliberately <em>not</em> caught
- * here so it propagates to {@code GlobalExceptionHandler} (rendered as
- * HTTP&nbsp;500). This is acceptable because the frozen contract supplies numeric
- * identifiers. Only {@link BusinessRuleException} is caught.</p>
+ * <p>A blank, non-numeric or over-width {@code {accno}} raises
+ * {@link NumberFormatException} from {@link BankFormat#parseAccountNumber(String)};
+ * that is deliberately <em>not</em> caught here so it propagates to
+ * {@code GlobalExceptionHandler} (rendered as HTTP&nbsp;400). Only
+ * {@link BusinessRuleException} is caught.</p>
  *
  * <p><strong>No mainframe coupling.</strong> This controller imports only Spring
  * MVC and {@code bank-core} types; it never references
@@ -96,11 +98,20 @@ public class DeleteAccountController
 {
 
 	/**
-	 * Failure flag value ({@code "N"}) written to {@code DelAccSuccess} and
+	 * Failure flag value ({@code "N"}) written to the operative
 	 * {@code DelAccDelSuccess} on the reconstructed failure envelope (COBOL
-	 * {@code DELACC} success flags set to {@code 'N'} on a rejected delete).
+	 * {@code DELACC-DEL-SUCCESS = 'N'} on a rejected delete, DELACC.cbl L354/L446).
 	 */
 	private static final String FLAG_FAILURE = "N";
+
+	/**
+	 * Single-space blank fill written to the primary {@code DelAccSuccess} on the
+	 * failure envelope: {@code DELACC.cbl} never moves a value into
+	 * {@code DELACC-SUCCESS} on the not-found path (L350-356) and explicitly
+	 * blank-fills it on the delete-fail path (L445), so it is blank on every
+	 * failure outcome.
+	 */
+	private static final String BLANK = " ";
 
 	/**
 	 * The account business service holding all {@code DELACC} logic. Injected by
@@ -122,7 +133,9 @@ public class DeleteAccountController
 	 * Deletes a single account, reproducing the frozen
 	 * {@code DELETE /delacc/remove/{accno}} contract.
 	 *
-	 * <p>The path variable is parsed to a {@code long} and delegated unchanged to
+	 * <p>The path variable is parsed to a {@code long} via
+	 * {@link BankFormat#parseAccountNumber(String)} (which enforces the
+	 * eight-digit contract width) and delegated unchanged to
 	 * {@link AccountService#deleteAccount(long)}, which carries the authoritative
 	 * {@code DELACC} behaviour (terminal-balance capture, account-close
 	 * {@code PROCTRAN} append, and physical row removal in one transaction). The
@@ -132,12 +145,12 @@ public class DeleteAccountController
 	 *
 	 * <p>A {@link BusinessRuleException} is caught and shaped into a
 	 * contract-faithful {@code DelAcc} failure envelope echoing the requested
-	 * account number, with {@code DelAccSuccess = "N"},
-	 * {@code DelAccDelSuccess = "N"}, and {@code DelAccDelFailCd} carrying the
-	 * verbatim COBOL fail code &mdash; whatever code arrives &mdash; again at
-	 * HTTP&nbsp;{@code 200}. A non-numeric {@code accno} raises
-	 * {@link NumberFormatException}, which is left to propagate to the global
-	 * exception handler.</p>
+	 * account number, with the primary {@code DelAccSuccess} blank-filled, the
+	 * operative {@code DelAccDelSuccess = "N"}, and {@code DelAccDelFailCd}
+	 * carrying the verbatim COBOL fail code &mdash; whatever code arrives &mdash;
+	 * again at HTTP&nbsp;{@code 200}. A blank, non-numeric or over-width
+	 * {@code accno} raises {@link NumberFormatException}, which is left to
+	 * propagate to the global exception handler (HTTP&nbsp;400).</p>
 	 *
 	 * @param accno the 8-digit account number from the path
 	 * @return the delete-account response envelope at HTTP&nbsp;{@code 200},
@@ -148,10 +161,12 @@ public class DeleteAccountController
 	public ResponseEntity<DeleteAccountJson> deleteAccount(
 			@PathVariable("accno") String accno)
 	{
-		// Parse OUTSIDE the try so a non-numeric path variable raises
-		// NumberFormatException, which is intentionally left to reach
-		// GlobalExceptionHandler (HTTP 500) rather than being shaped here.
-		long accountNumber = Long.parseLong(accno);
+		// Parse OUTSIDE the try via BankFormat.parseAccountNumber, which enforces
+		// the eight-digit contract width: a blank, non-numeric or over-width path
+		// variable raises NumberFormatException, intentionally left to reach
+		// GlobalExceptionHandler as HTTP 400 (F-013-B) rather than being shaped
+		// into the business failure envelope.
+		long accountNumber = BankFormat.parseAccountNumber(accno);
 		try
 		{
 			// Thin pass-through: all DELACC logic (terminal-balance capture,
@@ -164,11 +179,14 @@ public class DeleteAccountController
 		catch (BusinessRuleException ex)
 		{
 			// Reproduce the DelAcc failure envelope byte-for-byte (NOT the
-			// generic advice body): echo the requested account number and the
-			// verbatim COBOL fail code, flagging both success indicators "N".
+			// generic advice body): echo the requested account number (as the
+			// frozen contract's integer DelAccAccno) and the verbatim COBOL fail
+			// code in the operative DelAccDelFailCd. Per DELACC.cbl the primary
+			// DelAccSuccess is blank on every failure path (L350-356/L445) while
+			// the operative DelAccDelSuccess is 'N' (L354/L446).
 			DelaccJson payload = new DelaccJson();
-			payload.setDelaccAccno(accno);
-			payload.setDelaccSuccess(FLAG_FAILURE);
+			payload.setDelaccAccno((int) accountNumber);
+			payload.setDelaccSuccess(BLANK);
 			payload.setDelaccDelSuccess(FLAG_FAILURE);
 			payload.setDelaccDelFailCode(ex.getFailCode());
 			return ResponseEntity.ok(new DeleteAccountJson(payload));

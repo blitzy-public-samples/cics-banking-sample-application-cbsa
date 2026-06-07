@@ -83,12 +83,12 @@ import jakarta.validation.Valid;
  * {@code CommOverdraft}&rarr;{@code acctOverdraft}. Two type adaptations are
  * required because the form is typed more strongly than the wire payload:</p>
  * <ul>
- *   <li>the account number is a {@code String} on the wire (the raw schema types
- *       it as a JSON integer; {@code bank-core} carries it as a left-zero-padded
- *       {@code String}) but a primitive {@code int} on the form, so it is parsed
- *       by {@link #parseAccountNumber(String)} (a {@code null}/blank value maps to
- *       {@code 0}, which the service resolves to a not-found rejection &mdash;
- *       {@code CommSuccess="N"});</li>
+ *   <li>the account number is a JSON integer on the wire (frozen {@code updacc}
+ *       schema, F-019), carried by {@link UpdaccJson} as a nullable
+ *       {@link Integer}, but a primitive {@code int} on the form, so it is
+ *       unboxed with a {@code null}&rarr;{@code 0} guard (a {@code null}/absent
+ *       value maps to {@code 0}, which the service resolves to a not-found
+ *       rejection &mdash; {@code CommSuccess="N"});</li>
  *   <li>{@code UpdateAccountForm.acctType} is the domain {@link AccountType} enum
  *       (it exposes no {@code String} setter), so the raw type string is resolved
  *       through {@link AccountType#isValid(String)} /
@@ -192,10 +192,11 @@ public class UpdateAccountController
 			UpdateAccountForm form = new UpdateAccountForm();
 			form.setCustNumber(in.getCommCustno() == null ? null
 					: in.getCommCustno().trim());
-			// CommAccno is a String on the wire but a primitive int on the form;
-			// parse it (null/blank -> 0, which the service resolves to a
+			// CommAccno is a JSON integer on the wire (frozen updacc schema,
+			// F-019) carried as a nullable Integer, but a primitive int on the
+			// form; adapt it (null -> 0, which the service resolves to a
 			// not-found rejection rendered as CommSuccess="N").
-			form.setAcctNumber(parseAccountNumber(in.getCommAccno()));
+			form.setAcctNumber(in.getCommAccno() == null ? 0 : in.getCommAccno());
 			// UpdateAccountForm.acctType is the AccountType enum (no String
 			// setter), so the raw type string is resolved here; an unknown or
 			// blank value becomes null, which the service rejects as UPDACC's
@@ -230,40 +231,6 @@ public class UpdateAccountController
 			echo.setCommSuccess(FLAG_FAILURE);
 			return ResponseEntity.ok(request);
 		}
-	}
-
-	/**
-	 * Parses the wire account-number {@code String} into the primitive
-	 * {@code int} the {@link UpdateAccountForm} expects.
-	 *
-	 * <p>This is a pure type adaptation, not business logic. A {@code null} or
-	 * blank value maps to {@code 0}: the service then builds the zero account
-	 * key, finds no matching account, and throws the not-found
-	 * {@link BusinessRuleException} that this controller renders as
-	 * {@code CommSuccess="N"} &mdash; the correct soft-failure envelope rather
-	 * than an HTTP&nbsp;{@code 500}. Leading zeros are accepted (the service
-	 * re-pads the value to the fixed width). A genuinely non-numeric value
-	 * raises {@link NumberFormatException}, which is intentionally left to
-	 * propagate to {@code GlobalExceptionHandler}; a well-formed client never
-	 * sends one, because the frozen schema types {@code CommAccno} as an
-	 * integer.</p>
-	 *
-	 * @param raw the wire account-number value (may be {@code null} or blank)
-	 * @return the parsed account number, or {@code 0} when the input is
-	 *         {@code null} or blank
-	 */
-	private static int parseAccountNumber(String raw)
-	{
-		if (raw == null)
-		{
-			return 0;
-		}
-		String trimmed = raw.trim();
-		if (trimmed.isEmpty())
-		{
-			return 0;
-		}
-		return Integer.parseInt(trimmed);
 	}
 
 }

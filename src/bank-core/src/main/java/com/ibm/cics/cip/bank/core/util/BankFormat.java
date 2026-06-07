@@ -115,4 +115,75 @@ public final class BankFormat
 		return pad(reference, REFERENCE_LENGTH);
 	}
 
+	/**
+	 * Parses an inbound account-number path/identifier value into a
+	 * {@code long}, enforcing the eight-digit ({@code PIC 9(8)}) contract width.
+	 *
+	 * <p>Used by the REST controllers to bound-check the {@code {accno}} path
+	 * variable <em>before</em> it is used as a lookup key. Rejecting an
+	 * over-width value here is what prevents the legacy integer-overflow echo
+	 * (a twelve-digit value can never be represented faithfully in the frozen
+	 * contract's eight-digit, integer-typed {@code Accno} field): a non-numeric
+	 * or over-width value raises {@link NumberFormatException}, which
+	 * {@code GlobalExceptionHandler} renders as HTTP&nbsp;400 rather than letting
+	 * a raw parse error surface as HTTP&nbsp;500.</p>
+	 *
+	 * @param value the inbound account-number string (may be {@code null} or
+	 *              contain surrounding whitespace)
+	 * @return the parsed account number
+	 * @throws NumberFormatException if the value is {@code null}, blank,
+	 *                               non-numeric, or wider than eight digits
+	 */
+	public static long parseAccountNumber(String value)
+	{
+		return parseFixedWidth(value, ACCOUNT_NUMBER_LENGTH);
+	}
+
+	/**
+	 * Parses an inbound customer-number path/identifier value into a
+	 * {@code long}, enforcing the ten-digit ({@code PIC 9(10)}) contract width.
+	 *
+	 * <p>Used by the REST controllers to bound-check the {@code {custno}} path
+	 * variable before it is used as a lookup key. A non-numeric or over-width
+	 * value raises {@link NumberFormatException}, which
+	 * {@code GlobalExceptionHandler} renders as HTTP&nbsp;400.</p>
+	 *
+	 * @param value the inbound customer-number string (may be {@code null} or
+	 *              contain surrounding whitespace)
+	 * @return the parsed customer number
+	 * @throws NumberFormatException if the value is {@code null}, blank,
+	 *                               non-numeric, or wider than ten digits
+	 */
+	public static long parseCustomerNumber(String value)
+	{
+		return parseFixedWidth(value, CUSTOMER_NUMBER_LENGTH);
+	}
+
+	/**
+	 * Parses a fixed-width, display-numeric identifier, accepting only one to
+	 * {@code width} decimal digits (after trimming surrounding whitespace). Any
+	 * other shape &mdash; {@code null}, blank, a non-digit character, or more
+	 * than {@code width} digits &mdash; raises {@link NumberFormatException} so
+	 * the caller maps it to a single, consistent HTTP&nbsp;400 client-error
+	 * response. Leading zeros are accepted (the value is later re-padded to its
+	 * fixed width).
+	 *
+	 * @param value the identifier string (may be {@code null})
+	 * @param width the maximum permitted number of digits
+	 * @return the parsed numeric value
+	 * @throws NumberFormatException if the value is not one-to-{@code width}
+	 *                               decimal digits
+	 */
+	private static long parseFixedWidth(String value, int width)
+	{
+		String trimmed = (value == null) ? "" : value.trim();
+		if (trimmed.isEmpty() || trimmed.length() > width
+				|| !trimmed.chars().allMatch(Character::isDigit))
+		{
+			throw new NumberFormatException(
+					"Identifier must be 1 to " + width + " digits");
+		}
+		return Long.parseLong(trimmed);
+	}
+
 }

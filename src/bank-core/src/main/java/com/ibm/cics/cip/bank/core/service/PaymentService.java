@@ -294,7 +294,10 @@ public class PaymentService
 				isPaymentChannel, commarea.getCommOrigin());
 
 		// Populate the response commarea (DBCRFUN L416-419 + success flags) and
-		// return the wrapping envelope.
+		// return the wrapping envelope. The sort code is echoed from the bank
+		// constant, reproducing DBCRFUN L211 (MOVE SORTCODE TO COMM-SORTC); the
+		// frozen contract types mSortC as an integer.
+		commarea.setCommSortC(Integer.parseInt(BankConstants.SORT_CODE));
 		commarea.setCommAvBal(newAvailable);
 		commarea.setCommActBal(newActual);
 		commarea.setCommSuccess(SUCCESS_FLAG);

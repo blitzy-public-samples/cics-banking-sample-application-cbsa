@@ -161,6 +161,9 @@ public class AccountService
 	/** Fail-code value denoting &quot;no failure&quot; ({@code "0"}); the {@code INQACCCU} initial value (L197) and the {@code DelAccFailCd} success value. */
 	private static final String FAIL_NONE = "0";
 
+	/** Single-space blank fill, reproducing the COBOL {@code MOVE ' '} on the {@code DELACC} success path (DELACC.cbl L364/L366). */
+	private static final String BLANK = " ";
+
 	/** Scale (number of decimal places) for every monetary and rate value. */
 	private static final int MONEY_SCALE = 2;
 
@@ -417,8 +420,14 @@ public class AccountService
 		long effectiveNumber = accountNumber;
 		if (accountNumber == HIGHEST_ACCOUNT_SENTINEL)
 		{
+			// Resolve the highest account from the control row's
+			// LAST-ACCOUNT-NUMBER (INQACC L218/L830). This is a pure read, so it
+			// uses the non-locking findById primary-key lookup rather than the
+			// PESSIMISTIC_WRITE allocator read: a SELECT ... FOR NO KEY UPDATE
+			// is illegal inside this readOnly=true transaction (PostgreSQL
+			// SQLState 25006) and the highest-account read needs no write lock.
 			Optional<AccountControl> control = accountControlRepository
-					.findBySortCodeForUpdate(BankConstants.SORT_CODE);
+					.findById(BankConstants.SORT_CODE);
 			if (control.isEmpty()
 					|| control.get().getLastAccountNumber() == null)
 			{
@@ -534,7 +543,9 @@ public class AccountService
 		}
 
 		InqAccczJson commarea = new InqAccczJson();
-		commarea.setCustomerNumber(customerKey);
+		// Top-level CustomerNumber is a JSON integer per the frozen inqacccz
+		// schema (F-019); pass the numeric value (Long), not the zero-padded key.
+		commarea.setCustomerNumber(customerNumber);
 		commarea.setAccountDetails(details);
 		commarea.setCustomerFound(FLAG_SUCCESS);
 		commarea.setCommSuccess(FLAG_SUCCESS);
@@ -543,10 +554,14 @@ public class AccountService
 	}
 
 	/**
-	 * Maps one {@link Account} onto a list element. The list envelope encodes the
-	 * account dates as {@code String} values (via
-	 * {@link DtoFormat#dateToString(LocalDate)}) and the account number as its
-	 * zero-padded eight-character form.
+	 * Maps one {@link Account} onto a list element. Per the frozen {@code
+	 * inqacccz} schema (F-019), the account number and the three account dates
+	 * are emitted as JSON integers (the account number via {@link
+	 * Integer#parseInt(String)} on its zero-padded key, the dates via {@link
+	 * DtoFormat#dateToInt(LocalDate)}), exactly as the passing {@code INQACC}
+	 * ({@code InqaccJson}) envelope does. The owning customer number stays a
+	 * zero-padded {@code String} (the schema types {@code CommCustno} as
+	 * {@code string}).
 	 *
 	 * @param account the account to map
 	 * @return the populated per-account detail element
@@ -555,17 +570,18 @@ public class AccountService
 	{
 		AccountDetails details = new AccountDetails();
 		details.setCommCustno(account.getCustomerNumber());
-		details.setCommAccno(account.getId().getAccountNumber());
+		details.setCommAccno(
+				Integer.parseInt(account.getId().getAccountNumber()));
 		details.setCommAccType(account.getAccountType());
 		details.setCommInterestRate(account.getInterestRate());
-		details.setCommOpened(DtoFormat.dateToString(account.getOpened()));
+		details.setCommOpened(DtoFormat.dateToInt(account.getOpened()));
 		details.setCommOverdraft(account.getOverdraftLimit() == null
 				? Integer.valueOf(0)
 				: account.getOverdraftLimit());
 		details.setCommLastStatementDate(
-				DtoFormat.dateToString(account.getLastStatementDate()));
+				DtoFormat.dateToInt(account.getLastStatementDate()));
 		details.setCommNextStatementDate(
-				DtoFormat.dateToString(account.getNextStatementDate()));
+				DtoFormat.dateToInt(account.getNextStatementDate()));
 		details.setCommAvailableBalance(account.getAvailableBalance());
 		details.setCommActualBalance(account.getActualBalance());
 		return details;
@@ -640,10 +656,14 @@ public class AccountService
 
 	/**
 	 * Builds the update-account success envelope from the persisted account,
-	 * reproducing the frozen contract verbatim (dates as {@code String} values,
-	 * {@code CommSuccess = "Y"}). The envelope reflects the updated type,
-	 * interest rate, and overdraft limit; the balances it echoes are the
-	 * account's unchanged values.
+	 * reproducing the frozen {@code updacc} contract verbatim (F-019). The
+	 * account number and the three account dates are emitted as JSON integers
+	 * (the account number via {@link Integer#parseInt(String)} on its zero-padded
+	 * key, the dates via {@link DtoFormat#dateToInt(LocalDate)}); the customer
+	 * number and sort code stay zero-padded {@code String}s (the schema types
+	 * those as {@code string}). {@code CommSuccess = "Y"}. The envelope reflects
+	 * the updated type, interest rate, and overdraft limit; the balances it
+	 * echoes are the account's unchanged values.
 	 *
 	 * @param account the persisted account
 	 * @return the populated {@link UpdateAccountJson} envelope
@@ -653,16 +673,16 @@ public class AccountService
 		UpdaccJson out = new UpdaccJson();
 		out.setCommCustno(account.getCustomerNumber());
 		out.setCommSortcode(account.getId().getSortCode());
-		out.setCommAccno(account.getId().getAccountNumber());
+		out.setCommAccno(Integer.parseInt(account.getId().getAccountNumber()));
 		out.setCommInterestRate(account.getInterestRate());
-		out.setCommOpened(DtoFormat.dateToString(account.getOpened()));
+		out.setCommOpened(DtoFormat.dateToInt(account.getOpened()));
 		out.setCommOverdraft(account.getOverdraftLimit() == null
 				? Integer.valueOf(0)
 				: account.getOverdraftLimit());
 		out.setCommLastStatementDate(
-				DtoFormat.dateToString(account.getLastStatementDate()));
+				DtoFormat.dateToInt(account.getLastStatementDate()));
 		out.setCommNextStatementDate(
-				DtoFormat.dateToString(account.getNextStatementDate()));
+				DtoFormat.dateToInt(account.getNextStatementDate()));
 		out.setCommAvailableBalance(account.getAvailableBalance());
 		out.setCommActualBalance(account.getActualBalance());
 		out.setCommAccountType(account.getAccountType());
@@ -774,9 +794,22 @@ public class AccountService
 	/**
 	 * Builds the delete-account success envelope from the deleted account's
 	 * detached snapshot, echoing both independent balances (the available
-	 * balance unchanged, the actual balance the captured terminal value), the
-	 * dates as {@code String} values, the success flags, and the primary fail
-	 * code {@code "0"}.
+	 * balance unchanged, the actual balance the captured terminal value) and the
+	 * remaining account attributes, reproducing the frozen {@code delacc}
+	 * contract verbatim (F-019).
+	 *
+	 * <p>Per the frozen schema the account number and the three account dates are
+	 * emitted as JSON integers (the account number via {@link
+	 * Integer#parseInt(String)} on its zero-padded key, the dates via {@link
+	 * DtoFormat#dateToInt(LocalDate)}); the customer number and sort code stay
+	 * zero-padded {@code String}s.</p>
+	 *
+	 * <p>The success-path flags reproduce {@code DELACC.cbl} (L364-366) exactly:
+	 * {@code DelAccSuccess} is blank-filled ({@code ' '}), {@code DelAccDelSuccess}
+	 * is {@code 'Y'}, and {@code DelAccDelFailCd} is blank-filled ({@code ' '}).
+	 * The primary {@code DelAccFailCd} keeps its &quot;no failure&quot; value
+	 * {@code "0"} (the COBOL never moves a value into {@code DELACC-FAIL-CD} on
+	 * the success path).</p>
 	 *
 	 * @param account                the deleted account snapshot
 	 * @param terminalActualBalance  the actual balance captured before deletion
@@ -786,7 +819,8 @@ public class AccountService
 			BigDecimal terminalActualBalance)
 	{
 		DelaccJson out = new DelaccJson();
-		out.setDelaccAccno(account.getId().getAccountNumber());
+		out.setDelaccAccno(
+				Integer.parseInt(account.getId().getAccountNumber()));
 		out.setDelaccSortcode(account.getId().getSortCode());
 		out.setDelaccCustno(account.getCustomerNumber());
 		out.setDelaccAccType(account.getAccountType());
@@ -796,14 +830,17 @@ public class AccountService
 				: account.getOverdraftLimit());
 		out.setDelaccAvailableBalance(scale2(account.getAvailableBalance()));
 		out.setDelaccActualBalance(terminalActualBalance);
-		out.setDelaccOpened(DtoFormat.dateToString(account.getOpened()));
+		out.setDelaccOpened(DtoFormat.dateToInt(account.getOpened()));
 		out.setDelaccLastStatementDate(
-				DtoFormat.dateToString(account.getLastStatementDate()));
+				DtoFormat.dateToInt(account.getLastStatementDate()));
 		out.setDelaccNextStatementDate(
-				DtoFormat.dateToString(account.getNextStatementDate()));
+				DtoFormat.dateToInt(account.getNextStatementDate()));
 		out.setDelaccFailCode(FAIL_NONE);
-		out.setDelaccSuccess(FLAG_SUCCESS);
+		// DELACC.cbl success path (L364-366): DELACC-SUCCESS and
+		// DELACC-DEL-FAIL-CD are blank-filled; DELACC-DEL-SUCCESS = 'Y'.
+		out.setDelaccSuccess(BLANK);
 		out.setDelaccDelSuccess(FLAG_SUCCESS);
+		out.setDelaccDelFailCode(BLANK);
 		return new DeleteAccountJson(out);
 	}
 
@@ -896,15 +933,38 @@ public class AccountService
 
 	/**
 	 * Parses a display-numeric identifier (the inbound customer number) to a
-	 * {@code long}, trimming any surrounding whitespace. The inbound value is
-	 * pattern-validated as one-to-ten digits by the request DTO.
+	 * {@code long}, trimming any surrounding whitespace and validating that it is
+	 * one-to-{@value BankFormat#CUSTOMER_NUMBER_LENGTH} decimal digits.
 	 *
-	 * @param value the display-numeric identifier string
+	 * <p>The {@code creacc} request DTO ({@code CreaccJson}) carries no Bean
+	 * Validation constraints, so this method &mdash; not the DTO &mdash; is the
+	 * guard. An absent, blank, non-numeric or over-width customer number cannot
+	 * identify an existing customer, so it is rejected with fail code {@code 1}
+	 * ({@code CREACC} L317), exactly as a genuinely missing customer is. The
+	 * controller renders that {@link BusinessRuleException} as
+	 * {@code CommSuccess = "N"} / {@code CommFailCode = "1"} (HTTP&nbsp;200),
+	 * never an unhandled HTTP&nbsp;500. Bounding the width here also prevents a
+	 * {@link Long#parseLong(String)} overflow on a pathologically long input.</p>
+	 *
+	 * @param value the display-numeric identifier string (may be {@code null})
 	 * @return the parsed numeric value
+	 * @throws BusinessRuleException with fail code {@code 1} when the value is
+	 *                               {@code null}, blank, non-numeric, or wider
+	 *                               than {@value BankFormat#CUSTOMER_NUMBER_LENGTH}
+	 *                               digits
 	 */
 	private static long parseIdentifier(String value)
 	{
-		return Long.parseLong(value.trim());
+		String trimmed = (value == null) ? "" : value.trim();
+		if (trimmed.isEmpty()
+				|| trimmed.length() > BankFormat.CUSTOMER_NUMBER_LENGTH
+				|| !trimmed.chars().allMatch(Character::isDigit))
+		{
+			throw new BusinessRuleException(FAIL_CUSTOMER_NOT_FOUND,
+					"Customer number must be 1 to "
+							+ BankFormat.CUSTOMER_NUMBER_LENGTH + " digits");
+		}
+		return Long.parseLong(trimmed);
 	}
 
 	/**

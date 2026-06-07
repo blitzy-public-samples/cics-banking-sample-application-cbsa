@@ -44,21 +44,22 @@ import com.ibm.cics.cip.bank.core.config.JacksonConfig;
  * &sect;0.6 eye-catcher-removal rule targets the JPA <em>entities</em>, not this
  * frozen wire contract.</p>
  *
- * <h2>Documented representation divergences (AAP &sect;0.6)</h2>
+ * <h2>Wire field types (frozen {@code inqacccz} schema, F-019)</h2>
  * <ul>
- *   <li><strong>Account number</strong> ({@code CommAccno}) &mdash; the raw
- *       z/OS Connect schema types this as a JSON {@code integer}, but
- *       {@code bank-core} represents it as a left-zero-padded {@code String}
- *       (fixed-width identifier rule). The mapper pads to width eight before
- *       setting it.</li>
+ *   <li><strong>Account number</strong> ({@code CommAccno}) &mdash; serialised
+ *       as a JSON {@code integer} to match the frozen schema verbatim. The
+ *       eight-digit account number always fits an {@link Integer}; the mapper
+ *       supplies it via {@code Integer.parseInt}.</li>
  *   <li><strong>Dates</strong> ({@code CommOpened}, {@code CommLastStmtDt},
- *       {@code CommNextStmtDt}) &mdash; the raw schema types these as
- *       {@code integer}, but {@code bank-core} carries them as the formatted
- *       account-date {@code String} ({@code DD/MM/YYYY}) supplied by the
- *       populating mapper. No date/time object is stored here.</li>
- *   <li><strong>Customer number</strong> ({@code CommCustno}) is already
- *       {@code string} in the schema &mdash; no type divergence, only a
- *       width-ten left-zero-pad applied by the mapper.</li>
+ *       {@code CommNextStmtDt}) &mdash; serialised as JSON {@code integer} to
+ *       match the frozen schema, carried as the {@code DDMMYYYY} value supplied
+ *       by the mapper via {@code DtoFormat.dateToInt}. No date/time object is
+ *       stored here.</li>
+ *   <li><strong>Customer number</strong> ({@code CommCustno}) is typed
+ *       {@code string} in the schema, so it is carried as a {@code String} with
+ *       a width-ten left-zero-pad applied by the mapper (the AAP &sect;0.6
+ *       fixed-width identifier rule applies to fields the contract already types
+ *       as {@code string}).</li>
  * </ul>
  *
  * <h2>Money and identifier handling</h2>
@@ -86,12 +87,12 @@ public class AccountDetails
 	private String commCustno;
 
 	/**
-	 * Account number, {@code 9(8)}; left-zero-padded to width 8 by the mapper.
-	 * Represented as a {@code String} per AAP &sect;0.6 (the raw schema types it
-	 * as a JSON integer &mdash; documented divergence).
+	 * Account number, {@code 9(8)}; serialised as a JSON integer to match the
+	 * frozen {@code inqacccz} schema ({@code CommAccno: integer}, F-019). The
+	 * eight-digit value always fits an {@link Integer}.
 	 */
 	@JsonProperty("CommAccno")
-	private String commAccno;
+	private Integer commAccno;
 
 	/** Account type, {@code X(8)}; plain {@code String} (e.g. {@code CURRENT}), never an enum. */
 	@JsonProperty("CommAccType")
@@ -102,32 +103,32 @@ public class AccountDetails
 	private BigDecimal commInterestRate;
 
 	/**
-	 * Date opened; formatted account-date {@code String} ({@code DD/MM/YYYY})
-	 * supplied by the mapper (raw schema types it integer &mdash; documented
-	 * divergence).
+	 * Date opened; {@code DDMMYYYY} encoded as a JSON integer to match the
+	 * frozen {@code inqacccz} schema ({@code CommOpened: integer}, F-019),
+	 * supplied by the mapper via {@code DtoFormat.dateToInt}.
 	 */
 	@JsonProperty("CommOpened")
-	private String commOpened;
+	private Integer commOpened;
 
 	/** Overdraft limit, {@code 9(8)}; whole pounds as an {@link Integer} (not money). */
 	@JsonProperty("CommOverdraft")
 	private Integer commOverdraft;
 
 	/**
-	 * Last-statement date; formatted account-date {@code String}
-	 * ({@code DD/MM/YYYY}) supplied by the mapper (raw schema types it integer
-	 * &mdash; documented divergence).
+	 * Last-statement date; {@code DDMMYYYY} encoded as a JSON integer to match
+	 * the frozen {@code inqacccz} schema ({@code CommLastStmtDt: integer},
+	 * F-019), supplied by the mapper via {@code DtoFormat.dateToInt}.
 	 */
 	@JsonProperty("CommLastStmtDt")
-	private String commLastStatementDate;
+	private Integer commLastStatementDate;
 
 	/**
-	 * Next-statement date; formatted account-date {@code String}
-	 * ({@code DD/MM/YYYY}) supplied by the mapper (raw schema types it integer
-	 * &mdash; documented divergence).
+	 * Next-statement date; {@code DDMMYYYY} encoded as a JSON integer to match
+	 * the frozen {@code inqacccz} schema ({@code CommNextStmtDt: integer},
+	 * F-019), supplied by the mapper via {@code DtoFormat.dateToInt}.
 	 */
 	@JsonProperty("CommNextStmtDt")
-	private String commNextStatementDate;
+	private Integer commNextStatementDate;
 
 	/**
 	 * Available (cleared) balance, {@code S9(10)V99}; {@link BigDecimal} at
@@ -157,20 +158,20 @@ public class AccountDetails
 	 *
 	 * @param commEye               eye-catcher
 	 * @param commCustno            owning customer number (zero-padded width 10)
-	 * @param commAccno             account number (zero-padded width 8)
+	 * @param commAccno             account number (integer)
 	 * @param commAccType           account type name
 	 * @param commInterestRate      interest rate (scale 2)
-	 * @param commOpened            date opened (formatted {@code DD/MM/YYYY} string)
+	 * @param commOpened            date opened ({@code DDMMYYYY} integer)
 	 * @param commOverdraft         overdraft limit (whole pounds)
-	 * @param commLastStatementDate last-statement date (formatted {@code DD/MM/YYYY} string)
-	 * @param commNextStatementDate next-statement date (formatted {@code DD/MM/YYYY} string)
+	 * @param commLastStatementDate last-statement date ({@code DDMMYYYY} integer)
+	 * @param commNextStatementDate next-statement date ({@code DDMMYYYY} integer)
 	 * @param commAvailableBalance  available balance (scale 2)
 	 * @param commActualBalance     actual balance (scale 2)
 	 */
-	public AccountDetails(String commEye, String commCustno, String commAccno,
-			String commAccType, BigDecimal commInterestRate, String commOpened,
-			Integer commOverdraft, String commLastStatementDate,
-			String commNextStatementDate, BigDecimal commAvailableBalance,
+	public AccountDetails(String commEye, String commCustno, Integer commAccno,
+			String commAccType, BigDecimal commInterestRate, Integer commOpened,
+			Integer commOverdraft, Integer commLastStatementDate,
+			Integer commNextStatementDate, BigDecimal commAvailableBalance,
 			BigDecimal commActualBalance)
 	{
 		this.commEye = commEye;
@@ -229,19 +230,20 @@ public class AccountDetails
 	/**
 	 * Returns the account number.
 	 *
-	 * @return the account number
+	 * @return the account number (integer, matching the frozen inqacccz schema
+	 *         {@code CommAccno: integer}, F-019)
 	 */
-	public String getCommAccno()
+	public Integer getCommAccno()
 	{
 		return commAccno;
 	}
 
 	/**
-	 * Sets the account number (expected left-zero-padded to width 8).
+	 * Sets the account number.
 	 *
-	 * @param commAccno the account number
+	 * @param commAccno the account number (integer per the frozen contract)
 	 */
-	public void setCommAccno(String commAccno)
+	public void setCommAccno(Integer commAccno)
 	{
 		this.commAccno = commAccno;
 	}
@@ -288,21 +290,23 @@ public class AccountDetails
 	}
 
 	/**
-	 * Returns the date opened (formatted {@code DD/MM/YYYY} string).
+	 * Returns the date opened ({@code DDMMYYYY} integer).
 	 *
-	 * @return the date opened
+	 * @return the date opened (integer, matching the frozen inqacccz schema
+	 *         {@code CommOpened: integer}, F-019)
 	 */
-	public String getCommOpened()
+	public Integer getCommOpened()
 	{
 		return commOpened;
 	}
 
 	/**
-	 * Sets the date opened (expected formatted {@code DD/MM/YYYY}).
+	 * Sets the date opened (expected as a {@code DDMMYYYY} integer produced by
+	 * {@code DtoFormat.dateToInt}).
 	 *
 	 * @param commOpened the date opened
 	 */
-	public void setCommOpened(String commOpened)
+	public void setCommOpened(Integer commOpened)
 	{
 		this.commOpened = commOpened;
 	}
@@ -328,41 +332,45 @@ public class AccountDetails
 	}
 
 	/**
-	 * Returns the last-statement date (formatted {@code DD/MM/YYYY} string).
+	 * Returns the last-statement date ({@code DDMMYYYY} integer).
 	 *
-	 * @return the last-statement date
+	 * @return the last-statement date (integer, matching the frozen inqacccz
+	 *         schema {@code CommLastStmtDt: integer}, F-019)
 	 */
-	public String getCommLastStatementDate()
+	public Integer getCommLastStatementDate()
 	{
 		return commLastStatementDate;
 	}
 
 	/**
-	 * Sets the last-statement date (expected formatted {@code DD/MM/YYYY}).
+	 * Sets the last-statement date (expected as a {@code DDMMYYYY} integer
+	 * produced by {@code DtoFormat.dateToInt}).
 	 *
 	 * @param commLastStatementDate the last-statement date
 	 */
-	public void setCommLastStatementDate(String commLastStatementDate)
+	public void setCommLastStatementDate(Integer commLastStatementDate)
 	{
 		this.commLastStatementDate = commLastStatementDate;
 	}
 
 	/**
-	 * Returns the next-statement date (formatted {@code DD/MM/YYYY} string).
+	 * Returns the next-statement date ({@code DDMMYYYY} integer).
 	 *
-	 * @return the next-statement date
+	 * @return the next-statement date (integer, matching the frozen inqacccz
+	 *         schema {@code CommNextStmtDt: integer}, F-019)
 	 */
-	public String getCommNextStatementDate()
+	public Integer getCommNextStatementDate()
 	{
 		return commNextStatementDate;
 	}
 
 	/**
-	 * Sets the next-statement date (expected formatted {@code DD/MM/YYYY}).
+	 * Sets the next-statement date (expected as a {@code DDMMYYYY} integer
+	 * produced by {@code DtoFormat.dateToInt}).
 	 *
 	 * @param commNextStatementDate the next-statement date
 	 */
-	public void setCommNextStatementDate(String commNextStatementDate)
+	public void setCommNextStatementDate(Integer commNextStatementDate)
 	{
 		this.commNextStatementDate = commNextStatementDate;
 	}

@@ -9,7 +9,6 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import com.ibm.cics.cip.bank.core.config.JacksonConfig;
 
-import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 /**
@@ -47,18 +46,16 @@ import jakarta.validation.constraints.Size;
  * {@code CustomerFound}, {@code CommSuccess}) regardless of the Java field
  * name.</p>
  *
- * <h2>Documented representation divergence (AAP &sect;0.6)</h2>
- * <p>{@link #customerNumber} ({@code CustomerNumber}) is represented as a
- * left-zero-padded {@code String} of width&nbsp;10 even though the raw z/OS
- * Connect swagger types it as a JSON {@code integer} and the legacy interface
- * Java client used {@code int}. This deliberate divergence preserves the COBOL
- * display-numeric leading zeros (the fixed-width identifier rule, AAP
- * &sect;0.6) and mirrors the sibling DTOs (e.g. {@code dto/deleteaccount/DelaccJson}).
- * The mapper that builds this DTO applies the padding (for example
- * {@code String.format("%010d", value)}); this carrier never strips or
- * reformats the value. Contract tests must therefore assert the bank-core
- * representation (envelope + verbatim field names + zero-padded {@code String}
- * customer number).</p>
+ * <h2>Top-level customer number is a JSON integer (frozen schema, F-019)</h2>
+ * <p>{@link #customerNumber} ({@code CustomerNumber}) is serialised as a JSON
+ * {@code integer} to match the frozen z/OS Connect swagger verbatim (which
+ * types the top-level {@code CustomerNumber} as {@code integer}) and to match
+ * the consuming interface module. It is typed {@link Long} because a ten-digit
+ * customer number ({@code 9(10)}) can exceed {@link Integer#MAX_VALUE}; this
+ * mirrors the passing {@code InqaccJson.inqaccCustno} ({@code Long}) precedent.
+ * The AAP &sect;0.6 fixed-width identifier rule applies to identifiers the
+ * contract types as {@code string} (e.g. {@code CommCustno}/{@code CommScode}
+ * inside {@link AccountDetails}), not to this integer-typed field.</p>
  *
  * <h2>Fail code as a single-character String</h2>
  * <p>{@link #commFailCode} ({@code CommFailCode}) carries the COBOL
@@ -105,15 +102,14 @@ public class InqAccczJson
 	private String commFailCode;
 
 	/**
-	 * Owning customer number, COBOL {@code 9(10)}; left-zero-padded to width 10
-	 * by the mapper. Typed {@code String} per AAP &sect;0.6 (the raw swagger
-	 * types it as a JSON integer &mdash; documented divergence) to preserve
-	 * display-numeric leading zeros.
+	 * Owning customer number, COBOL {@code 9(10)}; serialised as a JSON integer
+	 * to match the frozen {@code inqacccz} schema ({@code CustomerNumber:
+	 * integer}, F-019) and the consuming interface module. Typed {@link Long}
+	 * because a ten-digit value can exceed {@link Integer#MAX_VALUE} (mirrors
+	 * the {@code InqaccJson.inqaccCustno} precedent).
 	 */
 	@JsonProperty("CustomerNumber")
-	@Size(max = 10)
-	@Pattern(regexp = "\\d{10}")
-	private String customerNumber;
+	private Long customerNumber;
 
 	/**
 	 * The customer's account rows, modelling the COBOL
@@ -163,7 +159,7 @@ public class InqAccczJson
 	 * All-arguments constructor taking the six fields in declaration order.
 	 *
 	 * @param commFailCode   single-character fail code ({@code CommFailCode})
-	 * @param customerNumber owning customer number, zero-padded to width 10
+	 * @param customerNumber owning customer number as a JSON integer
 	 *                       ({@code CustomerNumber})
 	 * @param accountDetails the customer's account rows, capped at twenty
 	 *                       ({@code AccountDetails})
@@ -171,7 +167,7 @@ public class InqAccczJson
 	 * @param customerFound  customer-found flag ({@code CustomerFound})
 	 * @param commSuccess    success flag ({@code CommSuccess})
 	 */
-	public InqAccczJson(String commFailCode, String customerNumber,
+	public InqAccczJson(String commFailCode, Long customerNumber,
 			List<AccountDetails> accountDetails, String commPcbPointer,
 			String customerFound, String commSuccess)
 	{
@@ -204,22 +200,21 @@ public class InqAccczJson
 	}
 
 	/**
-	 * Returns the owning customer number (left-zero-padded to width 10).
+	 * Returns the owning customer number.
 	 *
-	 * @return the customer number ({@code CustomerNumber})
+	 * @return the customer number ({@code CustomerNumber}; JSON integer)
 	 */
-	public String getCustomerNumber()
+	public Long getCustomerNumber()
 	{
 		return customerNumber;
 	}
 
 	/**
-	 * Sets the owning customer number (expected left-zero-padded to width 10 by
-	 * the mapper).
+	 * Sets the owning customer number (serialised as a JSON integer).
 	 *
 	 * @param customerNumber the customer number ({@code CustomerNumber})
 	 */
-	public void setCustomerNumber(String customerNumber)
+	public void setCustomerNumber(Long customerNumber)
 	{
 		this.customerNumber = customerNumber;
 	}

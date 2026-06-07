@@ -42,19 +42,22 @@ import com.ibm.cics.cip.bank.core.config.JacksonConfig;
  * pinned verbatim (e.g. {@code DelAccEye}, {@code DelAccCustno},
  * {@code DelAccAccno}) regardless of the Java field name.</p>
  *
- * <h2>Documented representation divergences (AAP &sect;0.6)</h2>
+ * <h2>Wire field types (frozen {@code delacc} schema, F-019)</h2>
  * <ul>
- *   <li><strong>Account number</strong> ({@code DelAccAccno}) &mdash; the raw
- *       z/OS Connect response schema types this as a JSON {@code integer}, but
- *       {@code bank-core} represents it as a left-zero-padded {@code String}
- *       (fixed-width identifier rule). The mapper pads to width eight before
- *       setting it.</li>
+ *   <li><strong>Account number</strong> ({@code DelAccAccno}) &mdash; serialised
+ *       as a JSON {@code integer} to match the frozen response schema verbatim.
+ *       The eight-digit value always fits an {@link Integer}; the mapper
+ *       supplies it via {@code Integer.parseInt}.</li>
  *   <li><strong>Dates</strong> ({@code DelAccOpened}, {@code DelAccLastStmtDt},
- *       {@code DelAccNextStmtDt}) &mdash; the raw schema types these as
- *       {@code integer}, but {@code bank-core} carries them as the formatted
- *       account-date {@code String} produced by the populating mapper
- *       ({@code DtoFormat}); the legacy Java client likewise used
- *       {@code String}. No date/time object is stored here.</li>
+ *       {@code DelAccNextStmtDt}) &mdash; serialised as JSON {@code integer} to
+ *       match the frozen schema, carried as the {@code DDMMYYYY} value supplied
+ *       by the mapper via {@code DtoFormat.dateToInt}. No date/time object is
+ *       stored here.</li>
+ *   <li><strong>Customer number / sort code</strong> ({@code DelAccCustno},
+ *       {@code DelAccScode}) are typed {@code string} in the schema, so they are
+ *       carried as left-zero-padded {@code String}s (the AAP &sect;0.6
+ *       fixed-width identifier rule applies to fields the contract types as
+ *       {@code string}).</li>
  *   <li><strong>Fail codes</strong> ({@code DelAccFailCd},
  *       {@code DelAccDelFailCd}) &mdash; the schema types these
  *       {@code string(1)}; they carry the single-character COBOL fail codes
@@ -97,12 +100,12 @@ public class DelaccJson
 	private String delaccSortcode;
 
 	/**
-	 * Account number, {@code 9(8)}; left-zero-padded to width 8 by the mapper.
-	 * Represented as a {@code String} per AAP &sect;0.6 (the raw response schema
-	 * types it as a JSON integer &mdash; documented divergence).
+	 * Account number, {@code 9(8)}; serialised as a JSON integer to match the
+	 * frozen {@code delacc} response schema ({@code DelAccAccno: integer},
+	 * F-019). The eight-digit value always fits an {@link Integer}.
 	 */
 	@JsonProperty("DelAccAccno")
-	private String delaccAccno;
+	private Integer delaccAccno;
 
 	/** Account type, {@code X(8)}; plain {@code String} (e.g. {@code CURRENT}), never an enum. */
 	@JsonProperty("DelAccAccType")
@@ -113,29 +116,32 @@ public class DelaccJson
 	private BigDecimal delaccInterestRate;
 
 	/**
-	 * Date opened; formatted account-date {@code String} supplied by the mapper
-	 * (raw schema types it integer &mdash; documented divergence).
+	 * Date opened; {@code DDMMYYYY} encoded as a JSON integer to match the frozen
+	 * {@code delacc} schema ({@code DelAccOpened: integer}, F-019), supplied by
+	 * the mapper via {@code DtoFormat.dateToInt}.
 	 */
 	@JsonProperty("DelAccOpened")
-	private String delaccOpened;
+	private Integer delaccOpened;
 
 	/** Overdraft limit, {@code 9(8)}; whole pounds as an {@link Integer} (not money). */
 	@JsonProperty("DelAccOverdraft")
 	private Integer delaccOverdraft;
 
 	/**
-	 * Last-statement date; formatted account-date {@code String} supplied by the
-	 * mapper (raw schema types it integer &mdash; documented divergence).
+	 * Last-statement date; {@code DDMMYYYY} encoded as a JSON integer to match
+	 * the frozen {@code delacc} schema ({@code DelAccLastStmtDt: integer},
+	 * F-019), supplied by the mapper via {@code DtoFormat.dateToInt}.
 	 */
 	@JsonProperty("DelAccLastStmtDt")
-	private String delaccLastStatementDate;
+	private Integer delaccLastStatementDate;
 
 	/**
-	 * Next-statement date; formatted account-date {@code String} supplied by the
-	 * mapper (raw schema types it integer &mdash; documented divergence).
+	 * Next-statement date; {@code DDMMYYYY} encoded as a JSON integer to match
+	 * the frozen {@code delacc} schema ({@code DelAccNextStmtDt: integer},
+	 * F-019), supplied by the mapper via {@code DtoFormat.dateToInt}.
 	 */
 	@JsonProperty("DelAccNextStmtDt")
-	private String delaccNextStatementDate;
+	private Integer delaccNextStatementDate;
 
 	/**
 	 * Terminal (closing) available balance at delete time, {@code S9(10)V99};
@@ -204,13 +210,13 @@ public class DelaccJson
 	 * @param delaccEye               eye-catcher
 	 * @param delaccCustno            owning customer number (zero-padded width 10)
 	 * @param delaccSortcode          sort code (zero-padded width 6)
-	 * @param delaccAccno             account number (zero-padded width 8)
+	 * @param delaccAccno             account number (integer)
 	 * @param delaccAccType           account type name
 	 * @param delaccInterestRate      interest rate (scale 2)
-	 * @param delaccOpened            date opened (formatted string)
+	 * @param delaccOpened            date opened ({@code DDMMYYYY} integer)
 	 * @param delaccOverdraft         overdraft limit (whole pounds)
-	 * @param delaccLastStatementDate last-statement date (formatted string)
-	 * @param delaccNextStatementDate next-statement date (formatted string)
+	 * @param delaccLastStatementDate last-statement date ({@code DDMMYYYY} integer)
+	 * @param delaccNextStatementDate next-statement date ({@code DDMMYYYY} integer)
 	 * @param delaccAvailableBalance  terminal available balance (scale 2)
 	 * @param delaccActualBalance     terminal actual balance (scale 2)
 	 * @param delaccSuccess           success flag
@@ -223,10 +229,10 @@ public class DelaccJson
 	 * @param delaccDelPcb3           PCB pointer slot 3
 	 */
 	public DelaccJson(String delaccEye, String delaccCustno,
-			String delaccSortcode, String delaccAccno, String delaccAccType,
-			BigDecimal delaccInterestRate, String delaccOpened,
-			Integer delaccOverdraft, String delaccLastStatementDate,
-			String delaccNextStatementDate, BigDecimal delaccAvailableBalance,
+			String delaccSortcode, Integer delaccAccno, String delaccAccType,
+			BigDecimal delaccInterestRate, Integer delaccOpened,
+			Integer delaccOverdraft, Integer delaccLastStatementDate,
+			Integer delaccNextStatementDate, BigDecimal delaccAvailableBalance,
 			BigDecimal delaccActualBalance, String delaccSuccess,
 			String delaccFailCode, String delaccDelSuccess,
 			String delaccDelFailCode, String delaccDelApplid,
@@ -317,19 +323,19 @@ public class DelaccJson
 	/**
 	 * Returns the account number.
 	 *
-	 * @return the account number
+	 * @return the account number (integer per the frozen contract)
 	 */
-	public String getDelaccAccno()
+	public Integer getDelaccAccno()
 	{
 		return delaccAccno;
 	}
 
 	/**
-	 * Sets the account number (expected left-zero-padded to width 8).
+	 * Sets the account number.
 	 *
-	 * @param delaccAccno the account number
+	 * @param delaccAccno the account number (integer per the frozen contract)
 	 */
-	public void setDelaccAccno(String delaccAccno)
+	public void setDelaccAccno(Integer delaccAccno)
 	{
 		this.delaccAccno = delaccAccno;
 	}
@@ -376,21 +382,22 @@ public class DelaccJson
 	}
 
 	/**
-	 * Returns the date opened (formatted account-date string).
+	 * Returns the date opened ({@code DDMMYYYY} integer).
 	 *
 	 * @return the date opened
 	 */
-	public String getDelaccOpened()
+	public Integer getDelaccOpened()
 	{
 		return delaccOpened;
 	}
 
 	/**
-	 * Sets the date opened (formatted account-date string).
+	 * Sets the date opened (expected as a {@code DDMMYYYY} integer produced by
+	 * {@code DtoFormat.dateToInt}).
 	 *
 	 * @param delaccOpened the date opened
 	 */
-	public void setDelaccOpened(String delaccOpened)
+	public void setDelaccOpened(Integer delaccOpened)
 	{
 		this.delaccOpened = delaccOpened;
 	}
@@ -416,41 +423,43 @@ public class DelaccJson
 	}
 
 	/**
-	 * Returns the last-statement date (formatted account-date string).
+	 * Returns the last-statement date ({@code DDMMYYYY} integer).
 	 *
 	 * @return the last-statement date
 	 */
-	public String getDelaccLastStatementDate()
+	public Integer getDelaccLastStatementDate()
 	{
 		return delaccLastStatementDate;
 	}
 
 	/**
-	 * Sets the last-statement date (formatted account-date string).
+	 * Sets the last-statement date (expected as a {@code DDMMYYYY} integer
+	 * produced by {@code DtoFormat.dateToInt}).
 	 *
 	 * @param delaccLastStatementDate the last-statement date
 	 */
-	public void setDelaccLastStatementDate(String delaccLastStatementDate)
+	public void setDelaccLastStatementDate(Integer delaccLastStatementDate)
 	{
 		this.delaccLastStatementDate = delaccLastStatementDate;
 	}
 
 	/**
-	 * Returns the next-statement date (formatted account-date string).
+	 * Returns the next-statement date ({@code DDMMYYYY} integer).
 	 *
 	 * @return the next-statement date
 	 */
-	public String getDelaccNextStatementDate()
+	public Integer getDelaccNextStatementDate()
 	{
 		return delaccNextStatementDate;
 	}
 
 	/**
-	 * Sets the next-statement date (formatted account-date string).
+	 * Sets the next-statement date (expected as a {@code DDMMYYYY} integer
+	 * produced by {@code DtoFormat.dateToInt}).
 	 *
 	 * @param delaccNextStatementDate the next-statement date
 	 */
-	public void setDelaccNextStatementDate(String delaccNextStatementDate)
+	public void setDelaccNextStatementDate(Integer delaccNextStatementDate)
 	{
 		this.delaccNextStatementDate = delaccNextStatementDate;
 	}

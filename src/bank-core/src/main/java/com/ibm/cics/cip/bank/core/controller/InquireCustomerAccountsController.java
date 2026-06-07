@@ -14,6 +14,7 @@ import com.ibm.cics.cip.bank.core.dto.listaccounts.InqAccczJson;
 import com.ibm.cics.cip.bank.core.dto.listaccounts.ListAccountsJson;
 import com.ibm.cics.cip.bank.core.exception.BusinessRuleException;
 import com.ibm.cics.cip.bank.core.service.AccountService;
+import com.ibm.cics.cip.bank.core.util.BankFormat;
 
 /**
  * REST controller reproducing the frozen z/OS Connect
@@ -75,11 +76,12 @@ import com.ibm.cics.cip.bank.core.service.AccountService;
  *       {@code CommFailCode} to the carried fail code (typically {@code "1"}),
  *       again at HTTP&nbsp;{@code 200}.</li>
  * </ol>
- * <p>Validation and generic exceptions (for example a non-numeric path variable
- * raising {@link NumberFormatException}) are deliberately NOT caught here; they
- * propagate to {@code GlobalExceptionHandler}. The path variable is therefore
- * parsed <em>outside</em> the {@code try} so such failures bypass the
- * business-rule catch entirely.</p>
+ * <p>Parameter-binding and generic exceptions (for example a blank, non-numeric
+ * or over-width path variable raising {@link NumberFormatException} from
+ * {@link BankFormat#parseCustomerNumber(String)}) are deliberately NOT caught
+ * here; they propagate to {@code GlobalExceptionHandler} (HTTP&nbsp;400). The
+ * path variable is therefore parsed <em>outside</em> the {@code try} so such
+ * failures bypass the business-rule catch entirely.</p>
  *
  * <p><strong>No mainframe coupling.</strong> This controller imports only Spring
  * MVC and {@code bank-core} types; it never references {@code com.ibm.cics.server}
@@ -123,7 +125,9 @@ public class InquireCustomerAccountsController
 	 * Lists the accounts owned by a customer, reproducing the frozen
 	 * {@code GET /inqacccz/list/{custno}} contract.
 	 *
-	 * <p>The path variable is parsed to a {@code long} and delegated unchanged to
+	 * <p>The path variable is parsed to a {@code long} via
+	 * {@link BankFormat#parseCustomerNumber(String)} (which enforces the
+	 * ten-digit contract width) and delegated unchanged to
 	 * {@link AccountService#listAccountsByCustomer(long)}. The service returns the
 	 * fully populated {@link ListAccountsJson} envelope (with
 	 * {@code CustomerFound = "Y"} and up to twenty {@code AccountDetails}), which
@@ -136,8 +140,9 @@ public class InquireCustomerAccountsController
 	 * shaped into a not-found envelope ({@code CustomerFound = "N"},
 	 * {@code CommSuccess = "N"}, {@code CommFailCode} = the carried code) that
 	 * echoes the requested customer number, also at HTTP&nbsp;{@code 200}. A
-	 * non-numeric {@code custno} raises {@link NumberFormatException}, which is
-	 * left to propagate to the global exception handler.</p>
+	 * blank, non-numeric or over-width {@code custno} raises
+	 * {@link NumberFormatException}, which is left to propagate to the global
+	 * exception handler (HTTP&nbsp;400).</p>
 	 *
 	 * @param custno the 10-digit customer number from the path
 	 * @return the list-customer-accounts response envelope at HTTP&nbsp;{@code 200},
@@ -148,11 +153,12 @@ public class InquireCustomerAccountsController
 	public ResponseEntity<ListAccountsJson> listAccounts(
 			@PathVariable("custno") String custno)
 	{
-		// Parse outside the try so a non-numeric path variable raises
-		// NumberFormatException that bypasses the business-rule catch and reaches
-		// GlobalExceptionHandler (validation/generic exceptions are not shaped
-		// into the business not-found envelope).
-		long customerNumber = Long.parseLong(custno);
+		// Parse outside the try via BankFormat.parseCustomerNumber, which
+		// enforces the ten-digit contract width: a blank, non-numeric or
+		// over-width path variable raises NumberFormatException that bypasses the
+		// business-rule catch and reaches GlobalExceptionHandler as HTTP 400
+		// (F-010-B), rather than the business not-found envelope.
+		long customerNumber = BankFormat.parseCustomerNumber(custno);
 		try
 		{
 			// Thin pass-through: INQACCCU logic (incl. the twenty-account cap)
@@ -166,8 +172,10 @@ public class InquireCustomerAccountsController
 			// Customer not found (INQACCCU fail code '1'): honour the frozen
 			// single-200-shape contract by emitting a not-found envelope that
 			// echoes the requested customer number, rather than an HTTP error.
+			// CustomerNumber is a JSON integer per the frozen schema (F-019), so
+			// echo the parsed numeric value (Long), not the raw path string.
 			InqAccczJson payload = new InqAccczJson();
-			payload.setCustomerNumber(custno);
+			payload.setCustomerNumber(customerNumber);
 			payload.setCustomerFound(FLAG_NOT_FOUND);
 			payload.setCommSuccess(FLAG_NOT_FOUND);
 			payload.setCommFailCode(ex.getFailCode());
