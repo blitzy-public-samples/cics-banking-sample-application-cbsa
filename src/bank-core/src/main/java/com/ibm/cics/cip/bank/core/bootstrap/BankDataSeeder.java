@@ -22,11 +22,13 @@ import org.springframework.transaction.support.TransactionTemplate;
 import com.ibm.cics.cip.bank.core.constants.BankConstants;
 import com.ibm.cics.cip.bank.core.domain.TransactionType;
 import com.ibm.cics.cip.bank.core.entity.Account;
+import com.ibm.cics.cip.bank.core.entity.AccountControl;
 import com.ibm.cics.cip.bank.core.entity.AccountId;
 import com.ibm.cics.cip.bank.core.entity.Customer;
 import com.ibm.cics.cip.bank.core.entity.CustomerId;
 import com.ibm.cics.cip.bank.core.entity.ProcessedTransaction;
 import com.ibm.cics.cip.bank.core.entity.ProcessedTransactionId;
+import com.ibm.cics.cip.bank.core.repository.AccountControlRepository;
 import com.ibm.cics.cip.bank.core.repository.AccountRepository;
 import com.ibm.cics.cip.bank.core.repository.CustomerRepository;
 import com.ibm.cics.cip.bank.core.repository.ProcessedTransactionRepository;
@@ -292,6 +294,14 @@ public class BankDataSeeder implements CommandLineRunner
 	private final ProcessedTransactionRepository processedTransactionRepository;
 
 	/**
+	 * Repository for the {@code account_control} row, used to allocate
+	 * {@code PROCTRAN} references from its {@code last_transaction_reference}
+	 * counter under a {@code PESSIMISTIC_WRITE} lock (the same gap-free,
+	 * O(1) counter the live append paths use; F2-02 / ADR-003).
+	 */
+	private final AccountControlRepository accountControlRepository;
+
+	/**
 	 * Programmatic transaction boundary used to wrap each per-customer seed in
 	 * its own transaction so the {@code MANDATORY}-propagation
 	 * {@link IdentityService} allocations run inside an active transaction.
@@ -315,8 +325,11 @@ public class BankDataSeeder implements CommandLineRunner
 	 * @param customerRepository             customer persistence + idempotency
 	 *                                       guard
 	 * @param accountRepository              account persistence
-	 * @param processedTransactionRepository {@code PROCTRAN} append + reference
-	 *                                       high-water lookup
+	 * @param processedTransactionRepository {@code PROCTRAN} append repository
+	 * @param accountControlRepository       {@code account_control} repository
+	 *                                       supplying the gap-free
+	 *                                       {@code last_transaction_reference}
+	 *                                       counter under a write lock
 	 * @param transactionManager             the platform transaction manager used
 	 *                                       to build the {@link TransactionTemplate}
 	 * @param customerCount                  number of customers to generate
@@ -330,6 +343,7 @@ public class BankDataSeeder implements CommandLineRunner
 			CustomerRepository customerRepository,
 			AccountRepository accountRepository,
 			ProcessedTransactionRepository processedTransactionRepository,
+			AccountControlRepository accountControlRepository,
 			PlatformTransactionManager transactionManager,
 			@Value("${bank.seed.customers:1000}") int customerCount,
 			@Value("${bank.seed.random-seed:#{null}}") Long randomSeed)
@@ -338,6 +352,7 @@ public class BankDataSeeder implements CommandLineRunner
 		this.customerRepository = customerRepository;
 		this.accountRepository = accountRepository;
 		this.processedTransactionRepository = processedTransactionRepository;
+		this.accountControlRepository = accountControlRepository;
 		this.transactionTemplate = new TransactionTemplate(transactionManager);
 		this.customerCount = customerCount;
 		this.randomSeed = randomSeed;
@@ -408,14 +423,22 @@ public class BankDataSeeder implements CommandLineRunner
 	 */
 	private void seedOneCustomer(Random rng)
 	{
-		// Read the committed PROCTRAN reference high-water mark ONCE at the start
-		// of this customer's transaction, then increment it locally per appended
-		// row. This reproduces the create-flow allocation
-		// (ProcessedTransactionRepository.findMaxReference(sortCode) + 1) row by
-		// row, gap-free; the seeder is single-threaded on an empty database (per
-		// the idempotency guard), so no additional locking is required here.
-		long referenceCounter =
-				processedTransactionRepository.findMaxReference(BankConstants.SORT_CODE);
+		// Allocate PROCTRAN references from the last_transaction_reference counter
+		// on the account_control row -- the same gap-free, O(1) counter the live
+		// append paths use (ADR-003 / F2-02). Read the control row ONCE under a
+		// PESSIMISTIC_WRITE lock at the start of this customer's transaction,
+		// increment the counter locally per appended row, then write the final
+		// value back before the transaction commits (see end of method). The
+		// seeder is single-threaded on an empty database (per the idempotency
+		// guard), but locking keeps it consistent with the live append paths and
+		// re-entrant with IdentityService's own account_control acquisition within
+		// this same transaction.
+		AccountControl accountControl = accountControlRepository
+				.findBySortCodeForUpdate(BankConstants.SORT_CODE)
+				.orElseThrow(() -> new IllegalStateException(
+						"account_control row missing for sort code "
+								+ BankConstants.SORT_CODE));
+		long referenceCounter = accountControl.getLastTransactionReference();
 
 		// --- 3a. Allocate and build the Customer. -------------------------------
 		long custNo = identityService.allocateCustomerNumber();
@@ -497,6 +520,13 @@ public class BankDataSeeder implements CommandLineRunner
 			accountTxn.setDeleted(false);
 			processedTransactionRepository.save(accountTxn);
 		}
+
+		// Write the advanced reference counter back to the locked account_control
+		// row so the next customer's transaction (and every live append path
+		// post-seed) continues allocating references gap-free from where this
+		// customer finished.
+		accountControl.setLastTransactionReference(referenceCounter);
+		accountControlRepository.save(accountControl);
 	}
 
 	// =======================================================================

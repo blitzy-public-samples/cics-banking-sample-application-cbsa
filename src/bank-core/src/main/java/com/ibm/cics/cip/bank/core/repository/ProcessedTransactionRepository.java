@@ -7,8 +7,6 @@ import java.util.List;
 
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
 
 import com.ibm.cics.cip.bank.core.entity.ProcessedTransaction;
 import com.ibm.cics.cip.bank.core.entity.ProcessedTransactionId;
@@ -52,8 +50,10 @@ import com.ibm.cics.cip.bank.core.entity.ProcessedTransactionId;
  * {@code DeletedFalse} predicate) so that logically-deleted history stays hidden
  * from normal reads, and orders by {@code date} then {@code time} &mdash;
  * reproducing the frozen {@code ORDER BY PROCTRAN_DATE ASC, PROCTRAN_TIME ASC}
- * listing contract. A partial index ({@code idx_proctran_active ... WHERE
- * deleted = false}) backs these reads.</p>
+ * listing contract. A partial index ({@code idx_proctran_active} on
+ * {@code (sort_code, date, time) WHERE deleted = false}) backs these reads,
+ * covering both the active-only filter and the date/time ordering so the query
+ * needs neither a sequential scan nor a sort.</p>
  *
  * <h2>Derived-query property paths</h2>
  * <p>{@code IdSortCode} resolves through the {@code @EmbeddedId} field
@@ -107,39 +107,5 @@ public interface ProcessedTransactionRepository
 	 */
 	List<ProcessedTransaction> findByIdSortCodeAndDeletedFalseOrderByDateAscTimeAsc(
 			String sortCode);
-
-	/**
-	 * Returns the greatest numeric transaction reference currently stored for
-	 * the given sort code, or {@code 0} if the sort code has no rows yet.
-	 *
-	 * <p>This read supports the gap-free, monotonic reference allocation
-	 * performed by the service layer
-	 * ({@code ProcessedTransactionAppender}): the caller first acquires a
-	 * {@code PESSIMISTIC_WRITE} lock on the matching {@code account_control}
-	 * row to serialise concurrent appends for the sort code, then allocates the
-	 * next reference as {@code findMaxReference(sortCode) + 1}. Because the
-	 * COBOL {@code PROC-TRAN-REF} (the CICS task number) has no equivalent in a
-	 * mainframe-free runtime, bank-core derives the reference this way instead.</p>
-	 *
-	 * <p>The aggregate intentionally scans <strong>all</strong> rows &mdash;
-	 * <em>including</em> logically-deleted ones &mdash; so that a soft-deleted
-	 * audit row can never have its reference re-used by a later append; this is
-	 * why the query does not filter {@code deleted = false}. The reference is a
-	 * fixed-width {@code CHAR(12)} display-numeric string, so it is trimmed and
-	 * cast to {@code BIGINT} for the numeric {@code MAX} comparison, and
-	 * {@code COALESCE} yields {@code 0} for an empty sort code. This is a
-	 * read-only allocation aid, not an identity/sequence generator and not a
-	 * physical-delete affordance, so it is consistent with the append-only,
-	 * never-physically-deleted contract (ADR-006).</p>
-	 *
-	 * @param sortCode the six-digit, zero-padded sort code (matched against the
-	 *                 {@code sort_code} column)
-	 * @return the greatest stored reference as a {@code long}, or {@code 0} if
-	 *         the sort code has no transactions
-	 */
-	@Query(value = "SELECT COALESCE(MAX(CAST(TRIM(ref) AS BIGINT)), 0) "
-			+ "FROM processed_transaction WHERE sort_code = :sortCode",
-			nativeQuery = true)
-	long findMaxReference(@Param("sortCode") String sortCode);
 
 }

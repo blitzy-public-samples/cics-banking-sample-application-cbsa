@@ -898,17 +898,18 @@ public class AccountService
 	 * Builds and persists one append-only {@code PROCTRAN} audit row. The unique
 	 * transaction reference replaces the COBOL CICS task number, which has no
 	 * mainframe-free equivalent: it is allocated as
-	 * {@link ProcessedTransactionRepository#findMaxReference(String)
-	 * findMaxReference(sortCode) + 1} inside the caller's transaction, so a
-	 * rolled-back operation also rolls back the consumed reference.
+	 * {@link AccountControl#getLastTransactionReference()
+	 * last_transaction_reference + 1} on the locked {@code account_control} row
+	 * inside the caller's transaction, so a rolled-back operation also rolls back
+	 * the consumed reference.
 	 *
 	 * <p><strong>Concurrency.</strong> The {@code account_control} row is first
 	 * read under a {@link org.springframework.data.jpa.repository.Lock
 	 * PESSIMISTIC_WRITE} lock via
 	 * {@link AccountControlRepository#findBySortCodeForUpdate(String)
 	 * findBySortCodeForUpdate}. This is the same per-sort-code semaphore used by
-	 * {@code ProcessedTransactionAppender} and {@code findMaxReference}'s own
-	 * contract: it serialises the {@code max(reference) + 1} allocation across
+	 * {@code ProcessedTransactionAppender}: it serialises the
+	 * {@code last_transaction_reference + 1} counter allocation across
 	 * every audit-append path (account create/close, payment, transfer) so two
 	 * concurrent operations can never compute the same
 	 * {@code (sort_code, reference)} and collide on the {@code PROCTRAN}
@@ -926,15 +927,21 @@ public class AccountService
 			TransactionType type, BigDecimal amount, String description)
 	{
 		// Serialise the reference allocation: hold the account_control row under
-		// PESSIMISTIC_WRITE before reading max(reference). findMaxReference's
-		// contract REQUIRES this lock to be held by the caller; without it,
-		// concurrent appends race and duplicate the PROCTRAN primary key.
-		accountControlRepository.findBySortCodeForUpdate(BankConstants.SORT_CODE)
+		// PESSIMISTIC_WRITE, then allocate the next reference from the
+		// last_transaction_reference counter on that same locked row. This O(1)
+		// read+increment mirrors the gap-free account/customer-number counter
+		// (ADR-003) and replaces the former O(N) MAX(CAST(TRIM(ref) AS BIGINT))
+		// sequential scan over the append-only PROCTRAN table (F2-02). The lock
+		// must be held by the caller; without it, concurrent appends race and
+		// duplicate the PROCTRAN primary key.
+		AccountControl control = accountControlRepository
+				.findBySortCodeForUpdate(BankConstants.SORT_CODE)
 				.orElseThrow(() -> new IllegalStateException(
 						"account_control row missing for sort code "
 								+ BankConstants.SORT_CODE));
-		long nextReference = processedTransactionRepository
-				.findMaxReference(BankConstants.SORT_CODE) + 1L;
+		long nextReference = control.getLastTransactionReference() + 1L;
+		control.setLastTransactionReference(nextReference);
+		accountControlRepository.save(control);
 		ProcessedTransaction row = new ProcessedTransaction();
 		row.setId(new ProcessedTransactionId(BankConstants.SORT_CODE,
 				BankFormat.reference(nextReference)));

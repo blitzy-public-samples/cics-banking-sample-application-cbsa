@@ -305,8 +305,11 @@ class AccountServiceTest
 
 	/**
 	 * Builds an {@link AccountControl} counter-row fixture carrying the given
-	 * {@code lastAccountNumber}, used to resolve the {@code INQACC}
-	 * highest-account ({@value #HIGHEST_ACCOUNT_SENTINEL}) sentinel.
+	 * {@code lastAccountNumber} (used to resolve the {@code INQACC}
+	 * highest-account ({@value #HIGHEST_ACCOUNT_SENTINEL}) sentinel) and a
+	 * {@code lastTransactionReference} seeded at zero so the audit-append paths
+	 * can allocate {@code PROCTRAN} references from the counter row
+	 * ({@code last_transaction_reference + 1}).
 	 *
 	 * @param lastAccountNumber the highest allocated account number
 	 * @return the populated control-row fixture
@@ -316,6 +319,7 @@ class AccountServiceTest
 		AccountControl control = new AccountControl();
 		control.setSortCode(SORT_CODE);
 		control.setLastAccountNumber(lastAccountNumber);
+		control.setLastTransactionReference(0L);
 		return control;
 	}
 
@@ -985,8 +989,8 @@ class AccountServiceTest
 	 * Concurrency-safety parity (create path): the account-create audit append
 	 * must acquire the {@code account_control} row under {@code PESSIMISTIC_WRITE}
 	 * ({@link AccountControlRepository#findBySortCodeForUpdate(String)}) BEFORE it
-	 * reads {@code max(reference)}
-	 * ({@link ProcessedTransactionRepository#findMaxReference(String)}). Holding
+	 * allocates the {@code PROCTRAN} reference by incrementing that row's
+	 * {@code last_transaction_reference} counter and saving it. Holding
 	 * that shared per-sort-code semaphore before the allocation is what stops two
 	 * concurrent appends from minting the same reference and colliding on the
 	 * {@code (sort_code, reference)} primary key. The ordering is pinned with an
@@ -1013,8 +1017,8 @@ class AccountServiceTest
 				processedTransactionRepository);
 		inOrder.verify(accountControlRepository)
 				.findBySortCodeForUpdate(SORT_CODE);
-		inOrder.verify(processedTransactionRepository)
-				.findMaxReference(SORT_CODE);
+		inOrder.verify(accountControlRepository)
+				.save(any(AccountControl.class));
 		inOrder.verify(processedTransactionRepository)
 				.save(any(ProcessedTransaction.class));
 	}
@@ -1022,7 +1026,8 @@ class AccountServiceTest
 	/**
 	 * Concurrency-safety parity (delete path): the account-close audit append
 	 * must acquire the {@code account_control} row under {@code PESSIMISTIC_WRITE}
-	 * BEFORE it reads {@code max(reference)}. Unlike the create path (which
+	 * BEFORE it allocates the {@code PROCTRAN} reference from that row's
+	 * {@code last_transaction_reference} counter. Unlike the create path (which
 	 * already holds the lock from the identity allocation), the delete path has
 	 * no prior allocation, so this acquisition is the sole guard that serialises
 	 * the close-record reference against concurrent payments, transfers and
@@ -1042,8 +1047,8 @@ class AccountServiceTest
 				processedTransactionRepository);
 		inOrder.verify(accountControlRepository)
 				.findBySortCodeForUpdate(SORT_CODE);
-		inOrder.verify(processedTransactionRepository)
-				.findMaxReference(SORT_CODE);
+		inOrder.verify(accountControlRepository)
+				.save(any(AccountControl.class));
 		inOrder.verify(processedTransactionRepository)
 				.save(any(ProcessedTransaction.class));
 	}

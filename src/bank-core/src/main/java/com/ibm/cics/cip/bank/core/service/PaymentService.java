@@ -22,6 +22,7 @@ import com.ibm.cics.cip.bank.core.dto.payment.DbcrJson;
 import com.ibm.cics.cip.bank.core.dto.payment.OriginJson;
 import com.ibm.cics.cip.bank.core.dto.payment.PaymentJson;
 import com.ibm.cics.cip.bank.core.entity.Account;
+import com.ibm.cics.cip.bank.core.entity.AccountControl;
 import com.ibm.cics.cip.bank.core.entity.AccountId;
 import com.ibm.cics.cip.bank.core.entity.ProcessedTransaction;
 import com.ibm.cics.cip.bank.core.entity.ProcessedTransactionId;
@@ -325,20 +326,21 @@ public class PaymentService
 	 *
 	 * <p>The unique transaction reference replaces the COBOL CICS task number
 	 * ({@code EIBTASKN}), which has no equivalent in a mainframe-free runtime: it
-	 * is allocated as {@link ProcessedTransactionRepository#findMaxReference(String)
-	 * findMaxReference(sortCode) + 1}. The allocation and the insert run inside
+	 * is allocated as {@link AccountControl#getLastTransactionReference()
+	 * last_transaction_reference + 1} on the locked {@code account_control} row.
+	 * The allocation and the insert run inside
 	 * the caller's {@code @Transactional} boundary, which serialises them for
 	 * behavioural parity; a rolled-back payment also rolls back the consumed
 	 * reference.</p>
 	 *
-	 * <p><strong>Concurrency.</strong> Before reading {@code max(reference)} the
+	 * <p><strong>Concurrency.</strong> Before allocating the reference the
 	 * {@code account_control} row is acquired under a
 	 * {@link org.springframework.data.jpa.repository.Lock PESSIMISTIC_WRITE}
 	 * lock via
 	 * {@link AccountControlRepository#findBySortCodeForUpdate(String)
 	 * findBySortCodeForUpdate}. This is the same per-sort-code semaphore used by
-	 * {@code ProcessedTransactionAppender} and mandated by
-	 * {@code findMaxReference}'s own contract: it serialises the allocation
+	 * {@code ProcessedTransactionAppender}: it serialises the
+	 * {@code last_transaction_reference + 1} counter allocation
 	 * across every audit-append path (payment, account create/close, transfer)
 	 * so two concurrent payments can never compute the same
 	 * {@code (sort_code, reference)} and collide on the {@code PROCTRAN} primary
@@ -355,15 +357,21 @@ public class PaymentService
 			OriginJson origin)
 	{
 		// Serialise the reference allocation: hold the account_control row under
-		// PESSIMISTIC_WRITE before reading max(reference). findMaxReference's
-		// contract REQUIRES this lock to be held by the caller; without it,
-		// concurrent payments race and duplicate the PROCTRAN primary key.
-		accountControlRepository.findBySortCodeForUpdate(BankConstants.SORT_CODE)
+		// PESSIMISTIC_WRITE, then allocate the next reference from the
+		// last_transaction_reference counter on that same locked row. This O(1)
+		// read+increment mirrors the gap-free account/customer-number counter
+		// (ADR-003) and replaces the former O(N) MAX(CAST(TRIM(ref) AS BIGINT))
+		// sequential scan over the append-only PROCTRAN table (F2-02). The lock
+		// must be held by the caller; without it, concurrent payments race and
+		// duplicate the PROCTRAN primary key.
+		AccountControl control = accountControlRepository
+				.findBySortCodeForUpdate(BankConstants.SORT_CODE)
 				.orElseThrow(() -> new IllegalStateException(
 						"account_control row missing for sort code "
 								+ BankConstants.SORT_CODE));
-		long nextReference = processedTransactionRepository
-				.findMaxReference(BankConstants.SORT_CODE) + 1L;
+		long nextReference = control.getLastTransactionReference() + 1L;
+		control.setLastTransactionReference(nextReference);
+		accountControlRepository.save(control);
 
 		ProcessedTransaction row = new ProcessedTransaction();
 		row.setId(new ProcessedTransactionId(BankConstants.SORT_CODE,

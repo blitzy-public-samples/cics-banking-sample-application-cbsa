@@ -59,6 +59,29 @@ public class AccountControl
 	@Column(name = "last_account_number", nullable = false)
 	private Long lastAccountNumber;
 
+	/**
+	 * Highest PROCTRAN audit reference ({@code PROC-TRAN-REF}) allocated so far
+	 * for this sort code &mdash; the monotonic high-water counter that has no
+	 * direct COBOL counterpart (the legacy reference was the CICS task number
+	 * {@code WS-EIBTASKN12}, which cannot survive into a mainframe-free runtime).
+	 * Mapped to {@code last_transaction_reference BIGINT NOT NULL}.
+	 *
+	 * <p>The audit-append paths ({@code ProcessedTransactionAppender},
+	 * {@code AccountService}, {@code PaymentService}, {@code BankDataSeeder})
+	 * derive the next reference by reading and incrementing this field under the
+	 * SAME {@code PESSIMISTIC_WRITE} lock on this control row that already
+	 * serialises every PROCTRAN append for the sort code, making reference
+	 * allocation O(1). This deliberately replaces the previous O(N)
+	 * {@code MAX(CAST(TRIM(ref) AS BIGINT))} aggregate over the unbounded,
+	 * never-purged audit log (ADR-006), which sequential-scanned the whole table
+	 * on every financial write. Because the increment shares the caller's
+	 * transaction, a rolled-back operation restores the counter automatically
+	 * &mdash; which is exactly why a database {@code IDENTITY}/{@code SEQUENCE} is
+	 * deliberately NOT used (ADR-003).</p>
+	 */
+	@Column(name = "last_transaction_reference", nullable = false)
+	private Long lastTransactionReference;
+
 	/** No-argument constructor required by the JPA specification. */
 	public AccountControl()
 	{
@@ -122,6 +145,28 @@ public class AccountControl
 	public void setLastAccountNumber(Long lastAccountNumber)
 	{
 		this.lastAccountNumber = lastAccountNumber;
+	}
+
+	/**
+	 * Returns the highest PROCTRAN audit reference allocated so far for this
+	 * sort code.
+	 *
+	 * @return the last allocated transaction reference (high-water counter)
+	 */
+	public Long getLastTransactionReference()
+	{
+		return lastTransactionReference;
+	}
+
+	/**
+	 * Sets the highest PROCTRAN audit reference allocated so far for this sort
+	 * code.
+	 *
+	 * @param lastTransactionReference the last allocated transaction reference
+	 */
+	public void setLastTransactionReference(Long lastTransactionReference)
+	{
+		this.lastTransactionReference = lastTransactionReference;
 	}
 
 }

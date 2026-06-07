@@ -101,8 +101,9 @@ import com.ibm.cics.cip.bank.core.repository.CustomerRepository;
  * <p>Audit rows are appended through the shared
  * {@link ProcessedTransactionAppender} sibling service rather than by building
  * {@code ProcessedTransaction} rows here directly. The appender allocates the
- * unique twelve-digit reference as {@code findMaxReference(sortCode) + 1} under
- * a pessimistic lock on the control row and formats the COBOL-faithful 40-byte
+ * unique twelve-digit reference from the {@code last_transaction_reference}
+ * counter on the {@code account_control} row, incremented under
+ * a pessimistic lock, and formats the COBOL-faithful 40-byte
  * description and the {@code OCC}/{@code ODC} type codes; it is
  * {@code @Transactional(MANDATORY)} so it joins this service's transaction.
  * This is the mechanism every sibling service uses and reproduces the COBOL

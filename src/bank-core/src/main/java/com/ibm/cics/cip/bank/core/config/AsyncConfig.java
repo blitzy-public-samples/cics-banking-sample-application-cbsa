@@ -29,19 +29,36 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
  * orchestration logic.</p>
  *
  * <p><strong>Why {@code corePoolSize == 5} is mandatory.</strong> All five
- * tasks are submitted simultaneously. Because the queue has capacity (see
- * {@link #QUEUE_CAPACITY}), a {@link ThreadPoolTaskExecutor} will <em>queue</em>
- * surplus tasks rather than grow toward {@link #MAX_POOL_SIZE} once the core
- * threads are busy. A core size below five would therefore force some agencies
- * to wait in the queue instead of starting immediately, and they could miss the
- * three-second deadline even when their random response interval was short
- * &mdash; silently skewing the averaged result and the "none completed" path.
- * Sizing the core at exactly five guarantees all five agencies start
- * concurrently and each gets its full chance inside the deadline.</p>
+ * tasks of a single customer-create are submitted simultaneously. Sizing the
+ * core at exactly five guarantees those five agencies all start immediately on
+ * resident core threads &mdash; each getting its full chance to reply inside the
+ * three-second deadline &mdash; without even having to grow the pool. A core
+ * size below five would force some agencies of a single create to wait for a
+ * thread and could make them miss the deadline even when their random response
+ * interval was short, silently skewing the averaged result and the "none
+ * completed" path.</p>
+ *
+ * <p><strong>Why the queue is zero and the max is fifty (F2-01).</strong> The
+ * work-queue capacity is fixed at zero (a direct-handoff
+ * {@link java.util.concurrent.SynchronousQueue}) and the maximum pool size at
+ * fifty. A standard {@link ThreadPoolTaskExecutor} grows past its core size only
+ * <em>after</em> the work queue is full, so a non-zero queue would absorb the
+ * agency tasks of concurrent customer-creates and never let the pool grow,
+ * capping effective parallelism at five threads regardless of load. Under even
+ * three simultaneous creates the surplus agencies would queue behind the five
+ * core threads and miss the three-second deadline, yielding a spurious fail code
+ * {@code 'C'} ("no agency responded") although every simulated agency is
+ * healthy. With a zero-capacity queue the executor instead hands each task
+ * straight to a thread, growing from five toward fifty on demand, so up to ten
+ * concurrent creates (five agency tasks each) all run their fan-out at once. The
+ * fan-out caller ({@code CustomerService.performCreditCheck}) already treats a
+ * {@code RejectedExecutionException} beyond the ceiling as a non-reply, so the
+ * executor's default abort policy degrades gracefully past fifty active agency
+ * threads.</p>
  *
  * <p><strong>Relationship to {@code application.yml}.</strong> The
  * {@code spring.task.execution.pool.*} block in {@code application.yml} mirrors
- * the very same values configured here (core 5 / max 10 / queue 50 / thread
+ * the very same values configured here (core 5 / max 50 / queue 0 / thread
  * name prefix {@code credit-agency-}). That mirroring is intentional: Spring
  * Boot's {@code TaskExecutionAutoConfiguration#applicationTaskExecutor} is
  * {@code @ConditionalOnMissingBean(Executor.class)}, so the moment this class
@@ -85,20 +102,31 @@ public class AsyncConfig
 	private static final int CORE_POOL_SIZE = 5;
 
 	/**
-	 * Maximum thread count the pool may grow to once the core threads are busy
-	 * and the queue is full. Mirrors
+	 * Maximum thread count the pool may grow to once the core threads are busy.
+	 * Because {@link #QUEUE_CAPACITY} is zero (a direct-handoff
+	 * {@code SynchronousQueue}), every task that arrives while all core threads
+	 * are busy triggers the pool to grow &mdash; up to this ceiling &mdash;
+	 * instead of waiting in a queue. Sized at fifty so up to ten concurrent
+	 * customer-creates (five agency tasks each) can all run their fan-out
+	 * simultaneously without thread starvation (F2-01). Mirrors
 	 * {@code spring.task.execution.pool.max-size} in {@code application.yml}.
 	 */
-	private static final int MAX_POOL_SIZE = 10;
+	private static final int MAX_POOL_SIZE = 50;
 
 	/**
-	 * Bounded work-queue capacity. Mirrors
+	 * Work-queue capacity, fixed at zero so the backing
+	 * {@code ThreadPoolExecutor} uses a direct-handoff
+	 * {@link java.util.concurrent.SynchronousQueue}. With a zero-capacity queue a
+	 * {@link ThreadPoolTaskExecutor} never parks a submitted task behind the core
+	 * threads: if no core thread is idle it immediately starts a new thread (up to
+	 * {@link #MAX_POOL_SIZE}). This is what lets concurrent customer-creates each
+	 * obtain their five agency threads instead of the surplus tasks filling a
+	 * bounded queue and missing the three-second deadline &mdash; the defect a
+	 * non-zero queue caused (F2-01). Mirrors
 	 * {@code spring.task.execution.pool.queue-capacity} in
-	 * {@code application.yml}. Note that a non-zero queue means tasks beyond the
-	 * core size queue before the pool grows toward {@link #MAX_POOL_SIZE}, which
-	 * is exactly why {@link #CORE_POOL_SIZE} must be five.
+	 * {@code application.yml}.
 	 */
-	private static final int QUEUE_CAPACITY = 50;
+	private static final int QUEUE_CAPACITY = 0;
 
 	/**
 	 * Thread-name prefix applied to every pooled thread, making credit-agency

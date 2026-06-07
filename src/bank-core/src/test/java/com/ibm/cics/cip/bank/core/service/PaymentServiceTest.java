@@ -193,6 +193,9 @@ class PaymentServiceTest
 	{
 		AccountControl control = new AccountControl();
 		control.setSortCode(SORT_CODE);
+		// Seed the PROCTRAN-reference counter at zero so the audit-append path can
+		// allocate the next reference as last_transaction_reference + 1.
+		control.setLastTransactionReference(0L);
 		lenient().when(accountControlRepository
 				.findBySortCodeForUpdate(SORT_CODE))
 				.thenReturn(Optional.of(control));
@@ -714,8 +717,8 @@ class PaymentServiceTest
 	 * Concurrency-safety parity: the payment audit append MUST acquire the
 	 * {@code account_control} row under {@code PESSIMISTIC_WRITE}
 	 * ({@link AccountControlRepository#findBySortCodeForUpdate(String)}) BEFORE
-	 * it reads {@code max(reference)}
-	 * ({@link ProcessedTransactionRepository#findMaxReference(String)}). That
+	 * it allocates the {@code PROCTRAN} reference by incrementing that row's
+	 * {@code last_transaction_reference} counter and saving it. That
 	 * lock is the single per-sort-code semaphore shared by every audit-append
 	 * path, so holding it before the allocation is precisely what stops two
 	 * parallel payments from minting the same reference and colliding on the
@@ -734,14 +737,15 @@ class PaymentServiceTest
 				request(ACCOUNT_NUMBER, "100.00", PAYMENT_FACILITY));
 
 		// The PESSIMISTIC_WRITE lock on account_control must be taken strictly
-		// before the max(reference) read that allocates the next reference, and
-		// the append save follows both.
+		// before the reference is allocated from that row's
+		// last_transaction_reference counter (the control-row save), and the
+		// PROCTRAN append save follows both.
 		InOrder inOrder = inOrder(accountControlRepository,
 				processedTransactionRepository);
 		inOrder.verify(accountControlRepository)
 				.findBySortCodeForUpdate(SORT_CODE);
-		inOrder.verify(processedTransactionRepository)
-				.findMaxReference(SORT_CODE);
+		inOrder.verify(accountControlRepository)
+				.save(any(AccountControl.class));
 		inOrder.verify(processedTransactionRepository).save(any());
 	}
 

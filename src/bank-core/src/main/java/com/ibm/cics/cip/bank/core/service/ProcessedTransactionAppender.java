@@ -289,18 +289,23 @@ public class ProcessedTransactionAppender
 				BankFormat.SORT_CODE_LENGTH);
 
 		// Serialise reference allocation for this sort code by locking the
-		// control row; guarantees a unique MAX(ref)+1 without a DB sequence.
+		// control row, then allocate the next reference from the
+		// last_transaction_reference counter on that same locked row. This is an
+		// O(1) read+increment that mirrors the gap-free account/customer-number
+		// counter pattern (ADR-003); it replaces the former O(N)
+		// MAX(CAST(TRIM(ref) AS BIGINT)) sequential scan over the append-only
+		// PROCTRAN table, which degraded every audit write linearly as the log
+		// grew (F2-02). The increment is committed on the locked row via save(),
+		// so a rollback of the enclosing transaction restores the counter.
 		AccountControl control = accountControlRepository
 				.findBySortCodeForUpdate(paddedSortCode)
 				.orElseThrow(() -> new IllegalStateException(
 						"Missing account-control row for sort code "
 								+ paddedSortCode));
-		// Reference the locked row so static analysers do not flag it as unused;
-		// holding the lock until commit is the whole point of reading it.
-		control.getSortCode();
 
-		long nextReference = proctranRepository.findMaxReference(paddedSortCode)
-				+ 1L;
+		long nextReference = control.getLastTransactionReference() + 1L;
+		control.setLastTransactionReference(nextReference);
+		accountControlRepository.save(control);
 
 		ProcessedTransaction row = new ProcessedTransaction();
 		row.setId(new ProcessedTransactionId(paddedSortCode,

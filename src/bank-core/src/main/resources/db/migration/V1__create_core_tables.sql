@@ -194,29 +194,56 @@ CREATE TABLE processed_transaction (
          'OCA','OCC','ODA','ODC','OCS','PCR','PDR','TFR'))
 );
 
--- Partial index supporting ProcessedTransactionRepository active-only queries
--- (the logical-delete model: WHERE deleted = false). Keyed by
--- (sort_code, transaction_number) so a single account's active transaction
--- history -- the webui processed-transaction list -- is fetched efficiently.
-CREATE INDEX idx_proctran_active ON processed_transaction (sort_code, transaction_number) WHERE deleted = false;
+-- Partial index backing ProcessedTransactionRepository's active-only ordered
+-- query (the logical-delete model): findByIdSortCodeAndDeletedFalseOrderBy
+-- DateAscTimeAsc -- i.e. WHERE sort_code = ? AND deleted = false ORDER BY
+-- date ASC, time ASC, reproducing the frozen "ORDER BY PROCTRAN_DATE ASC,
+-- PROCTRAN_TIME ASC" listing contract. The key columns are therefore
+-- (sort_code, date, time): sort_code is the equality predicate and (date, time)
+-- supplies the requested ordering, so PostgreSQL can satisfy both the filter
+-- and the ORDER BY from this one partial index with NO sequential scan and NO
+-- separate top-N sort. (The earlier (sort_code, transaction_number) key could
+-- not serve the date/time ordering, so it was a dead/mismatched index.) The
+-- WHERE deleted = false predicate keeps the index small and confined to active
+-- rows; logically-deleted history is excluded (ADR-006). `date` and `time` are
+-- non-reserved PostgreSQL keywords and are referenced unquoted/lower-case here,
+-- consistent with their column declarations above.
+CREATE INDEX idx_proctran_active ON processed_transaction (sort_code, date, time) WHERE deleted = false;
 
 
 -- -----------------------------------------------------------------------------
 -- account_control  (from ACCTCTRL.cpy) -- single-column PK (sort_code)
 -- -----------------------------------------------------------------------------
---   ACCOUNT-CONTROL-SORT-CODE 9(6) -> sort_code           CHAR(6)
---   NUMBER-OF-ACCOUNTS        9(8) -> number_of_accounts  BIGINT
---   LAST-ACCOUNT-NUMBER       9(8) -> last_account_number BIGINT
+--   ACCOUNT-CONTROL-SORT-CODE 9(6) -> sort_code                 CHAR(6)
+--   NUMBER-OF-ACCOUNTS        9(8) -> number_of_accounts        BIGINT
+--   LAST-ACCOUNT-NUMBER       9(8) -> last_account_number       BIGINT
+--   (no COBOL counterpart)         -> last_transaction_reference BIGINT
 --   eye-catcher 'CTRL', FILLERs, success/fail flags, ACCOUNT-CONTROL-NUMBER
 --                                  -> (dropped -- CICS/VSAM artifacts)
 -- last_account_number is read+incremented under PESSIMISTIC_WRITE by
 -- IdentityService for gap-free, roll-back-able account-number allocation. The
 -- single-column PK index covers that pessimistic read -- no extra index needed.
+--
+-- last_transaction_reference is the monotonic high-water counter for the
+-- PROCTRAN audit reference (PROC-TRAN-REF). The legacy CICS task number
+-- (WS-EIBTASKN12) has no mainframe-free equivalent, so bank-core derives the
+-- next reference by reading + incrementing this counter under the SAME
+-- PESSIMISTIC_WRITE lock on this control row that already serialises every
+-- audit append for the sort code. This makes reference allocation O(1) and
+-- mirrors the gap-free, roll-back-able counter pattern already used for account
+-- and customer numbers (ADR-003). It deliberately REPLACES the previous
+-- O(N) `MAX(CAST(TRIM(ref) AS BIGINT))` aggregate over processed_transaction,
+-- which could not use the lexical (sort_code, ref) index and therefore
+-- sequential-scanned the unbounded, never-purged (ADR-006) audit log on EVERY
+-- financial write -- degrading write throughput linearly as the log grows.
+-- A database IDENTITY/SEQUENCE is still forbidden (ADR-003): a generated value
+-- cannot roll back, but this counter rolls back with its enclosing transaction.
 -- -----------------------------------------------------------------------------
 CREATE TABLE account_control (
-    sort_code            CHAR(6)   NOT NULL,
-    number_of_accounts   BIGINT    NOT NULL DEFAULT 0,
-    last_account_number  BIGINT    NOT NULL DEFAULT 0,
+    sort_code                   CHAR(6)   NOT NULL,
+    number_of_accounts          BIGINT    NOT NULL DEFAULT 0,
+    last_account_number         BIGINT    NOT NULL DEFAULT 0,
+    last_transaction_reference  BIGINT    NOT NULL DEFAULT 0,
     CONSTRAINT pk_account_control PRIMARY KEY (sort_code)
 );
 

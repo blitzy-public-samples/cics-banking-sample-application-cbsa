@@ -86,17 +86,22 @@ spring:
   # CustomerService dispatches five async CreditAgencyService tasks (one per
   # legacy CRDTAGY1-5 program) that must run concurrently within a 3-second
   # deadline.
-  # core-size must be >= 5 so all five start immediately rather than queueing,
-  # which would otherwise blow the orTimeout(3s) budget. These values configure
-  # Spring Boot's auto-configured ThreadPoolTaskExecutor and stay aligned with
-  # the dedicated executor declared in config/AsyncConfig.java.
+  # core-size is 5 so all five tasks of a single create start immediately on
+  # resident threads. queue-capacity is 0 (a direct-handoff SynchronousQueue) so
+  # the pool GROWS toward max-size on burst instead of parking surplus tasks in a
+  # queue; a non-zero queue would cap effective parallelism at 5 threads and make
+  # concurrent customer-creates miss the orTimeout(3s) budget and fail with a
+  # spurious 'C' (F2-01). max-size is 50 so up to ten concurrent creates (five
+  # agency tasks each) can fan out at once. These values configure Spring Boot's
+  # auto-configured ThreadPoolTaskExecutor and stay aligned with the dedicated
+  # executor declared in config/AsyncConfig.java.
   # ---------------------------------------------------------------------------
   task:
     execution:
       pool:
         core-size: 5
-        max-size: 10
-        queue-capacity: 50
+        max-size: 50
+        queue-capacity: 0
       thread-name-prefix: credit-agency-
 
 # -----------------------------------------------------------------------------

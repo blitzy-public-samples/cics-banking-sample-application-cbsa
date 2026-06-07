@@ -29,17 +29,26 @@
 --
 -- Column and table names match V1__create_core_tables.sql verbatim
 -- (all lower-case, unquoted):
---     account_control  (sort_code, number_of_accounts,  last_account_number)
+--     account_control  (sort_code, number_of_accounts,  last_account_number,
+--                       last_transaction_reference)
 --     customer_control (sort_code, number_of_customers, last_customer_number)
+--
+-- last_transaction_reference is the PROCTRAN audit-reference high-water counter
+-- (no COBOL counterpart): bank-core reads + increments it under the
+-- account_control PESSIMISTIC_WRITE lock to allocate each gap-free PROC-TRAN-REF
+-- (replacing the former O(N) MAX(ref) scan). Its baseline is ZERO so the first
+-- appended audit row receives reference 1, exactly as the previous
+-- MAX(ref) + 1 allocation produced on an empty log.
 --
 -- INSERT of control rows ONLY -- no identity/sequence generator (ADR-003).
 -- The tables themselves are created by V1. Flyway records this version in its
 -- schema-history table and applies it exactly once per database.
 -- =============================================================================
 
--- account_control: one control row for sort code 987654, counters at zero.
-INSERT INTO account_control (sort_code, number_of_accounts, last_account_number)
-VALUES ('987654', 0, 0);
+-- account_control: one control row for sort code 987654, counters at zero
+-- (account-number high-water AND PROCTRAN-reference high-water both start at 0).
+INSERT INTO account_control (sort_code, number_of_accounts, last_account_number, last_transaction_reference)
+VALUES ('987654', 0, 0, 0);
 
 -- customer_control: one control row for sort code 987654, counters at zero.
 INSERT INTO customer_control (sort_code, number_of_customers, last_customer_number)
