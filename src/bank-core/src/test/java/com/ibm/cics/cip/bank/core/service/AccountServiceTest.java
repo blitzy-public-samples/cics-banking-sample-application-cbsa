@@ -9,6 +9,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
@@ -20,6 +21,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -231,6 +233,25 @@ class AccountServiceTest
 	 */
 	@InjectMocks
 	private AccountService accountService;
+
+	/**
+	 * Makes the {@code account_control} semaphore read return a row for every
+	 * test. {@code AccountService} acquires this {@code PESSIMISTIC_WRITE} lock
+	 * (via {@link AccountControlRepository#findBySortCodeForUpdate(String)})
+	 * before allocating the next PROCTRAN reference on the create- and
+	 * delete-audit paths; only those audit-appending paths reach it, so the stub
+	 * is {@code lenient()} to coexist with the many validation-failure tests
+	 * (which roll back before any append) under the strict
+	 * {@link MockitoExtension}. The highest-account sentinel uses the distinct
+	 * non-locking {@code findById} read, so it is unaffected.
+	 */
+	@BeforeEach
+	void lockControlRow()
+	{
+		lenient().when(accountControlRepository
+				.findBySortCodeForUpdate(SORT_CODE))
+				.thenReturn(Optional.of(accountControl(1L)));
+	}
 
 	// ------------------------------------------------------------------
 	// Fixture builders
@@ -949,5 +970,80 @@ class AccountServiceTest
 				.hasFieldOrPropertyWithValue("failCode", FAIL_DELETE_ERROR);
 
 		verify(processedTransactionRepository, never()).save(any());
+	}
+
+	// ------------------------------------------------------------------
+	// Concurrency regression (CWE-362): every PROCTRAN-reference allocation on
+	// the create- and delete-audit paths must be serialised by the
+	// account_control PESSIMISTIC_WRITE semaphore so that concurrent account
+	// operations (and payments/transfers) cannot mint the same
+	// (sort_code, reference) and collide on the append-only PROCTRAN key.
+	// ------------------------------------------------------------------
+
+	/**
+	 * Concurrency-safety parity (create path): the account-create audit append
+	 * must acquire the {@code account_control} row under {@code PESSIMISTIC_WRITE}
+	 * ({@link AccountControlRepository#findBySortCodeForUpdate(String)}) BEFORE it
+	 * reads {@code max(reference)}
+	 * ({@link ProcessedTransactionRepository#findMaxReference(String)}). Holding
+	 * that shared per-sort-code semaphore before the allocation is what stops two
+	 * concurrent appends from minting the same reference and colliding on the
+	 * {@code (sort_code, reference)} primary key. The ordering is pinned with an
+	 * {@link InOrder} verification, so a regression that drops or re-orders the
+	 * lock (re-introducing the race) fails the build.
+	 */
+	@Test
+	@DisplayName("create append locks account_control BEFORE allocating the PROCTRAN reference")
+	void createAppend_acquiresControlLockBeforeReferenceAllocation()
+	{
+		when(customerRepository.findById(any(CustomerId.class)))
+				.thenReturn(Optional.of(customer()));
+		when(accountRepository.countByIdSortCodeAndCustomerNumber(anyString(),
+				anyString()))
+				.thenReturn(0L);
+		when(identityService.allocateAccountNumber()).thenReturn(12345678L);
+		when(accountRepository.save(any(Account.class)))
+				.thenAnswer(invocation -> invocation.getArgument(0));
+
+		accountService.createAccount(createForm(CUSTOMER_NUMBER,
+				AccountType.SAVING, 500, new BigDecimal("1.50")));
+
+		InOrder inOrder = inOrder(accountControlRepository,
+				processedTransactionRepository);
+		inOrder.verify(accountControlRepository)
+				.findBySortCodeForUpdate(SORT_CODE);
+		inOrder.verify(processedTransactionRepository)
+				.findMaxReference(SORT_CODE);
+		inOrder.verify(processedTransactionRepository)
+				.save(any(ProcessedTransaction.class));
+	}
+
+	/**
+	 * Concurrency-safety parity (delete path): the account-close audit append
+	 * must acquire the {@code account_control} row under {@code PESSIMISTIC_WRITE}
+	 * BEFORE it reads {@code max(reference)}. Unlike the create path (which
+	 * already holds the lock from the identity allocation), the delete path has
+	 * no prior allocation, so this acquisition is the sole guard that serialises
+	 * the close-record reference against concurrent payments, transfers and
+	 * other account audit appends. Pinned with an {@link InOrder} verification.
+	 */
+	@Test
+	@DisplayName("delete append locks account_control BEFORE allocating the PROCTRAN reference")
+	void deleteAppend_acquiresControlLockBeforeReferenceAllocation()
+	{
+		when(accountRepository.findById(any(AccountId.class)))
+				.thenReturn(Optional.of(
+						account(ACCOUNT_NUMBER, "CURRENT", "400.00", "321.45", 100)));
+
+		accountService.deleteAccount(1L);
+
+		InOrder inOrder = inOrder(accountControlRepository,
+				processedTransactionRepository);
+		inOrder.verify(accountControlRepository)
+				.findBySortCodeForUpdate(SORT_CODE);
+		inOrder.verify(processedTransactionRepository)
+				.findMaxReference(SORT_CODE);
+		inOrder.verify(processedTransactionRepository)
+				.save(any(ProcessedTransaction.class));
 	}
 }

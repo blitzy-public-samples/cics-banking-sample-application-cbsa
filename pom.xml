@@ -15,17 +15,15 @@
         <java.version>17</java.version>
     </properties>
 
-    <dependencyManagement>
-		<dependencies>
-			<dependency>
-				<groupId>com.ibm.cics</groupId>
-				<artifactId>com.ibm.cics.ts.bom</artifactId>
-				    <version>6.1-20250812133513-PH63856</version>
-				<type>pom</type>
-				<scope>import</scope>
-			</dependency>
-		</dependencies>
-	</dependencyManagement>
+    <!--
+        The IBM CICS Transaction Server BOM (com.ibm.cics:com.ibm.cics.ts.bom)
+        was removed as part of the mainframe decommission (AAP Section 3.7).
+        The target is a standalone, pure-Java/PostgreSQL application: no module
+        in this reactor depends on CICS-, JZOS-, or WebSphere-managed
+        coordinates, so the reactor no longer imports any mainframe dependency
+        management. Each module manages its own dependency versions (bank-core
+        via the Spring Boot parent BOM; the remaining modules explicitly).
+    -->
 
     <modules>
         <module>src/bank-core</module>

@@ -18,8 +18,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
@@ -73,7 +73,7 @@ import com.ibm.cics.cip.bank.core.service.PaymentService;
  * datasource, no JPA/Hibernate, and no Flyway</strong>, so it is green on
  * Java&nbsp;17 with <strong>no PostgreSQL</strong> running. The single
  * collaborator {@link PaymentService} (the {@code DBCRFUN} business port) is
- * replaced by a {@link MockBean @MockBean} so the test exercises the controller
+ * replaced by a {@link MockitoBean @MockitoBean} so the test exercises the controller
  * adapter in isolation and never touches a database. A full-context
  * {@code @SpringBootTest} is intentionally <strong>not</strong> used, as it would
  * require the datasource and the whole bean graph.</p>
@@ -137,7 +137,7 @@ class PaymentControllerIT
 	 * test to return a populated {@link PaymentJson} envelope or to throw a
 	 * {@link BusinessRuleException}.
 	 */
-	@MockBean
+	@MockitoBean
 	private PaymentService paymentService;
 
 	/**

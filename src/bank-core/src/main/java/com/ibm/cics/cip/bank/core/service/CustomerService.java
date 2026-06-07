@@ -814,11 +814,16 @@ public class CustomerService
 		}
 		for (int attempt = 0; attempt < RANDOM_PICK_MAX_RETRIES; attempt++)
 		{
-			long candidate = 1L + (long) (random.nextDouble() * highest);
-			if (candidate >= highest)
-			{
-				candidate = highest;
-			}
+			// Integer-only random selection in the inclusive range [1, highest].
+			// Rule U1 forbids double/float ANYWHERE in bank-core, so the prior
+			// 1L + (long)(random.nextDouble() * highest) form is replaced with
+			// the bounded RandomGenerator#nextLong(origin, bound) - the bound is
+			// exclusive, hence highest + 1L gives the inclusive upper bound.
+			// The highest > 0 guard above ensures origin < bound, and 'highest'
+			// is a CUSTCTRL customer number (<= 10 digits) so highest + 1L can
+			// never overflow a long. nextLong already returns <= highest, so the
+			// previous explicit clamp is no longer needed.
+			long candidate = random.nextLong(1L, highest + 1L);
 			Optional<Customer> found = customerRepository.findById(
 					new CustomerId(BankConstants.SORT_CODE, pad10(candidate)));
 			if (found.isPresent())

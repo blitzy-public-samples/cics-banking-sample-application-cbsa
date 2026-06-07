@@ -886,6 +886,21 @@ public class AccountService
 	 * findMaxReference(sortCode) + 1} inside the caller's transaction, so a
 	 * rolled-back operation also rolls back the consumed reference.
 	 *
+	 * <p><strong>Concurrency.</strong> The {@code account_control} row is first
+	 * read under a {@link org.springframework.data.jpa.repository.Lock
+	 * PESSIMISTIC_WRITE} lock via
+	 * {@link AccountControlRepository#findBySortCodeForUpdate(String)
+	 * findBySortCodeForUpdate}. This is the same per-sort-code semaphore used by
+	 * {@code ProcessedTransactionAppender} and {@code findMaxReference}'s own
+	 * contract: it serialises the {@code max(reference) + 1} allocation across
+	 * every audit-append path (account create/close, payment, transfer) so two
+	 * concurrent operations can never compute the same
+	 * {@code (sort_code, reference)} and collide on the {@code PROCTRAN}
+	 * primary key (CWE-362; ADR-006 append-only audit integrity). On the create
+	 * path the lock is already held from the identity allocation, so re-reading
+	 * it is a harmless re-entrant acquisition; on the delete path it is the
+	 * acquisition that establishes the guard.
+	 *
 	 * @param accountNumber the zero-padded eight-digit account number
 	 * @param type          the PROCTRAN type code ({@code OCA}/{@code ODA})
 	 * @param amount        the transaction amount (scale 2)
@@ -894,6 +909,14 @@ public class AccountService
 	private void appendProcessedTransaction(String accountNumber,
 			TransactionType type, BigDecimal amount, String description)
 	{
+		// Serialise the reference allocation: hold the account_control row under
+		// PESSIMISTIC_WRITE before reading max(reference). findMaxReference's
+		// contract REQUIRES this lock to be held by the caller; without it,
+		// concurrent appends race and duplicate the PROCTRAN primary key.
+		accountControlRepository.findBySortCodeForUpdate(BankConstants.SORT_CODE)
+				.orElseThrow(() -> new IllegalStateException(
+						"account_control row missing for sort code "
+								+ BankConstants.SORT_CODE));
 		long nextReference = processedTransactionRepository
 				.findMaxReference(BankConstants.SORT_CODE) + 1L;
 		ProcessedTransaction row = new ProcessedTransaction();

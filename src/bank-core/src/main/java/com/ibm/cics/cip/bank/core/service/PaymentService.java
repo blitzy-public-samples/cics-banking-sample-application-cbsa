@@ -26,6 +26,7 @@ import com.ibm.cics.cip.bank.core.entity.AccountId;
 import com.ibm.cics.cip.bank.core.entity.ProcessedTransaction;
 import com.ibm.cics.cip.bank.core.entity.ProcessedTransactionId;
 import com.ibm.cics.cip.bank.core.exception.BusinessRuleException;
+import com.ibm.cics.cip.bank.core.repository.AccountControlRepository;
 import com.ibm.cics.cip.bank.core.repository.AccountRepository;
 import com.ibm.cics.cip.bank.core.repository.ProcessedTransactionRepository;
 
@@ -149,6 +150,13 @@ public class PaymentService
 	/** Repository for reading (under a write lock) and saving the {@link Account}. */
 	private final AccountRepository accountRepository;
 
+	/**
+	 * Repository for the {@code account_control} row, used here only to acquire
+	 * the {@code PESSIMISTIC_WRITE} semaphore that serialises {@code PROCTRAN}
+	 * reference allocation (see {@link #appendProcessedTransaction}).
+	 */
+	private final AccountControlRepository accountControlRepository;
+
 	/** Append-only repository for the {@code PROCTRAN} audit log. */
 	private final ProcessedTransactionRepository processedTransactionRepository;
 
@@ -158,13 +166,18 @@ public class PaymentService
 	 *
 	 * @param accountRepository              repository for {@link Account}
 	 *                                       read/lock/update
+	 * @param accountControlRepository       repository for the
+	 *                                       {@code account_control} counter row
+	 *                                       (PROCTRAN-reference lock)
 	 * @param processedTransactionRepository repository for appending the
 	 *                                       {@code PROCTRAN} audit row
 	 */
 	public PaymentService(AccountRepository accountRepository,
+			AccountControlRepository accountControlRepository,
 			ProcessedTransactionRepository processedTransactionRepository)
 	{
 		this.accountRepository = accountRepository;
+		this.accountControlRepository = accountControlRepository;
 		this.processedTransactionRepository = processedTransactionRepository;
 	}
 
@@ -318,6 +331,19 @@ public class PaymentService
 	 * behavioural parity; a rolled-back payment also rolls back the consumed
 	 * reference.</p>
 	 *
+	 * <p><strong>Concurrency.</strong> Before reading {@code max(reference)} the
+	 * {@code account_control} row is acquired under a
+	 * {@link org.springframework.data.jpa.repository.Lock PESSIMISTIC_WRITE}
+	 * lock via
+	 * {@link AccountControlRepository#findBySortCodeForUpdate(String)
+	 * findBySortCodeForUpdate}. This is the same per-sort-code semaphore used by
+	 * {@code ProcessedTransactionAppender} and mandated by
+	 * {@code findMaxReference}'s own contract: it serialises the allocation
+	 * across every audit-append path (payment, account create/close, transfer)
+	 * so two concurrent payments can never compute the same
+	 * {@code (sort_code, reference)} and collide on the {@code PROCTRAN} primary
+	 * key (CWE-362; ADR-006 append-only audit integrity).</p>
+	 *
 	 * @param accountNumber the zero-padded eight-digit account number
 	 * @param signedAmount  the signed movement amount (scale 2)
 	 * @param isDebit       {@code true} for a debit, {@code false} for a credit
@@ -328,6 +354,14 @@ public class PaymentService
 			BigDecimal signedAmount, boolean isDebit, boolean isPaymentChannel,
 			OriginJson origin)
 	{
+		// Serialise the reference allocation: hold the account_control row under
+		// PESSIMISTIC_WRITE before reading max(reference). findMaxReference's
+		// contract REQUIRES this lock to be held by the caller; without it,
+		// concurrent payments race and duplicate the PROCTRAN primary key.
+		accountControlRepository.findBySortCodeForUpdate(BankConstants.SORT_CODE)
+				.orElseThrow(() -> new IllegalStateException(
+						"account_control row missing for sort code "
+								+ BankConstants.SORT_CODE));
 		long nextReference = processedTransactionRepository
 				.findMaxReference(BankConstants.SORT_CODE) + 1L;
 

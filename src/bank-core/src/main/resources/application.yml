@@ -64,7 +64,9 @@ spring:
       ddl-auto: validate
     properties:
       hibernate:
-        dialect: org.hibernate.dialect.PostgreSQLDialect
+        # Dialect is intentionally NOT pinned: Hibernate auto-detects
+        # PostgreSQLDialect from the JDBC connection metadata, so an explicit
+        # hibernate.dialect is redundant and emits a startup warning.
         # Pretty-print SQL when it is enabled (no effect while show-sql is off).
         format_sql: true
 

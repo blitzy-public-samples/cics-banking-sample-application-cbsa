@@ -83,16 +83,18 @@
 			PostgreSQL JDBC driver for the data re-point of the processed-transaction
 			(PROCTRAN) resource onto the shared bank-core PostgreSQL store
 			(jdbc:postgresql://${DB_HOST:localhost}:5432/cbsa). Replaces the deleted
-			Db2/JCICS data path. Version 42.7.10 matches the driver resolved by
-			bank-core's Spring Boot 3.5.11 dependency BOM so the whole reactor shares
-			one driver version. Runtime scope: the resource compiles against the JDK
-			java.sql API and only needs the driver on the classpath at runtime, where
-			it is packaged into WEB-INF/lib of the WAR.
+			Db2/JCICS data path. Version 42.7.11 matches the driver pinned by
+			bank-core (via its <postgresql.version> override) so the whole reactor
+			shares one driver version and stays clear of CVE-2026-42198 - a
+			client-side SCRAM-SHA-256 denial of service affecting pgJDBC releases
+			from 42.2.0 up to (but excluding) 42.7.11. Runtime scope: the resource
+			compiles against the JDK java.sql API and only needs the driver on the
+			classpath at runtime, where it is packaged into WEB-INF/lib of the WAR.
 		-->
 		<dependency>
 			<groupId>org.postgresql</groupId>
 			<artifactId>postgresql</artifactId>
-			<version>42.7.10</version>
+			<version>42.7.11</version>
 			<scope>runtime</scope>
 		</dependency>
 

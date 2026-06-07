@@ -28,7 +28,6 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.CannotAcquireLockException;
-import org.springframework.dao.DeadlockLoserDataAccessException;
 import org.springframework.transaction.PlatformTransactionManager;
 
 import com.ibm.cics.cip.bank.core.constants.BankConstants;
@@ -490,20 +489,20 @@ class TransferServiceTest
 	}
 
 	/**
-	 * Deadlock budget exhausted: every locked read reports a deadlock (here a
-	 * {@link DeadlockLoserDataAccessException}), so all six attempts fail and the
+	 * Deadlock budget exhausted: every locked read reports a lock failure (here a
+	 * {@link CannotAcquireLockException}), so all six attempts fail and the
 	 * service surfaces the COBOL lock-failure fail code {@code '3'} as a
-	 * {@link BusinessRuleException}. Both {@code CannotAcquireLockException} and
-	 * {@code DeadlockLoserDataAccessException} are sub-types of
-	 * {@code PessimisticLockingFailureException}, so either drives the retry path.
-	 * Nothing is persisted.
+	 * {@link BusinessRuleException}. {@code CannotAcquireLockException} is a
+	 * sub-type of {@code PessimisticLockingFailureException} - the family the
+	 * retry path catches - so it drives the retry exactly as a database deadlock
+	 * would. Nothing is persisted.
 	 */
 	@Test
 	@DisplayName("Deadlock budget exhausted (6 attempts) propagates fail code '3'")
 	void deadlockExceedsRetryBudget_propagates()
 	{
 		when(accountRepository.findByIdForUpdate(accountId("00000001")))
-				.thenThrow(new DeadlockLoserDataAccessException(
+				.thenThrow(new CannotAcquireLockException(
 						"simulated persistent deadlock",
 						new RuntimeException("SQLSTATE 40001")));
 

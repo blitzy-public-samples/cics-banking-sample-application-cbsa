@@ -10,8 +10,8 @@ import org.mockito.ArgumentMatchers;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
@@ -73,7 +73,7 @@ import com.ibm.cics.cip.bank.core.service.CustomerService;
  * It therefore stays green on Java&nbsp;17 with no PostgreSQL running, and it is
  * deliberately NOT a {@code @SpringBootTest}. The single business collaborator
  * {@link CustomerService} (the {@code INQCUST} business port) is replaced by a
- * {@link MockBean @MockBean}, so the test exercises the thin HTTP adapter in
+ * {@link MockitoBean @MockitoBean}, so the test exercises the thin HTTP adapter in
  * isolation: {@link CustomerService#inquireCustomer(long)} is the stubbed seam
  * and its {@code long} customer-number argument is matched with
  * {@link ArgumentMatchers#anyLong()}.</p>
@@ -162,7 +162,7 @@ class InquireCustomerControllerIT
 	 * runs DB-free. All {@code INQCUST} behaviour (sentinel resolution, the soft
 	 * {@code 'N'} not-found shaping, fail codes) is stubbed here.
 	 */
-	@MockBean
+	@MockitoBean
 	private CustomerService customerService;
 
 	/**

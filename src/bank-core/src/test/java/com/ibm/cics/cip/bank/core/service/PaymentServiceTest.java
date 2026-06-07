@@ -6,6 +6,8 @@ package com.ibm.cics.cip.bank.core.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -13,10 +15,12 @@ import static org.mockito.Mockito.when;
 import java.math.BigDecimal;
 import java.util.Optional;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -28,9 +32,11 @@ import com.ibm.cics.cip.bank.core.dto.payment.DbcrJson;
 import com.ibm.cics.cip.bank.core.dto.payment.OriginJson;
 import com.ibm.cics.cip.bank.core.dto.payment.PaymentJson;
 import com.ibm.cics.cip.bank.core.entity.Account;
+import com.ibm.cics.cip.bank.core.entity.AccountControl;
 import com.ibm.cics.cip.bank.core.entity.AccountId;
 import com.ibm.cics.cip.bank.core.entity.ProcessedTransaction;
 import com.ibm.cics.cip.bank.core.exception.BusinessRuleException;
+import com.ibm.cics.cip.bank.core.repository.AccountControlRepository;
 import com.ibm.cics.cip.bank.core.repository.AccountRepository;
 import com.ibm.cics.cip.bank.core.repository.ProcessedTransactionRepository;
 
@@ -152,17 +158,45 @@ class PaymentServiceTest
 	@Mock
 	private AccountRepository accountRepository;
 
+	/**
+	 * Mocked account-control repository. Used only as the
+	 * {@code PESSIMISTIC_WRITE} semaphore that serialises PROCTRAN-reference
+	 * allocation; stubbed leniently in {@link #lockControlRow()} because only
+	 * the audit-appending (success) paths reach it.
+	 */
+	@Mock
+	private AccountControlRepository accountControlRepository;
+
 	/** Mocked append-only PROCTRAN audit-log repository. */
 	@Mock
 	private ProcessedTransactionRepository processedTransactionRepository;
 
 	/**
 	 * System under test &mdash; constructed by Mockito via constructor injection
-	 * with the two mocked repositories ({@code new PaymentService(
-	 * accountRepository, processedTransactionRepository)}).
+	 * with the three mocked repositories ({@code new PaymentService(
+	 * accountRepository, accountControlRepository,
+	 * processedTransactionRepository)}).
 	 */
 	@InjectMocks
 	private PaymentService paymentService;
+
+	/**
+	 * Makes the {@code account_control} semaphore read return a row for every
+	 * test. {@code PaymentService} acquires this {@code PESSIMISTIC_WRITE} lock
+	 * before allocating the next PROCTRAN reference; only the audit-appending
+	 * success paths reach it, so the stub is {@code lenient()} to coexist with
+	 * the failure-path tests (which roll back before any append) under the
+	 * strict {@link MockitoExtension}.
+	 */
+	@BeforeEach
+	void lockControlRow()
+	{
+		AccountControl control = new AccountControl();
+		control.setSortCode(SORT_CODE);
+		lenient().when(accountControlRepository
+				.findBySortCodeForUpdate(SORT_CODE))
+				.thenReturn(Optional.of(control));
+	}
 
 	/**
 	 * Builds an {@link Account} fixture keyed under {@link #SORT_CODE} with the
@@ -667,6 +701,48 @@ class PaymentServiceTest
 		// ever looked up (no aliasing) and nothing is persisted.
 		verify(accountRepository, never()).findByIdForUpdate(any(AccountId.class));
 		assertNoPersistence();
+	}
+
+	// ------------------------------------------------------------------
+	// Concurrency regression (CWE-362): every PROCTRAN-reference allocation
+	// must be serialised by the account_control PESSIMISTIC_WRITE semaphore so
+	// that concurrent payments cannot compute the same (sort_code, reference)
+	// and collide on the append-only PROCTRAN primary key.
+	// ------------------------------------------------------------------
+
+	/**
+	 * Concurrency-safety parity: the payment audit append MUST acquire the
+	 * {@code account_control} row under {@code PESSIMISTIC_WRITE}
+	 * ({@link AccountControlRepository#findBySortCodeForUpdate(String)}) BEFORE
+	 * it reads {@code max(reference)}
+	 * ({@link ProcessedTransactionRepository#findMaxReference(String)}). That
+	 * lock is the single per-sort-code semaphore shared by every audit-append
+	 * path, so holding it before the allocation is precisely what stops two
+	 * parallel payments from minting the same reference and colliding on the
+	 * {@code (sort_code, reference)} primary key. The ordering is pinned with a
+	 * Mockito {@link InOrder} verification, so a regression that drops or
+	 * re-orders the lock (re-introducing the race) fails the build.
+	 */
+	@Test
+	@DisplayName("Payment append locks account_control BEFORE allocating the PROCTRAN reference")
+	void paymentAppend_acquiresControlLockBeforeReferenceAllocation()
+	{
+		Account account = account(ACCOUNT_NUMBER, "CURRENT", "200.00", "200.00", 0);
+		givenAccountExists(account);
+
+		paymentService.processPayment(
+				request(ACCOUNT_NUMBER, "100.00", PAYMENT_FACILITY));
+
+		// The PESSIMISTIC_WRITE lock on account_control must be taken strictly
+		// before the max(reference) read that allocates the next reference, and
+		// the append save follows both.
+		InOrder inOrder = inOrder(accountControlRepository,
+				processedTransactionRepository);
+		inOrder.verify(accountControlRepository)
+				.findBySortCodeForUpdate(SORT_CODE);
+		inOrder.verify(processedTransactionRepository)
+				.findMaxReference(SORT_CODE);
+		inOrder.verify(processedTransactionRepository).save(any());
 	}
 
 }

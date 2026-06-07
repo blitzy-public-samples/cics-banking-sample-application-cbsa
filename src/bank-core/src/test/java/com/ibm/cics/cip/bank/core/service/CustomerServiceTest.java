@@ -276,8 +276,16 @@ class CustomerServiceTest
 	void create_creditScoreAveragedFromCompletedFutures()
 	{
 		// Five distinct, already-completed replies: average = 1500 / 5 = 300.
-		when(creditAgencyService.requestCreditScore()).thenReturn(completed(100),
-				completed(200), completed(300), completed(400), completed(500));
+		// Consecutive single-value thenReturn calls (rather than the varargs
+		// thenReturn(T, T...) overload) avoid an unchecked generic-array
+		// creation warning for CompletableFuture<Integer>, while returning the
+		// same sequence on the service's five requestCreditScore() calls.
+		when(creditAgencyService.requestCreditScore())
+				.thenReturn(completed(100))
+				.thenReturn(completed(200))
+				.thenReturn(completed(300))
+				.thenReturn(completed(400))
+				.thenReturn(completed(500));
 		when(identityService.allocateCustomerNumber()).thenReturn(1L);
 
 		CreateCustomerJson result = customerService
@@ -327,8 +335,16 @@ class CustomerServiceTest
 		// Two agencies reply (200, 400); three never do. After the deadline the
 		// score is the mean of the completed replies only: (200 + 400) / 2 = 300.
 		// Tolerates ~3s while proving the average ignores the silent agencies.
-		when(creditAgencyService.requestCreditScore()).thenReturn(completed(200),
-				completed(400), pending(), pending(), pending());
+		// Consecutive single-value thenReturn calls avoid an unchecked
+		// generic-array creation warning for CompletableFuture<Integer> while
+		// reproducing the same per-call reply sequence (two complete, three
+		// never do).
+		when(creditAgencyService.requestCreditScore())
+				.thenReturn(completed(200))
+				.thenReturn(completed(400))
+				.thenReturn(pending())
+				.thenReturn(pending())
+				.thenReturn(pending());
 		when(identityService.allocateCustomerNumber()).thenReturn(1L);
 
 		CreateCustomerJson result = customerService
