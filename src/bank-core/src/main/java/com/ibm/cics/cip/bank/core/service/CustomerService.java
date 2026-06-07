@@ -566,8 +566,18 @@ public class CustomerService
 	public DeleteCustomerJson deleteCustomer(long customerNumber)
 	{
 		String paddedCustomerNumber = pad10(customerNumber);
+		// Read the customer under a PESSIMISTIC_WRITE lock (DELCUS holds the
+		// record from read through delete). This serialises two concurrent
+		// DELCUS requests for the same customer: the first commits the whole
+		// cascade, and the second re-reads after the winner commits, finds the
+		// customer already gone, and falls through to the fail '1' below at
+		// HTTP 200 — instead of both reading via a non-locking findById and the
+		// loser colliding at flush with a StaleObjectStateException surfaced as
+		// HTTP 500 (frozen "always HTTP 200 business envelope" contract; the
+		// cascade's per-account deletes already lock each account row via
+		// AccountService.deleteAccount -> AccountRepository.findByIdForUpdate).
 		Customer customer = customerRepository
-				.findById(new CustomerId(BankConstants.SORT_CODE,
+				.findByIdForUpdate(new CustomerId(BankConstants.SORT_CODE,
 						paddedCustomerNumber))
 				.orElseThrow(() -> new BusinessRuleException(FAIL_NOT_FOUND,
 						"Customer not found: " + customerNumber));

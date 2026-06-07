@@ -94,9 +94,12 @@ public class CreateAccountJson
 	 * pins the contract-critical top-level envelope key, overriding the
 	 * class-level {@code substring(3)} naming strategy.
 	 *
-	 * <p><strong>Validation (F-021).</strong> {@link NotNull @NotNull} rejects an
-	 * explicit {@code {"CreAcc": null}} request body with HTTP&nbsp;{@code 400}
-	 * (via {@code MethodArgumentNotValidException} &rarr;
+	 * <p><strong>Validation (F-021).</strong> {@link NotNull @NotNull} rejects
+	 * both a missing nested payload (an empty {@code {}} body, where Jackson
+	 * leaves this field {@code null} because the no-argument constructor performs
+	 * no eager initialisation) and an explicit {@code {"CreAcc": null}} request
+	 * body with HTTP&nbsp;{@code 400} (via
+	 * {@code MethodArgumentNotValidException} &rarr;
 	 * {@code GlobalExceptionHandler}) BEFORE the controller dereferences the
 	 * payload, eliminating the {@code NullPointerException}&rarr;{@code 500} path.
 	 * {@link Valid @Valid} cascades Bean Validation into the inner
@@ -112,15 +115,28 @@ public class CreateAccountJson
 	private CreaccJson creAcc;
 
 	/**
-	 * No-argument constructor required by Jackson for deserialisation. Eagerly
-	 * instantiates the nested {@link CreaccJson} payload so that
-	 * {@link #getCreAcc()} is never {@code null} on a freshly-constructed
-	 * envelope, matching the {@code accountenquiry} sibling and the legacy source
-	 * class shape.
+	 * No-argument constructor required by Jackson for deserialisation.
+	 *
+	 * <p>The nested {@link CreaccJson} payload is intentionally left {@code null}
+	 * (no eager initialisation) so that an empty {@code {}} request body &mdash;
+	 * or an explicit {@code {"CreAcc": null}} &mdash; fails the {@code @NotNull}
+	 * guard on {@link #creAcc} and is rejected with HTTP&nbsp;{@code 400} (via
+	 * {@code MethodArgumentNotValidException} &rarr;
+	 * {@code GlobalExceptionHandler}) BEFORE the controller dereferences the
+	 * payload, eliminating the {@code NullPointerException}&rarr;{@code 500}
+	 * path. This matches the {@code updateaccount} ({@code UpdateAccountJson}) and
+	 * {@code payment} ({@code PaymentJson}) siblings and the F-021 validation
+	 * contract, in which a missing/empty required body is a {@code 400} rather
+	 * than a silent business-fail envelope at HTTP&nbsp;{@code 200}. Jackson
+	 * populates the field from the request body whenever the {@code CreAcc} key
+	 * is present.</p>
 	 */
 	public CreateAccountJson()
 	{
-		this.creAcc = new CreaccJson();
+		// Intentionally NO eager initialisation: leaving creAcc null lets the
+		// @NotNull guard reject an empty {} (or {"CreAcc":null}) body with
+		// HTTP 400 (F-021) rather than letting it degrade into a business-fail
+		// envelope at HTTP 200.
 	}
 
 	/**
@@ -174,8 +190,10 @@ public class CreateAccountJson
 	 * Returns the nested create-account commarea payload.
 	 *
 	 * @return the nested {@link CreaccJson} payload (wire key {@code CreAcc});
-	 *         never {@code null} on an envelope built with the no-argument
-	 *         constructor
+	 *         may be {@code null} on an envelope built with the no-argument
+	 *         constructor and not yet populated (an empty {@code {}} body is
+	 *         rejected by the {@code @NotNull} guard before this getter is
+	 *         dereferenced)
 	 */
 	public CreaccJson getCreAcc()
 	{

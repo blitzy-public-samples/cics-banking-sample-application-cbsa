@@ -906,7 +906,7 @@ class AccountServiceTest
 	{
 		Account existing = account(ACCOUNT_NUMBER, "CURRENT", "400.00", "321.45",
 				100);
-		when(accountRepository.findById(any(AccountId.class)))
+		when(accountRepository.findByIdForUpdate(any(AccountId.class)))
 				.thenReturn(Optional.of(existing));
 
 		DeleteAccountJson result = accountService.deleteAccount(1L);
@@ -922,10 +922,11 @@ class AccountServiceTest
 				.compareTo(new BigDecimal("321.45"))).isZero();
 
 		// Read BEFORE delete BEFORE audit: the balance is captured from the row
-		// read, the row is then physically removed, and only then is the audit
-		// appended (PROCTRAN is append-only).
+		// read under PESSIMISTIC_WRITE (findByIdForUpdate), the row is then
+		// physically removed, and only then is the audit appended (PROCTRAN is
+		// append-only).
 		InOrder inOrder = inOrder(accountRepository, processedTransactionRepository);
-		inOrder.verify(accountRepository).findById(any(AccountId.class));
+		inOrder.verify(accountRepository).findByIdForUpdate(any(AccountId.class));
 		inOrder.verify(accountRepository).delete(any(Account.class));
 		inOrder.verify(processedTransactionRepository)
 				.save(any(ProcessedTransaction.class));
@@ -939,7 +940,7 @@ class AccountServiceTest
 	@DisplayName("delete: a missing account fails '1' and never deletes or audits")
 	void delete_notFound_failCode1()
 	{
-		when(accountRepository.findById(any(AccountId.class)))
+		when(accountRepository.findByIdForUpdate(any(AccountId.class)))
 				.thenReturn(Optional.empty());
 
 		assertThatThrownBy(() -> accountService.deleteAccount(2L))
@@ -959,7 +960,7 @@ class AccountServiceTest
 	@DisplayName("delete: a persistence error on the physical delete fails '3'")
 	void delete_deleteError_failCode3()
 	{
-		when(accountRepository.findById(any(AccountId.class)))
+		when(accountRepository.findByIdForUpdate(any(AccountId.class)))
 				.thenReturn(Optional.of(
 						account(ACCOUNT_NUMBER, "CURRENT", "400.00", "321.45", 100)));
 		doThrow(new DataIntegrityViolationException("simulated delete error"))
@@ -1031,7 +1032,7 @@ class AccountServiceTest
 	@DisplayName("delete append locks account_control BEFORE allocating the PROCTRAN reference")
 	void deleteAppend_acquiresControlLockBeforeReferenceAllocation()
 	{
-		when(accountRepository.findById(any(AccountId.class)))
+		when(accountRepository.findByIdForUpdate(any(AccountId.class)))
 				.thenReturn(Optional.of(
 						account(ACCOUNT_NUMBER, "CURRENT", "400.00", "321.45", 100)));
 

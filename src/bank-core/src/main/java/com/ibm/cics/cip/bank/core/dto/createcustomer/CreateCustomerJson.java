@@ -51,13 +51,17 @@ import jakarta.validation.constraints.NotNull;
  * {@code ...customerservices.jsonclasses.createcustomer.CreateCustomerJson} with
  * zero client change, and {@link #getCreCust()} must return a non-null payload.</p>
  *
- * <p><strong>Eager initialisation.</strong> The no-argument constructor eagerly
- * instantiates the inner {@link CrecustJson} payload so that
- * {@link #getCreCust()} is never {@code null} in controller/service code &mdash;
- * an intentional improvement over the legacy empty constructor that keeps the
- * serialised shape byte-for-byte identical (an empty inner payload still
- * serialises under the {@code CreCust} key). This mirrors the
- * {@code createaccount} sibling's {@code CreateAccountJson()} convention.</p>
+ * <p><strong>Empty-body validation.</strong> The no-argument constructor leaves
+ * the inner {@link CrecustJson} payload {@code null} (no eager initialisation),
+ * so an empty {@code {}} request body &mdash; or an explicit
+ * {@code {"CreCust": null}} &mdash; trips the {@code @NotNull} guard on the
+ * nested field and is rejected with HTTP&nbsp;{@code 400}, matching the
+ * {@code updateaccount} / {@code payment} siblings and the F-021 validation
+ * contract. A populated response built via
+ * {@link #CreateCustomerJson(CrecustJson)} still serialises the inner payload
+ * under the {@code CreCust} key, so the wire shape of a real response is
+ * unchanged. This mirrors the {@code createaccount} sibling's
+ * {@code CreateAccountJson()} convention.</p>
  *
  * @see CrecustJson
  * @see CreateCustomerForm
@@ -73,9 +77,12 @@ public class CreateCustomerJson
 	 * {@code creCust}; the explicit {@link JsonProperty} pins the verbatim wire
 	 * key and takes precedence over the class-level naming strategy.
 	 *
-	 * <p><strong>Validation (F-021).</strong> {@link NotNull @NotNull} rejects an
-	 * explicit {@code {"CreCust": null}} request body with HTTP&nbsp;{@code 400}
-	 * (via {@code MethodArgumentNotValidException} &rarr;
+	 * <p><strong>Validation (F-021).</strong> {@link NotNull @NotNull} rejects
+	 * both a missing nested payload (an empty {@code {}} body, where Jackson
+	 * leaves this field {@code null} because the no-argument constructor performs
+	 * no eager initialisation) and an explicit {@code {"CreCust": null}} request
+	 * body with HTTP&nbsp;{@code 400} (via
+	 * {@code MethodArgumentNotValidException} &rarr;
 	 * {@code GlobalExceptionHandler}) BEFORE the controller dereferences the
 	 * payload, eliminating the {@code NullPointerException}&rarr;{@code 500} path.
 	 * {@link Valid @Valid} cascades Bean Validation into the inner
@@ -91,17 +98,25 @@ public class CreateCustomerJson
 	private CrecustJson creCust;
 
 	/**
-	 * Creates an envelope with an eagerly-instantiated inner payload.
+	 * No-argument constructor required by Jackson for request deserialisation.
 	 *
-	 * <p>Required by Jackson for request deserialisation. The inner
-	 * {@link CrecustJson} is initialised to a fresh instance so that
-	 * {@link #getCreCust()} never returns {@code null}; the serialised shape is
-	 * unchanged (the empty inner payload still appears under the {@code CreCust}
-	 * key).</p>
+	 * <p>The inner {@link CrecustJson} payload is intentionally left {@code null}
+	 * (no eager initialisation) so that an empty {@code {}} request body &mdash;
+	 * or an explicit {@code {"CreCust": null}} &mdash; fails the {@code @NotNull}
+	 * guard on {@link #creCust} and is rejected with HTTP&nbsp;{@code 400} (via
+	 * {@code MethodArgumentNotValidException} &rarr;
+	 * {@code GlobalExceptionHandler}) BEFORE the controller dereferences the
+	 * payload, matching the {@code updateaccount} ({@code UpdateAccountJson}) and
+	 * {@code payment} ({@code PaymentJson}) siblings and the F-021 validation
+	 * contract. Jackson populates the field from the request body whenever the
+	 * {@code CreCust} key is present.</p>
 	 */
 	public CreateCustomerJson()
 	{
-		this.creCust = new CrecustJson();
+		// Intentionally NO eager initialisation: leaving creCust null lets the
+		// @NotNull guard reject an empty {} (or {"CreCust":null}) body with
+		// HTTP 400 (F-021) rather than letting it degrade into a business-fail
+		// envelope at HTTP 200.
 	}
 
 	/**

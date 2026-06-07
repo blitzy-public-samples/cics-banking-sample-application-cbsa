@@ -53,13 +53,16 @@ public class UpdateCustomerJson
 	 * key {@code UpdCust}. The explicit {@link JsonProperty} pins this wire name
 	 * regardless of the class-level naming strategy.
 	 *
-	 * <p><strong>Validation (F-021).</strong> {@link NotNull @NotNull} rejects an
-	 * explicit {@code {"UpdCust": null}} request body with HTTP&nbsp;{@code 400}
-	 * (via {@code MethodArgumentNotValidException} &rarr;
-	 * {@code GlobalExceptionHandler}). It does NOT fire for an empty {@code {}}
-	 * body, because the no-argument constructor eagerly initialises this field to
-	 * a non-{@code null} {@link UpdcustJson} (see below), so {@code {}} continues
-	 * to degrade gracefully to the COBOL fail-code path at HTTP&nbsp;{@code 200}.
+	 * <p><strong>Validation (F-021).</strong> {@link NotNull @NotNull} rejects
+	 * both a missing nested payload (an empty {@code {}} body, where Jackson
+	 * leaves this field {@code null} because the no-argument constructor performs
+	 * no eager initialisation) and an explicit {@code {"UpdCust": null}} request
+	 * body with HTTP&nbsp;{@code 400} (via
+	 * {@code MethodArgumentNotValidException} &rarr;
+	 * {@code GlobalExceptionHandler}) BEFORE the controller dereferences the
+	 * payload, eliminating the {@code NullPointerException}&rarr;{@code 500} path
+	 * and matching the {@code updateaccount} ({@code UpdateAccountJson}) and
+	 * {@code payment} ({@code PaymentJson}) siblings.
 	 * {@link Valid @Valid} cascades Bean Validation into the inner
 	 * {@link UpdcustJson} (which already carries {@code @Size} width constraints)
 	 * so that over-length structural violations surface as {@code 400}. These are
@@ -73,24 +76,29 @@ public class UpdateCustomerJson
 	private UpdcustJson updcust;
 
 	/**
-	 * Default constructor required by Jackson for deserialisation of an inbound
-	 * {@code updcust} request body.
+	 * No-argument constructor required by Jackson for deserialisation of an
+	 * inbound {@code updcust} request body.
 	 *
-	 * <p><strong>Eager initialisation.</strong> The inner {@link UpdcustJson}
-	 * payload is eagerly instantiated so that {@link #getUpdcust()} is never
-	 * {@code null} in controller/service code, mirroring the
-	 * {@code CreateCustomerJson} sibling convention. This makes a request body
-	 * with no {@code UpdCust} key (for example an empty {@code {}} object)
-	 * degrade gracefully through the normal business path &mdash; the controller
-	 * copies the (all-null) fields into the service form and the service reports
-	 * the appropriate COBOL fail code at HTTP&nbsp;200 &mdash; instead of raising
-	 * a {@link NullPointerException} that the global advice would mislabel as
-	 * HTTP&nbsp;500. The serialised shape is unchanged: an empty inner payload
-	 * still serialises under the {@code UpdCust} key.</p>
+	 * <p>The inner {@link UpdcustJson} payload is intentionally left {@code null}
+	 * (no eager initialisation) so that an empty {@code {}} request body &mdash;
+	 * or an explicit {@code {"UpdCust": null}} &mdash; fails the {@code @NotNull}
+	 * guard on {@link #updcust} and is rejected with HTTP&nbsp;{@code 400} (via
+	 * {@code MethodArgumentNotValidException} &rarr;
+	 * {@code GlobalExceptionHandler}) BEFORE the controller dereferences the
+	 * payload, eliminating the {@code NullPointerException}&rarr;{@code 500}
+	 * path. This matches the {@code updateaccount} ({@code UpdateAccountJson}) and
+	 * {@code payment} ({@code PaymentJson}) siblings and the F-021 validation
+	 * contract, in which a missing/empty required body is a {@code 400} rather
+	 * than a silent business-fail envelope at HTTP&nbsp;{@code 200}. Jackson
+	 * populates the field from the request body whenever the {@code UpdCust} key
+	 * is present.</p>
 	 */
 	public UpdateCustomerJson()
 	{
-		this.updcust = new UpdcustJson();
+		// Intentionally NO eager initialisation: leaving updcust null lets the
+		// @NotNull guard reject an empty {} (or {"UpdCust":null}) body with
+		// HTTP 400 (F-021) rather than letting it degrade into a business-fail
+		// envelope at HTTP 200.
 	}
 
 	/**

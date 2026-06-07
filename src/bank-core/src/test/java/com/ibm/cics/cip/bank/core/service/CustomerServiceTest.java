@@ -875,7 +875,7 @@ class CustomerServiceTest
 	void delete_cascadeDeletesAccounts_thenCustomer_appendsIdc()
 	{
 		Customer existing = customerFixture("0000000123");
-		when(customerRepository.findById(any(CustomerId.class)))
+		when(customerRepository.findByIdForUpdate(any(CustomerId.class)))
 				.thenReturn(Optional.of(existing));
 
 		Account account1 = accountFixture("00000001", "0000000123");
@@ -905,7 +905,7 @@ class CustomerServiceTest
 	@DisplayName("delete: a missing customer fails '1'; no cascade, no customer delete, no PROCTRAN")
 	void delete_customerNotFound_failCode1()
 	{
-		when(customerRepository.findById(any(CustomerId.class)))
+		when(customerRepository.findByIdForUpdate(any(CustomerId.class)))
 				.thenReturn(Optional.empty());
 
 		assertThatThrownBy(() -> customerService.deleteCustomer(999L))

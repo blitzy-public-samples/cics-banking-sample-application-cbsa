@@ -5,11 +5,17 @@ package com.ibm.cics.cip.bank.core.repository;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import com.ibm.cics.cip.bank.core.entity.Customer;
 import com.ibm.cics.cip.bank.core.entity.CustomerId;
+
+import jakarta.persistence.LockModeType;
 
 /**
  * Spring Data JPA repository for {@link Customer}, keyed by the composite
@@ -66,10 +72,13 @@ import com.ibm.cics.cip.bank.core.entity.CustomerId;
  * read from the {@code customer_control} counter row via
  * {@code CustomerControlRepository} in the service layer (AAP sec. 0.6).</p>
  *
- * <p>Single-customer-by-key access ({@code findById}), persistence
+ * <p>Unlocked single-customer-by-key access ({@code findById}), persistence
  * ({@code save}/{@code saveAll}), existence ({@code existsById}), counting, and
  * deletion ({@code delete}/{@code deleteById}) are inherited unchanged from
- * {@link JpaRepository}.</p>
+ * {@link JpaRepository}. For the {@code DELCUS} delete cascade, the
+ * locking finder {@link #findByIdForUpdate(CustomerId)} reads the customer under
+ * a {@code PESSIMISTIC_WRITE} row lock so concurrent same-customer deletes
+ * serialise (AAP sec. 0.6).</p>
  */
 public interface CustomerRepository extends JpaRepository<Customer, CustomerId>
 {
@@ -138,5 +147,33 @@ public interface CustomerRepository extends JpaRepository<Customer, CustomerId>
 	 */
 	List<Customer> findByIdSortCodeAndDateOfBirthBetweenOrderByIdCustomerNumberAsc(
 			String sortCode, LocalDate fromInclusive, LocalDate toInclusive);
+
+	/**
+	 * Reads a single customer by its composite key under a
+	 * {@code PESSIMISTIC_WRITE} row lock, so the caller may delete the customer
+	 * (and cascade-delete its accounts) atomically within the enclosing
+	 * {@code @Transactional} boundary.
+	 *
+	 * <p>This is the customer-side counterpart of
+	 * {@link AccountRepository#findByIdForUpdate(com.ibm.cics.cip.bank.core.entity.AccountId)}
+	 * and reproduces the COBOL {@code DELCUS} record lock that the program holds
+	 * from reading the customer through deleting it. The {@code deleteCustomer}
+	 * cascade reads the customer with this locking finder (instead of a
+	 * non-locking {@code findById}) so that two concurrent {@code DELCUS}
+	 * requests for the same customer serialise on the row lock: the first
+	 * commits the cascade, and the second re-reads after the winner commits,
+	 * observes the customer already gone, and returns the {@code DELCUS}
+	 * 'not found' fail code {@code '1'} at HTTP&nbsp;200 — rather than colliding
+	 * at flush with a Hibernate {@code StaleObjectStateException} that the
+	 * generic advice would surface as HTTP&nbsp;500 (the frozen
+	 * "always HTTP&nbsp;200 business envelope" contract; AAP &sect;0.6).</p>
+	 *
+	 * @param id the composite customer key (sort code + customer number)
+	 * @return the locked {@link Customer}, or {@link Optional#empty()} if no
+	 *         customer exists for the key
+	 */
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("SELECT c FROM Customer c WHERE c.id = :id")
+	Optional<Customer> findByIdForUpdate(@Param("id") CustomerId id);
 
 }

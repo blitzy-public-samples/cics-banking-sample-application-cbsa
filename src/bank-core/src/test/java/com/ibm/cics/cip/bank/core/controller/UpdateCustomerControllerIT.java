@@ -6,6 +6,7 @@ package com.ibm.cics.cip.bank.core.controller;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -263,6 +264,32 @@ class UpdateCustomerControllerIT
 				"Response must carry exactly one top-level key; body=" + root);
 		assertTrue(root.has(ENVELOPE_KEY),
 				"The single top-level key must be UpdCust; body=" + root);
+	}
+
+	/**
+	 * Empty-body Bean Validation (F-021, QA Issue&nbsp;2): an empty {@code {}}
+	 * request body carries no {@code UpdCust} key, and the wrapper's no-argument
+	 * constructor no longer eager-initialises the nested envelope, so the
+	 * {@code @NotNull} nested field stays {@code null} and the
+	 * {@code @Valid}+{@code @NotNull} cascade rejects the request with
+	 * HTTP&nbsp;400 BEFORE the mapping dereferences the payload &mdash; matching
+	 * the sibling {@code updacc} / {@code makepayment} endpoints and never
+	 * degrading into a business-fail envelope at HTTP&nbsp;200. The business
+	 * service is never invoked.
+	 *
+	 * @throws Exception if the MockMvc exchange fails
+	 */
+	@Test
+	@DisplayName("PUT /updcust/update — an empty {} body returns HTTP 400 (Issue 2)")
+	void putUpdate_emptyBody_returns400() throws Exception
+	{
+		mockMvc.perform(put(ENDPOINT)
+				.contentType(MediaType.APPLICATION_JSON)
+				.accept(MediaType.APPLICATION_JSON)
+				.content("{}"))
+				.andExpect(status().isBadRequest());
+
+		verify(customerService, never()).updateCustomer(any());
 	}
 
 	/**

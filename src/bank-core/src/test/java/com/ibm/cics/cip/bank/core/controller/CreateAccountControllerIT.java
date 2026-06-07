@@ -288,6 +288,32 @@ class CreateAccountControllerIT
 	}
 
 	/**
+	 * Empty-body Bean Validation (F-021, QA Issue&nbsp;2): an empty {@code {}}
+	 * request body carries no {@code CreAcc} key, and the wrapper's no-argument
+	 * constructor no longer eager-initialises the nested envelope, so the
+	 * {@code @NotNull} nested field stays {@code null} and the
+	 * {@code @Valid}+{@code @NotNull} cascade rejects the request with
+	 * HTTP&nbsp;400 BEFORE the mapping dereferences the payload &mdash; matching
+	 * the {@code updacc} / {@code makepayment} siblings and never degrading into a
+	 * business-fail envelope at HTTP&nbsp;200. The business service is never
+	 * invoked.
+	 *
+	 * @throws Exception if the MockMvc exchange fails
+	 */
+	@Test
+	@DisplayName("POST /creacc/insert — an empty {} body returns HTTP 400 (Issue 2)")
+	void postInsert_emptyBody_returns400() throws Exception
+	{
+		mockMvc.perform(post(ENDPOINT)
+				.contentType(MediaType.APPLICATION_JSON)
+				.accept(MediaType.APPLICATION_JSON)
+				.content("{}"))
+				.andExpect(status().isBadRequest());
+
+		verify(accountService, never()).createAccount(any());
+	}
+
+	/**
 	 * Builds the populated success-response envelope the mocked service returns:
 	 * {@code CommSuccess="Y"}, an allocated sort code + account number, the account
 	 * type, scale-2 {@code BigDecimal} balances (both {@code 0.00} for a freshly
@@ -334,7 +360,11 @@ class CreateAccountControllerIT
 	private String requestBody() throws Exception
 	{
 		CreateAccountJson request = new CreateAccountJson();
-		CreaccJson inner = request.getCreAcc();
+		// The no-argument envelope no longer eager-initialises the inner payload
+		// (leaving it null so an empty {} body trips @NotNull -> HTTP 400, F-021),
+		// so the inner CreaccJson is constructed and attached explicitly here.
+		CreaccJson inner = new CreaccJson();
+		request.setCreAcc(inner);
 		inner.setCommCustno(SAMPLE_CUSTNO);
 		inner.setCommAccType(SAMPLE_ACC_TYPE);
 		inner.setCommInterestRate(new BigDecimal("1.50"));

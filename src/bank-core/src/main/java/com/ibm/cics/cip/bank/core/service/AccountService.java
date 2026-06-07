@@ -739,7 +739,23 @@ public class AccountService
 		Optional<Account> account;
 		try
 		{
-			account = accountRepository.findById(accountId);
+			// Read the ACCOUNT row under a PESSIMISTIC_WRITE lock, exactly as
+			// the DBCRFUN/XFRFUN balance-mutation path and PaymentService do
+			// (the COBOL EXEC CICS READ ... UPDATE record lock; AAP §0.6). DELACC
+			// likewise holds the record from read through delete. A non-locking
+			// findById here let two concurrent deletes (or a delete racing a
+			// payment) both read the row, after which the loser's pending delete
+			// collided at flush with a Hibernate StaleObjectStateException that
+			// the generic advice surfaced as HTTP 500 — violating the frozen
+			// "always HTTP 200 business envelope" contract. Acquiring the row
+			// lock first serialises these operations: the loser re-reads after
+			// the winner commits, observes the row already gone below, and
+			// returns the 'not found' fail code '1' at HTTP 200. Acquiring this
+			// lock before the account_control lock taken in
+			// appendProcessedTransaction also fixes the deadlock variant, giving
+			// the delete path the same account-row -> account_control lock order
+			// as the payment path.
+			account = accountRepository.findByIdForUpdate(accountId);
 		}
 		catch (DataAccessException ex)
 		{
