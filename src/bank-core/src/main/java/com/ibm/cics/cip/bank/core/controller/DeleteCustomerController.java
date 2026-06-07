@@ -3,15 +3,13 @@
 /*                                                                        */
 package com.ibm.cics.cip.bank.core.controller;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.ibm.cics.cip.bank.core.constants.BankConstants;
 import com.ibm.cics.cip.bank.core.dto.deletecustomer.DelcusJson;
 import com.ibm.cics.cip.bank.core.dto.deletecustomer.DeleteCustomerJson;
 import com.ibm.cics.cip.bank.core.exception.BusinessRuleException;
@@ -19,44 +17,105 @@ import com.ibm.cics.cip.bank.core.service.CustomerService;
 
 /**
  * REST controller reproducing the frozen z/OS Connect <em>delete-customer</em>
- * endpoint (feature F-019), mapping the {@code CScustdel} service onto
- * {@link CustomerService#deleteCustomer}.
+ * endpoint (the {@code delcus} API, mapping the {@code CScustdel} service onto
+ * {@code DELCUS.cbl}), feature&nbsp;F-019.
  *
- * <p>The path ({@code DELETE /delcus/remove/{customerNumber}}), HTTP verb, and
- * JSON envelope ({@code {"DelCus": {...}}}) are preserved verbatim.
- * {@code DELCUS.cbl} is the authoritative behavioural specification: it cascades
- * the customer's accounts (each appending an account-close PROCTRAN record) and
- * then appends a customer-close PROCTRAN record, all in one transaction.</p>
+ * <p>This is a deliberately <strong>thin adapter</strong>: it owns no business
+ * logic whatsoever. The HTTP verb, route, and JSON envelope are reproduced
+ * verbatim and the request is delegated straight to
+ * {@link CustomerService#deleteCustomer(long)}, which carries the authoritative
+ * {@code DELCUS} behaviour (F-014): it cascade-deletes every account the
+ * customer owns (each appending its own account-close {@code PROCTRAN} record),
+ * physically removes the customer row, and then appends a customer-close
+ * {@code PROCTRAN} record &mdash; all inside one {@code @Transactional} unit of
+ * work so the cascade, the row removal, and the audit appends commit or roll
+ * back together (reproducing the COBOL {@code EXEC CICS SYNCPOINT}/{@code
+ * ROLLBACK} boundary). The customer counter is deliberately not decremented,
+ * exactly as {@code DELCUS.cbl} leaves {@code NUMBER-OF-CUSTOMERS} untouched.</p>
  *
- * <h2>Success / failure convention (endpoint-specific)</h2>
- * <p>The consumer treats a JSON {@code CommDelFailCd} value of {@code "1"} as
- * &quot;customer not found&quot;. This controller sets
- * {@code CommDelFailCd="0"} with {@code CommDelSuccess="Y"} on success, and
- * {@code CommDelFailCd="1"} with {@code CommDelSuccess="N"} on a
- * {@link BusinessRuleException} (the only failure being the not-found case).
- * HTTP 200 is always returned.</p>
+ * <h2>Frozen contract (verified)</h2>
+ * <p>The route, method, and envelope match
+ * {@code src/zosconnect_artefacts/apis/delcus/api-docs/swagger.json} and
+ * {@code package.xml} exactly:</p>
+ * <ul>
+ *   <li><strong>Method&nbsp;+&nbsp;path:</strong>
+ *       {@code DELETE /delcus/remove/{custno}} (operationId
+ *       {@code deleteCScustdel}; basePath {@code /delcus}, relativePath
+ *       {@code /remove/{custno}}). The class-level
+ *       {@link RequestMapping @RequestMapping("/delcus")} composes with the
+ *       method-level {@link DeleteMapping @DeleteMapping("/remove/{custno}")} to
+ *       form the full route at the ROOT context (no servlet context-path; the
+ *       module runs on {@code server.port} 8080).</li>
+ *   <li><strong>Produces:</strong> {@code application/json} only, with a single
+ *       HTTP&nbsp;{@code 200} response.</li>
+ *   <li><strong>Response envelope:</strong> the outer wrapper
+ *       {@link DeleteCustomerJson} serialises to exactly one top-level key,
+ *       {@code DelCus}, over the inner {@link DelcusJson} payload.</li>
+ *   <li><strong>No request body:</strong> although the swagger lists a body
+ *       parameter, the real consumer ({@code WebController}) invokes the
+ *       endpoint with {@code client.delete().retrieve()} and <em>no</em> body
+ *       (zero-padding the customer number to width&nbsp;10 in the path), so this
+ *       handler accepts ONLY the {@code {custno}} path variable and declares no
+ *       {@code @RequestBody}.</li>
+ * </ul>
+ *
+ * <h2>Success / failure convention (byte-for-byte envelope fidelity)</h2>
+ * <p>On success the service returns the fully populated {@link DeleteCustomerJson}
+ * envelope &mdash; capturing the deleted customer's details (name, address, date
+ * of birth, credit score and review date) &mdash; which this controller returns
+ * verbatim at HTTP&nbsp;{@code 200}.</p>
+ *
+ * <p>When the service raises a {@link BusinessRuleException} (the COBOL
+ * {@code DELCUS} fail code is {@code "1"} for a customer that was not found),
+ * this controller does NOT defer to the generic {@code GlobalExceptionHandler}
+ * body; instead it reconstructs the frozen {@code DelCus} envelope so the wire
+ * shape stays byte-for-byte intact. It builds a fresh {@link DeleteCustomerJson}
+ * whose inner {@link DelcusJson} echoes the requested customer number, flags the
+ * operative {@code CommDelSuccess} as {@code "N"}, and carries the verbatim
+ * COBOL fail code &mdash; whatever code arrives &mdash; in {@code CommDelFailCd}.
+ * That envelope is returned at HTTP&nbsp;{@code 200}, exactly as the legacy z/OS
+ * Connect contract delivers a business outcome (the consumer inspects the body,
+ * not the HTTP status).</p>
+ *
+ * <p>A blank, non-numeric or over-width {@code {custno}} raises
+ * {@link NumberFormatException} from {@link Long#parseLong(String)}; that is
+ * deliberately <em>not</em> caught here so it propagates to
+ * {@code GlobalExceptionHandler} (rendered as HTTP&nbsp;400). Only
+ * {@link BusinessRuleException} is caught.</p>
+ *
+ * <p><strong>No mainframe coupling.</strong> This controller imports only Spring
+ * MVC and {@code bank-core} types; it never references
+ * {@code com.ibm.cics.server} (JCICS), {@code com.ibm.jzos}, or
+ * {@code com.ibm.websphere} &mdash; those legacy runtimes are decommissioned in
+ * the target.</p>
+ *
+ * @see CustomerService#deleteCustomer(long)
+ * @see DeleteCustomerJson
+ * @see DelcusJson
  */
 @RestController
+@RequestMapping("/delcus")
 public class DeleteCustomerController
 {
 
-	/** Logger for request/outcome diagnostics. */
-	private static final Logger LOG = LoggerFactory
-			.getLogger(DeleteCustomerController.class);
-
-	/** Single-character fail code denoting &quot;customer not found&quot; (wire value {@code "1"}). */
-	private static final String FAIL_NOT_FOUND = "1";
-
-	/** Failure flag value. */
+	/**
+	 * Failure flag value ({@code "N"}) written to the operative
+	 * {@code CommDelSuccess} field on the reconstructed failure envelope,
+	 * reproducing the COBOL {@code DELCUS} success indicator on a rejected
+	 * delete.
+	 */
 	private static final String FLAG_FAILURE = "N";
 
-	/** The customer business service. */
+	/**
+	 * The customer business service holding all {@code DELCUS} logic. Injected by
+	 * constructor for immutability and testability.
+	 */
 	private final CustomerService customerService;
 
 	/**
 	 * Constructs the controller with its collaborating service.
 	 *
-	 * @param customerService the customer business service
+	 * @param customerService the customer business service (DELCUS parity, F-014)
 	 */
 	public DeleteCustomerController(CustomerService customerService)
 	{
@@ -64,46 +123,68 @@ public class DeleteCustomerController
 	}
 
 	/**
-	 * Deletes the customer identified by the path variable.
+	 * Deletes a single customer and cascade-deletes their accounts, reproducing
+	 * the frozen {@code DELETE /delcus/remove/{custno}} contract.
 	 *
-	 * @param customerNumber the customer number to delete
-	 * @return the delete-customer response envelope, always HTTP 200
+	 * <p>The path variable is parsed to a {@code long} via
+	 * {@link Long#parseLong(String)} (the customer number is a display-numeric
+	 * value up to ten digits wide) and delegated unchanged to
+	 * {@link CustomerService#deleteCustomer(long)}, which carries the
+	 * authoritative {@code DELCUS} behaviour (account cascade with per-account
+	 * close {@code PROCTRAN} appends, physical customer-row removal, and a
+	 * customer-close {@code PROCTRAN} append &mdash; all in one transaction). The
+	 * service returns the fully populated {@link DeleteCustomerJson} envelope
+	 * capturing the deleted customer's details, which is returned as-is at
+	 * HTTP&nbsp;{@code 200}.</p>
+	 *
+	 * <p>A {@link BusinessRuleException} is caught and shaped into a
+	 * contract-faithful {@code DelCus} failure envelope echoing the requested
+	 * customer number, with the operative {@code CommDelSuccess = "N"} and
+	 * {@code CommDelFailCd} carrying the verbatim COBOL fail code &mdash;
+	 * whatever code arrives &mdash; again at HTTP&nbsp;{@code 200}. A blank,
+	 * non-numeric or over-width {@code custno} raises
+	 * {@link NumberFormatException}, which is left to propagate to the global
+	 * exception handler (HTTP&nbsp;400).</p>
+	 *
+	 * @param custno the display-numeric customer number from the path (the
+	 *               caller zero-pads it to width&nbsp;10)
+	 * @return the delete-customer response envelope at HTTP&nbsp;{@code 200},
+	 *         {@code application/json}
 	 */
-	@DeleteMapping(path = "/delcus/remove/{customerNumber}",
+	@DeleteMapping(value = "/remove/{custno}",
 			produces = MediaType.APPLICATION_JSON_VALUE)
 	public ResponseEntity<DeleteCustomerJson> deleteCustomer(
-			@PathVariable long customerNumber)
+			@PathVariable("custno") String custno)
 	{
+		// Parse OUTSIDE the try: the customer number is display-numeric (up to
+		// ten digits). A blank, non-numeric or over-width path variable raises
+		// NumberFormatException, intentionally left to reach GlobalExceptionHandler
+		// as HTTP 400 rather than being shaped into the business-failure envelope.
+		// Only BusinessRuleException is caught below.
+		long customerNumber = Long.parseLong(custno);
 		try
 		{
-			DeleteCustomerJson response = customerService
+			// Thin pass-through: all DELCUS logic (account cascade with per-account
+			// ODA audit appends, physical customer-row removal, and the
+			// customer-close ODC PROCTRAN append) lives in the service, which
+			// returns the fully populated DelCus success envelope.
+			DeleteCustomerJson result = customerService
 					.deleteCustomer(customerNumber);
-			LOG.info("Customer deleted: {}",
-					response.getDelCus().getCommCustno());
-			return ResponseEntity.ok(response);
+			return ResponseEntity.ok(result);
 		}
 		catch (BusinessRuleException ex)
 		{
-			LOG.info("Delete-customer rejected, failCode={}",
-					ex.getFailCode());
-			return ResponseEntity.ok(failure(customerNumber));
+			// Reproduce the DelCus failure envelope byte-for-byte (NOT the generic
+			// advice body): echo the requested customer number, flag the operative
+			// CommDelSuccess as "N", and carry the verbatim COBOL fail code in
+			// CommDelFailCd. HTTP 200 is still returned because the legacy z/OS
+			// Connect contract delivers the business outcome in the body, not via
+			// the HTTP status.
+			DelcusJson payload = new DelcusJson();
+			payload.setCommCustno(custno);
+			payload.setCommDelSuccess(FLAG_FAILURE);
+			payload.setCommDelFailCode(ex.getFailCode());
+			return ResponseEntity.ok(new DeleteCustomerJson(payload));
 		}
 	}
-
-	/**
-	 * Builds the not-found failure envelope.
-	 *
-	 * @param customerNumber the customer number that was not found
-	 * @return the populated failure envelope
-	 */
-	private DeleteCustomerJson failure(long customerNumber)
-	{
-		DelcusJson out = new DelcusJson();
-		out.setCommSortcode(BankConstants.SORT_CODE);
-		out.setCommCustno(String.format("%010d", customerNumber));
-		out.setCommDelFailCode(FAIL_NOT_FOUND);
-		out.setCommDelSuccess(FLAG_FAILURE);
-		return new DeleteCustomerJson(out);
-	}
-
 }
