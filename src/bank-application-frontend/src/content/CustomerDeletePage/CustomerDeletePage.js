@@ -163,6 +163,7 @@ const CustomerDeletePage = () => {
                   <div className="left-part">
                   <h5>Note: A customer cannot be deleted if they still have accounts associated with them</h5>
                     <NumberInput
+                      id="delete-customer-number"
                       className="customer-list-view"
                       label= 'Enter customer number'
                       min= "0"

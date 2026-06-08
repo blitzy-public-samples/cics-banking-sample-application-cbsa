@@ -120,7 +120,7 @@ const AccountCreationPage = () => {
   }
 
   return (
-    <Grid className="landing-page" fullWidth>
+    <Grid className="landing-page account-creation-page" fullWidth>
       <Column lg={16} md={8} sm={4} className="landing-page__banner">
         <Breadcrumb noTrailingSlash aria-label="Page navigation">
           <BreadcrumbItem>
