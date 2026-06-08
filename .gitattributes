@@ -1,6 +1,19 @@
 # line endings
 * text eol=crlf
 
+# The Maven wrapper and shell scripts must be checked out with LF endings so
+# they are executable on Linux/Unix build hosts. Under the catch-all
+# "* text eol=crlf" rule above these scripts are otherwise written with CRLF,
+# which corrupts the "#!/bin/sh" shebang (interpreter "/bin/sh\r" not found)
+# and breaks "./mvnw" and the build scripts. The maven-wrapper.properties file
+# must also be LF: a trailing CR on its wrapperUrl/distributionUrl values is
+# appended to the download URL (as "%0D"), causing a 404 when the wrapper
+# fetches Maven. Git already stores all of these as LF in the index, so these
+# overrides only affect the working-tree checkout.
+mvnw text eol=lf
+*.sh text eol=lf
+.mvn/wrapper/maven-wrapper.properties text eol=lf
+
 *.cpy zos-working-tree-encoding=ibm-1047 git-encoding=utf-8
 *.cbl zos-working-tree-encoding=ibm-1047 git-encoding=utf-8
 *.bms zos-working-tree-encoding=ibm-1047 git-encoding=utf-8
