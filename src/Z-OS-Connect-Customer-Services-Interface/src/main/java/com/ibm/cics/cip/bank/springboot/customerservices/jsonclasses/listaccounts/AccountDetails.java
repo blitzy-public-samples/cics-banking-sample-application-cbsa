@@ -3,6 +3,8 @@
 /*                                                                        */
 package com.ibm.cics.cip.bank.springboot.customerservices.jsonclasses.listaccounts;
 
+import java.math.BigDecimal;
+
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import com.ibm.cics.cip.bank.springboot.customerservices.JsonPropertyNamingStrategy;
@@ -16,17 +18,21 @@ public class AccountDetails
 
 	private static final String FLOAT_FORMAT = "%.02f";
 
+	// QA Issue 5: money fields carry COBOL S9(10)V99 monetary values; the AAP
+	// invariant requires BigDecimal (scale-2) end-to-end and prohibits float/
+	// double to preserve exact COBOL rounding. bank-core emits these as JSON
+	// numbers that Jackson binds losslessly into BigDecimal.
 	@JsonProperty("CommActualBal")
-	private float commActualBalance;
+	private BigDecimal commActualBalance;
 
 	@JsonProperty("CommAvailBal")
-	private float commAvailableBalance;
+	private BigDecimal commAvailableBalance;
 
 	// @JsonProperty("COMM_SCODE")
 	// private int commSortcode;
 
 	@JsonProperty("CommIntRate")
-	private float commInterestRate;
+	private BigDecimal commInterestRate;
 
 	@JsonProperty("CommEye")
 	private String commEye;
@@ -34,8 +40,13 @@ public class AccountDetails
 	@JsonProperty("CommOpened")
 	private int commOpened;
 
+	// QA Issues 4 and 5: customer number is a fixed-width 10-digit COBOL
+	// identifier. Binding it into int overflows for valid values near the
+	// upper bound (e.g. 9999999998) and discards leading zeroes. Bind into
+	// String to keep the zero-padded identifier intact end-to-end; bank-core
+	// emits CommCustno as a JSON string for this contract.
 	@JsonProperty("CommCustno")
-	private int commCustno;
+	private String commCustno;
 
 	@JsonProperty("CommNextStmtDt")
 	private int commNextStatementDate;
@@ -53,25 +64,25 @@ public class AccountDetails
 	private int commLastStatementDate;
 
 
-	public float getCommActualBalance()
+	public BigDecimal getCommActualBalance()
 	{
 		return commActualBalance;
 	}
 
 
-	public void setCommActualBalance(float commActualBalanceIn)
+	public void setCommActualBalance(BigDecimal commActualBalanceIn)
 	{
 		commActualBalance = commActualBalanceIn;
 	}
 
 
-	public float getCommAvailableBalance()
+	public BigDecimal getCommAvailableBalance()
 	{
 		return commAvailableBalance;
 	}
 
 
-	public void setCommAvailableBalance(float commAvailableBalanceIn)
+	public void setCommAvailableBalance(BigDecimal commAvailableBalanceIn)
 	{
 		commAvailableBalance = commAvailableBalanceIn;
 	}
@@ -89,13 +100,13 @@ public class AccountDetails
 	// }
 
 
-	public float getCommInterestRate()
+	public BigDecimal getCommInterestRate()
 	{
 		return commInterestRate;
 	}
 
 
-	public void setCommInterestRate(float commInterestRateIn)
+	public void setCommInterestRate(BigDecimal commInterestRateIn)
 	{
 		commInterestRate = commInterestRateIn;
 	}
@@ -125,13 +136,13 @@ public class AccountDetails
 	}
 
 
-	public int getCommCustno()
+	public String getCommCustno()
 	{
 		return commCustno;
 	}
 
 
-	public void setCommCustno(int commCustnoIn)
+	public void setCommCustno(String commCustnoIn)
 	{
 		commCustno = commCustnoIn;
 	}

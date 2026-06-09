@@ -40,8 +40,13 @@ public class InqCustZJson
 	@JsonProperty("InqCustPcbPointer")
 	private String inqcustPcbPointer;
 
+	// Customer number is a fixed-width 10-digit identifier. It is held as a
+	// String (not an int) so that values near the upper bound such as
+	// "9999999998" cannot overflow a 32-bit int and so that leading zeroes are
+	// preserved end-to-end; bank-core emits InqCustCustno as a JSON string, so
+	// String matches the frozen contract exactly (QA Issues 4 and 5).
 	@JsonProperty("InqCustCustno")
-	private int inqcustCustno;
+	private String inqcustCustno;
 
 	@JsonProperty("InqCustCsReviewDt")
 	private InqCustReviewDate inqcustCsReviewDate;
@@ -161,13 +166,13 @@ public class InqCustZJson
 	}
 
 
-	public int getInqcustCustno()
+	public String getInqcustCustno()
 	{
 		return inqcustCustno;
 	}
 
 
-	public void setInqcustCustno(int inqcustCustnoIn)
+	public void setInqcustCustno(String inqcustCustnoIn)
 	{
 		inqcustCustno = inqcustCustnoIn;
 	}

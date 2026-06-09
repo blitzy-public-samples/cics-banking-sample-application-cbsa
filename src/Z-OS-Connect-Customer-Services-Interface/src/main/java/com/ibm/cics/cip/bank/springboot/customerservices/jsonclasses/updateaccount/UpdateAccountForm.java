@@ -3,6 +3,8 @@
 /*                                                                        */
 package com.ibm.cics.cip.bank.springboot.customerservices.jsonclasses.updateaccount;
 
+import java.math.BigDecimal;
+
 import jakarta.validation.constraints.NotNull;
 
 import com.ibm.cics.cip.bank.springboot.customerservices.jsonclasses.createaccount.AccountType;
@@ -36,9 +38,11 @@ public class UpdateAccountForm
 
 	private String acctNextStatementDate;
 
-	private float acctAvailableBalance;
+	// QA Issue 5: balances carry COBOL S9(10)V99 money; AAP requires BigDecimal
+	// (scale-2) and prohibits float/double to preserve exact rounding.
+	private BigDecimal acctAvailableBalance;
 
-	private float acctActualBalance;
+	private BigDecimal acctActualBalance;
 
 
 	public String getCustNumber()
@@ -84,9 +88,12 @@ public class UpdateAccountForm
 	}
 
 
-	public float getAcctInterestRateFloat()
+	// QA Issue 5: parse the interest-rate form string into BigDecimal rather
+	// than float so the value reaches bank-core with exact COBOL precision and
+	// no floating-point representation error.
+	public BigDecimal getAcctInterestRateBigDecimal()
 	{
-		return Float.parseFloat(acctInterestRate);
+		return new BigDecimal(acctInterestRate);
 	}
 
 
@@ -176,25 +183,25 @@ public class UpdateAccountForm
 	}
 
 
-	public float getAcctAvailableBalance()
+	public BigDecimal getAcctAvailableBalance()
 	{
 		return acctAvailableBalance;
 	}
 
 
-	public void setAcctAvailableBalance(float acctAvailableBalance)
+	public void setAcctAvailableBalance(BigDecimal acctAvailableBalance)
 	{
 		this.acctAvailableBalance = acctAvailableBalance;
 	}
 
 
-	public float getAcctActualBalance()
+	public BigDecimal getAcctActualBalance()
 	{
 		return acctActualBalance;
 	}
 
 
-	public void setAcctActualBalance(float acctActualBalance)
+	public void setAcctActualBalance(BigDecimal acctActualBalance)
 	{
 		this.acctActualBalance = acctActualBalance;
 	}

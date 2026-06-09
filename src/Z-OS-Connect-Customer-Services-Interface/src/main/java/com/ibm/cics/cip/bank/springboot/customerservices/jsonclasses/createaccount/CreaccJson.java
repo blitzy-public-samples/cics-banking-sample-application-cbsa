@@ -3,6 +3,8 @@
 /*                                                                        */
 package com.ibm.cics.cip.bank.springboot.customerservices.jsonclasses.createaccount;
 
+import java.math.BigDecimal;
+
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import com.ibm.cics.cip.bank.springboot.customerservices.JsonPropertyNamingStrategy;
@@ -25,14 +27,19 @@ public class CreaccJson
 	@JsonProperty("CommKey")
 	private CreaccKeyJson commKey;
 
+	// QA Issue 5: interest rate is COBOL 9(4)V99 money; AAP requires BigDecimal
+	// (scale-2) and prohibits float/double to preserve exact rounding.
 	@JsonProperty("CommIntRt")
-	private float commInterestRate;
+	private BigDecimal commInterestRate;
 
 	@JsonProperty("CommOpened")
 	private int commOpened;
 
+	// QA Issue 5: overdraft limit is COBOL 9(8) with no decimals; bank-core
+	// expects an Integer. Use Integer (not float) to match the contract and
+	// avoid floating-point representation of a whole-pound limit.
 	@JsonProperty("CommOverdrLim")
-	private float commOverdraftLimit;
+	private Integer commOverdraftLimit;
 
 	@JsonProperty("CommLastStmtDt")
 	private int commLastStatementDate;
@@ -41,10 +48,10 @@ public class CreaccJson
 	private int commNextStatementDate;
 
 	@JsonProperty("CommAvailBal")
-	private float commAvailableBalance;
+	private BigDecimal commAvailableBalance;
 
 	@JsonProperty("CommActBal")
-	private float commActualBalance;
+	private BigDecimal commActualBalance;
 
 	@JsonProperty("CommSuccess")
 	private String commSuccess;
@@ -54,7 +61,7 @@ public class CreaccJson
 
 
 	public CreaccJson(String accountType, String accountNumber,
-			float overdraftLimit, float interestRate)
+			Integer overdraftLimit, BigDecimal interestRate)
 	{
 		commAccType = String.format("%-8s", accountType);
 		commCustno = String.format("%8s", accountNumber).replace(" ", "0");
@@ -122,13 +129,13 @@ public class CreaccJson
 	}
 
 
-	public float getCommInterestRate()
+	public BigDecimal getCommInterestRate()
 	{
 		return commInterestRate;
 	}
 
 
-	public void setCommInterestRate(float commInterestRateIn)
+	public void setCommInterestRate(BigDecimal commInterestRateIn)
 	{
 		commInterestRate = commInterestRateIn;
 	}
@@ -146,13 +153,13 @@ public class CreaccJson
 	}
 
 
-	public float getCommOverdraftLimit()
+	public Integer getCommOverdraftLimit()
 	{
 		return commOverdraftLimit;
 	}
 
 
-	public void setCommOverdraftLimit(float commOverdraftLimitIn)
+	public void setCommOverdraftLimit(Integer commOverdraftLimitIn)
 	{
 		commOverdraftLimit = commOverdraftLimitIn;
 	}
@@ -182,25 +189,25 @@ public class CreaccJson
 	}
 
 
-	public float getCommAvailableBalance()
+	public BigDecimal getCommAvailableBalance()
 	{
 		return commAvailableBalance;
 	}
 
 
-	public void setCommAvailableBalance(float commAvailableBalanceIn)
+	public void setCommAvailableBalance(BigDecimal commAvailableBalanceIn)
 	{
 		commAvailableBalance = commAvailableBalanceIn;
 	}
 
 
-	public float getCommActualBalance()
+	public BigDecimal getCommActualBalance()
 	{
 		return commActualBalance;
 	}
 
 
-	public void setCommActualBalance(float commActualBalanceIn)
+	public void setCommActualBalance(BigDecimal commActualBalanceIn)
 	{
 		commActualBalance = commActualBalanceIn;
 	}

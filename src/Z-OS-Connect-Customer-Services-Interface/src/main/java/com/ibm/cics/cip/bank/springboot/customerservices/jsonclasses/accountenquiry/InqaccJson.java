@@ -3,6 +3,8 @@
 /*                                                                        */
 package com.ibm.cics.cip.bank.springboot.customerservices.jsonclasses.accountenquiry;
 
+import java.math.BigDecimal;
+
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import com.ibm.cics.cip.bank.springboot.customerservices.JsonPropertyNamingStrategy;
@@ -24,8 +26,11 @@ public class InqaccJson
 	@JsonProperty("InqAccScode")
 	private int inqaccSortcode;
 
+	// QA Issue 5: money fields carry COBOL S9(10)V99 values; AAP requires
+	// BigDecimal (scale-2) and prohibits float/double to preserve exact
+	// rounding. bank-core emits these as JSON numbers bound losslessly here.
 	@JsonProperty("InqAccActualBal")
-	private float inqaccActualBalance;
+	private BigDecimal inqaccActualBalance;
 
 	@JsonProperty("InqAccAccno")
 	private int inqaccAccno;
@@ -33,8 +38,12 @@ public class InqaccJson
 	@JsonProperty("InqAccOpened")
 	private int inqaccOpened;
 
+	// QA Issues 4 and 5: customer number is a fixed-width 10-digit COBOL
+	// identifier. int overflows for valid upper-bound values and discards
+	// leading zeroes, so bind into String; bank-core emits InqAccCustno as a
+	// JSON string for this contract.
 	@JsonProperty("InqAccCustno")
-	private int inqaccCustno;
+	private String inqaccCustno;
 
 	@JsonProperty("InqAccAccType")
 	private String inqaccAccType;
@@ -43,7 +52,7 @@ public class InqaccJson
 	private int inqaccNextStatementDate;
 
 	@JsonProperty("InqAccAvailBal")
-	private float inqaccAvailableBalance;
+	private BigDecimal inqaccAvailableBalance;
 
 	@JsonProperty("InqAccEye")
 	private String inqaccEyecatcher;
@@ -52,7 +61,7 @@ public class InqaccJson
 	private String inqaccSuccess;
 
 	@JsonProperty("InqAccIntRate")
-	private float inqaccInterestRate;
+	private BigDecimal inqaccInterestRate;
 
 
 	public String getInqaccPcb1Pointer()
@@ -103,13 +112,13 @@ public class InqaccJson
 	}
 
 
-	public float getInqaccActualBalance()
+	public BigDecimal getInqaccActualBalance()
 	{
 		return inqaccActualBalance;
 	}
 
 
-	public void setInqaccActualBalance(float inqaccActualBalanceIn)
+	public void setInqaccActualBalance(BigDecimal inqaccActualBalanceIn)
 	{
 		inqaccActualBalance = inqaccActualBalanceIn;
 	}
@@ -139,13 +148,13 @@ public class InqaccJson
 	}
 
 
-	public int getInqaccCustno()
+	public String getInqaccCustno()
 	{
 		return inqaccCustno;
 	}
 
 
-	public void setInqaccCustno(int inqaccCustnoIn)
+	public void setInqaccCustno(String inqaccCustnoIn)
 	{
 		inqaccCustno = inqaccCustnoIn;
 	}
@@ -175,13 +184,13 @@ public class InqaccJson
 	}
 
 
-	public float getInqaccAvailableBalance()
+	public BigDecimal getInqaccAvailableBalance()
 	{
 		return inqaccAvailableBalance;
 	}
 
 
-	public void setInqaccAvailableBalance(float inqaccAvailableBalanceIn)
+	public void setInqaccAvailableBalance(BigDecimal inqaccAvailableBalanceIn)
 	{
 		inqaccAvailableBalance = inqaccAvailableBalanceIn;
 	}
@@ -211,13 +220,13 @@ public class InqaccJson
 	}
 
 
-	public float getInqaccInterestRate()
+	public BigDecimal getInqaccInterestRate()
 	{
 		return inqaccInterestRate;
 	}
 
 
-	public void setInqaccInterestRate(float inqaccInterestRateIn)
+	public void setInqaccInterestRate(BigDecimal inqaccInterestRateIn)
 	{
 		inqaccInterestRate = inqaccInterestRateIn;
 	}

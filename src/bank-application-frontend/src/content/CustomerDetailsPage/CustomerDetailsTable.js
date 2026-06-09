@@ -204,6 +204,11 @@ let newDateOfBirth = currentDateOfBirth.substring(6,10) + "-" + currentDateOfBir
    * - maps the data using the accountNumber as the sorting key
    */
   function getExpandedRows(row) {
+    // Look up THIS customer's accounts by id from the keyed map. Previously the
+    // single shared accountDetailsRows array was rendered for every expanded
+    // row, causing duplicated account lists in multi-result name searches.
+    // QA F4 #2.
+    const customerAccounts = (accountDetailsRows && accountDetailsRows[row.id]) || [];
     return (
       <TableExpandedRow colSpan={headers.length + 2}>
         <p className="account-details">Accounts belonging to this customer</p>
@@ -218,13 +223,13 @@ let newDateOfBirth = currentDateOfBirth.substring(6,10) + "-" + currentDateOfBir
             </TableRow>
           </TableHead>
           <TableBody>
-            {(accountDetailsRows).map(row => (
-              <TableRow key={row.accountNumber}>
-                {Object.keys(row)
+            {customerAccounts.map(acct => (
+              <TableRow key={acct.accountNumber}>
+                {Object.keys(acct)
                   .filter(key => key !== "id")
                   .map(key => {
                     return (
-                      <TableCell key={key}>{row[key]}</TableCell>
+                      <TableCell key={key}>{acct[key]}</TableCell>
                     );
                   })}
 
@@ -289,6 +294,7 @@ let newDateOfBirth = currentDateOfBirth.substring(6,10) + "-" + currentDateOfBir
                       />
 
                       <NumberInput
+                        id="update-customer-number"
                         className="customerNumber"
                         iconDescription="Customer Number (cannot be changed)"
                         label="Customer Number (cannot be changed)"
@@ -300,6 +306,7 @@ let newDateOfBirth = currentDateOfBirth.substring(6,10) + "-" + currentDateOfBir
                       />
 
                       <NumberInput
+                        id="update-sort-code"
                         className="sortcode-update"
 			                  iconDescription="Sort Code (cannot be changed)"
                         label="Sort Code (cannot be changed)"
@@ -312,7 +319,7 @@ let newDateOfBirth = currentDateOfBirth.substring(6,10) + "-" + currentDateOfBir
                       <div style={{ width: 350 }}>
                         <TextInput
                           data-modal-primary-focus
-                          id="text-input-1"
+                          id="text-input-2"
                           labelText="Customer Address"
                           defaultValue={currentCustomerAddress}
                           onChange={enteredAddressChangeHandler}

@@ -36,7 +36,12 @@
 //   font-weight: 600;
 // }
 
-.landing-page__p {
+// Scoped to the account-creation page so this 25% paragraph width does not
+// leak globally onto .landing-page__p elements on other pages (notably the
+// HomePage lead paragraph, which intends 75%). The account-creation page does
+// not currently render a .landing-page__p element, so this rule is inert here
+// and simply no longer overrides other pages. QA F4 finding #4.
+.account-creation-page .landing-page__p {
    @include type-style('productive-heading-03');
    margin-top: $spacing-06;
    margin-bottom: $spacing-08;

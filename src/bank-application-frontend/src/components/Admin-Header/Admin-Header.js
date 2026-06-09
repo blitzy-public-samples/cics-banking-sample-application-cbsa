@@ -103,7 +103,7 @@ const AdminHeader = () => {
                   size="sm"
                   labelText="Search"
                   closeButtonLabelText="Clear search input"
-                  id="search-expandable-1"
+                  id="search-expandable-admin"
                 />
               </button>
             </span>

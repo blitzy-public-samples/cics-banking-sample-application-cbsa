@@ -1,13 +1,17 @@
 /*
  *
- *    Copyright IBM Corp. 2023
+ *    Copyright IBM Corp. 2023,2026
  *
  */
 
 package com.ibm.cics.cip.bankliberty.api.json;
 
 import java.io.IOException;
+import java.sql.Connection;
 import java.sql.Date;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.text.DateFormat;
 import java.util.Calendar;
 import java.util.TimeZone;
@@ -29,21 +33,51 @@ import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
-import com.ibm.cics.cip.bankliberty.web.vsam.Customer;
-import com.ibm.cics.server.InvalidRequestException;
-import com.ibm.cics.server.Task;
-import com.ibm.json.java.JSONArray;
-import com.ibm.json.java.JSONObject;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+
+/**
+ * This class describes the methods of the Customer Resource.
+ *
+ * <p>
+ * <b>Tech-stack migration note (CBSA mainframe &rarr; standalone Java).</b> The
+ * external JAX-RS contract of this resource is FROZEN and reproduced verbatim:
+ * the class-level {@code @Path("customer")} (no leading slash), every endpoint
+ * path/HTTP verb/{@code @Produces}/{@code @Consumes}, every {@code @PathParam}
+ * /{@code @QueryParam}, every JSON field name, every HTTP status code and the
+ * {@code errorMessage} envelope are unchanged. Only the implementation was
+ * re-pointed off the decommissioned mainframe libraries:
+ * </p>
+ * <ul>
+ * <li>The legacy WebSphere JSON API is replaced by Jackson
+ * ({@link ObjectMapper}/{@link ObjectNode}/{@link ArrayNode}); the JSON field
+ * names are emitted byte-for-byte identically.</li>
+ * <li>The legacy JCICS data path (the deleted shared data-access base class, the
+ * JCICS task rollback hooks and the deleted VSAM customer access class,
+ * including its now-removed local credit-score helper) is replaced by a thin
+ * JDBC layer on the shared PostgreSQL store used by the {@code bank-core} module
+ * ({@code jdbc:postgresql://${DB_HOST:localhost}:5432/cbsa}). Connection and
+ * transaction lifecycle is provided by JDBC under explicit transaction
+ * boundaries, reproducing the SYNCPOINT/ROLLBACK semantics that previously
+ * lived in the JCICS task.</li>
+ * <li>Credit scoring is now owned by the bank-core services; webui no longer
+ * computes a score locally. On create the base customer record is inserted with
+ * a zero score; read paths simply surface whatever score bank-core has
+ * stored.</li>
+ * </ul>
+ *
+ * <p>
+ * This resource handles no monetary values, and uses only integral and
+ * fixed-precision types (no binary floating-point types).
+ * </p>
+ */
 
 @Path("customer")
 public class CustomerResource
 {
 
-
-	/**
-	 * This class describes the methods of the Customer Resource
-	 *
-	 */
 
 	static String sortcode = null;
 
@@ -98,6 +132,19 @@ public class CustomerResource
 
 	private static final String NOT_FOUND_MSG = " not found";
 
+	/*
+	 * Jackson mapper used to build the JSON envelopes that replace the removed
+	 * legacy WebSphere JSON object/array types. Field names and insertion order
+	 * are preserved so the wire format is byte-identical.
+	 */
+	private static final ObjectMapper mapper = new ObjectMapper();
+
+	/*
+	 * The fixed customer-number display width (zero-padded), matching the legacy
+	 * 10-digit CUSTOMER-NUMBER and the customer_number CHAR(10) relational key.
+	 */
+	private static final int CUSTOMER_NUMBER_LENGTH = 10;
+
 
 	public CustomerResource()
 	{
@@ -112,8 +159,6 @@ public class CustomerResource
 		logger.entering(this.getClass().getName(),
 				CREATE_CUSTOMER_EXTERNAL + customer.toString());
 		Response myResponse = createCustomerInternal(customer);
-		HBankDataAccess myHBankDataAccess = new HBankDataAccess();
-		myHBankDataAccess.terminate();
 		logger.exiting(this.getClass().getName(), CREATE_CUSTOMER_EXTERNAL_EXIT,
 				myResponse);
 		return myResponse;
@@ -124,12 +169,12 @@ public class CustomerResource
 	{
 		logger.entering(this.getClass().getName(),
 				CREATE_CUSTOMER_INTERNAL + customer.toString());
-		JSONObject response = new JSONObject();
+		ObjectNode response = mapper.createObjectNode();
 
 
 		if(customer.getCustomerName() == null)
 		{
-			JSONObject error = new JSONObject();
+			ObjectNode error = mapper.createObjectNode();
 			error.put(JSON_ERROR_MSG,
 					"Customer name is null");
 			Response myResponse = Response.status(400).entity(error.toString())
@@ -146,7 +191,7 @@ public class CustomerResource
 
 		if (!customer.validateTitle(name[0].trim()))
 		{
-			JSONObject error = new JSONObject();
+			ObjectNode error = mapper.createObjectNode();
 			error.put(JSON_ERROR_MSG,
 					"Customer title " + name[0] + " is not valid");
 			Response myResponse = Response.status(400).entity(error.toString())
@@ -161,7 +206,7 @@ public class CustomerResource
 
 		if(customer.getSortCode() == null)
 		{
-			JSONObject error = new JSONObject();
+			ObjectNode error = mapper.createObjectNode();
 			error.put(JSON_ERROR_MSG,
 					"Sort Code is null");
 			Response myResponse = Response.status(400).entity(error.toString())
@@ -178,7 +223,7 @@ public class CustomerResource
 
 		if (!inputSortCode.equals(this.getSortCode()))
 		{
-			JSONObject error = new JSONObject();
+			ObjectNode error = mapper.createObjectNode();
 			error.put(JSON_ERROR_MSG, "Sortcode " + inputSortCode
 					+ " not valid for this bank (" + this.getSortCode() + ")");
 			Response myResponse = Response.status(400).entity(error.toString())
@@ -193,7 +238,7 @@ public class CustomerResource
 
 		if(customer.getCustomerAddress() == null)
 		{
-			JSONObject error = new JSONObject();
+			ObjectNode error = mapper.createObjectNode();
 			error.put(JSON_ERROR_MSG,
 					"Customer address is null");
 			Response myResponse = Response.status(400).entity(error.toString())
@@ -208,7 +253,7 @@ public class CustomerResource
 
 		if(customer.getDateOfBirth() == null)
 		{
-			JSONObject error = new JSONObject();
+			ObjectNode error = mapper.createObjectNode();
 			error.put(JSON_ERROR_MSG,
 					"Date of Birth is null");
 			Response myResponse = Response.status(400).entity(error.toString())
@@ -225,7 +270,7 @@ public class CustomerResource
 
 		if(nowDate.before(customer.getDateOfBirth()))
 		{
-			JSONObject error = new JSONObject();
+			ObjectNode error = mapper.createObjectNode();
 			error.put(JSON_ERROR_MSG,
 					"Date of Birth is in the future");
 			Response myResponse = Response.status(400).entity(error.toString())
@@ -243,7 +288,7 @@ public class CustomerResource
 
 		if(nowDate.after(customer.getDateOfBirth()))
 		{
-			JSONObject error = new JSONObject();
+			ObjectNode error = mapper.createObjectNode();
 			error.put(JSON_ERROR_MSG,
 					"Customer is over 150 years old");
 			Response myResponse = Response.status(400).entity(error.toString())
@@ -256,20 +301,88 @@ public class CustomerResource
 			return myResponse;
 		}
 
-		com.ibm.cics.cip.bankliberty.web.vsam.Customer vsamCustomer = new com.ibm.cics.cip.bankliberty.web.vsam.Customer();
-
 		customer.setSortCode(this.getSortCode().toString());
 
-		vsamCustomer = vsamCustomer.createCustomer(customer,
-				this.getSortCode());
+		String customerNameTrimmed = customer.getCustomerName().trim();
+		String customerAddressTrimmed = customer.getCustomerAddress().trim();
 
-		if (vsamCustomer == null)
+		// Reproduce the original date-of-birth normalisation used to render the
+		// JSON response date (no functional change).
+		Calendar myCalendar = Calendar.getInstance();
+		myCalendar.setTime(customer.getDateOfBirth());
+		myCalendar.setTimeInMillis(myCalendar.getTimeInMillis()
+				- myCalendar.getTimeZone()
+						.getOffset(myCalendar.getTimeInMillis()));
+
+		// Encode the date of birth as the eight-character DDMMYYYY string the
+		// bank-core create-customer contract expects, derived from the same
+		// normalised calendar that shapes the response date below.
+		String dateOfBirthWire = String.format("%02d%02d%04d",
+				myCalendar.get(Calendar.DAY_OF_MONTH),
+				myCalendar.get(Calendar.MONTH) + 1,
+				myCalendar.get(Calendar.YEAR));
+
+		// Delegate the create to the bank-core customer service, which owns the
+		// COBOL CRECUST business logic: it allocates the gap-free customer
+		// number, runs the asynchronous credit-agency check, and appends the
+		// PROCTRAN audit record atomically inside one @Transactional boundary
+		// (reproducing the CICS SYNCPOINT/ROLLBACK semantics). webui no longer
+		// performs the mutation, allocates the number, or owns credit scoring
+		// (F-CUST-1 / F-TXN-1 / U3 / R3); it only adapts the JSON envelopes.
+		String paddedCustomerNumber;
+		try
 		{
-			JSONObject error = new JSONObject();
-			error.put(JSON_ERROR_MSG,
-					"Failed to create customer in com.ibm.cics.cip.bankliberty.web.vsam.Customer");
-			logger.severe(
-					"Failed to create customer in com.ibm.cics.cip.bankliberty.web.vsam.Customer");
+			ObjectNode creCust = mapper.createObjectNode();
+			creCust.put("CommName", customerNameTrimmed);
+			creCust.put("CommAddress", customerAddressTrimmed);
+			creCust.put("CommDateOfBirth", dateOfBirthWire);
+			ObjectNode requestEnvelope = mapper.createObjectNode();
+			requestEnvelope.set("CreCust", creCust);
+
+			BankCoreClient.BankCoreResult result = BankCoreClient.post(
+					"/crecust/insert",
+					mapper.writeValueAsString(requestEnvelope));
+
+			JsonNode body = result.getBody();
+			JsonNode responseEnvelope = body == null ? null
+					: body.get("CreCust");
+			// bank-core signals success with a blank CommFailCode.
+			if (!result.isHttpSuccess() || responseEnvelope == null
+					|| !responseEnvelope.path("CommFailCode").asText("")
+							.isEmpty())
+			{
+				ObjectNode error = mapper.createObjectNode();
+				error.put(JSON_ERROR_MSG, "Failed to create customer");
+				logger.severe("Failed to create customer");
+				Response myResponse = Response.status(500)
+						.entity(error.toString()).build();
+				logger.exiting(this.getClass().getName(),
+						CREATE_CUSTOMER_INTERNAL_EXIT, myResponse);
+				return myResponse;
+			}
+
+			int newCustomerNumber = responseEnvelope.path("CommKey")
+					.path("CommNumber").asInt();
+			paddedCustomerNumber = padCustomerNumber(
+					Integer.toString(newCustomerNumber));
+		}
+		catch (InterruptedException e)
+		{
+			Thread.currentThread().interrupt();
+			ObjectNode error = mapper.createObjectNode();
+			error.put(JSON_ERROR_MSG, "Failed to create customer");
+			logger.severe("Failed to create customer " + e.getMessage());
+			Response myResponse = Response.status(500).entity(error.toString())
+					.build();
+			logger.exiting(this.getClass().getName(),
+					CREATE_CUSTOMER_INTERNAL_EXIT, myResponse);
+			return myResponse;
+		}
+		catch (IOException e)
+		{
+			ObjectNode error = mapper.createObjectNode();
+			error.put(JSON_ERROR_MSG, "Failed to create customer");
+			logger.severe("Failed to create customer " + e.getMessage());
 			Response myResponse = Response.status(500).entity(error.toString())
 					.build();
 			logger.exiting(this.getClass().getName(),
@@ -277,61 +390,16 @@ public class CustomerResource
 			return myResponse;
 		}
 
-		response.put(JSON_ID, vsamCustomer.getCustomerNumber());
+		response.put(JSON_ID, paddedCustomerNumber);
 		response.put(JSON_SORT_CODE, sortcode);
 		response.put(JSON_CUSTOMER_NAME, customer.getCustomerName());
 		response.put(JSON_CUSTOMER_ADDRESS, customer.getCustomerAddress());
 
-		Calendar myCalendar = Calendar.getInstance();
-		myCalendar.setTime(customer.getDateOfBirth());
-		myCalendar.setTimeInMillis(myCalendar.getTimeInMillis() - myCalendar.getTimeZone().getOffset(myCalendar.getTimeInMillis()));
-
-
-
-
 		DateFormat myDateFormat = DateFormat.getDateInstance();
 		Calendar newCalendar = Calendar.getInstance();
 		newCalendar.setTime(myCalendar.getTime());
-		response.put(JSON_DATE_OF_BIRTH, myDateFormat.format(newCalendar.getTime()));
-
-		ProcessedTransactionResource myProcessedTransactionResource = new ProcessedTransactionResource();
-
-		ProcessedTransactionCreateCustomerJSON myCreatedCustomer = new ProcessedTransactionCreateCustomerJSON();
-		myCreatedCustomer.setAccountNumber("0");
-
-		java.sql.Date mySqlDate = new java.sql.Date(myCalendar.getTimeInMillis());
-
-
-		mySqlDate.setTime(mySqlDate.getTime() - myCalendar.getTimeZone().getOffset(myCalendar.getTimeInMillis()));
-
-		myCreatedCustomer.setCustomerDOB(mySqlDate);
-		myCreatedCustomer.setCustomerName(vsamCustomer.getName());
-		myCreatedCustomer.setSortCode(vsamCustomer.getSortcode());
-		myCreatedCustomer.setCustomerNumber(vsamCustomer.getCustomerNumber());
-
-		Response writeCreateCustomerResponse = myProcessedTransactionResource
-				.writeCreateCustomerInternal(myCreatedCustomer);
-		if (writeCreateCustomerResponse == null
-				|| writeCreateCustomerResponse.getStatus() != 200)
-		{
-			JSONObject error = new JSONObject();
-			error.put(JSON_ERROR_MSG, "Failed to write to PROCTRAN data store");
-			try
-			{
-				logger.severe(
-						"Customer: createCustomer: Failed to write to PROCTRAN");
-				Task.getTask().rollback();
-			}
-			catch (InvalidRequestException e)
-			{
-				logger.severe("Customer: createCustomer: Failed to rollback");
-			}
-			Response myResponse = Response.status(500).entity(error.toString())
-					.build();
-			logger.exiting(this.getClass().getName(),
-					CREATE_CUSTOMER_INTERNAL_EXIT, myResponse);
-			return myResponse;
-		}
+		response.put(JSON_DATE_OF_BIRTH,
+				myDateFormat.format(newCalendar.getTime()));
 
 		Response myResponse = Response.status(201).entity(response.toString())
 				.build();
@@ -351,8 +419,6 @@ public class CustomerResource
 		logger.entering(this.getClass().getName(),
 				UPDATE_CUSTOMER_EXTERNAL + id);
 		Response myResponse = updateCustomerInternal(id, customer);
-		HBankDataAccess myHBankDataAccess = new HBankDataAccess();
-		myHBankDataAccess.terminate();
 		logger.exiting(this.getClass().getName(), UPDATE_CUSTOMER_EXTERNAL + id,
 				myResponse);
 		return myResponse;
@@ -368,7 +434,7 @@ public class CustomerResource
 
 		if(customer.getCustomerName() == null)
 		{
-			JSONObject error = new JSONObject();
+			ObjectNode error = mapper.createObjectNode();
 			error.put(JSON_ERROR_MSG,
 					"Customer name is null");
 			Response myResponse = Response.status(400).entity(error.toString())
@@ -386,7 +452,7 @@ public class CustomerResource
 		if (!customer.validateTitle(name[0].trim()))
 		// Customer title invalid
 		{
-			JSONObject error = new JSONObject();
+			ObjectNode error = mapper.createObjectNode();
 			error.put(JSON_ERROR_MSG,
 					"Customer title " + name[0] + " is not valid");
 			Response myResponse = Response.status(400).entity(error.toString())
@@ -402,7 +468,7 @@ public class CustomerResource
 
 		if(customer.getSortCode() == null)
 		{
-			JSONObject error = new JSONObject();
+			ObjectNode error = mapper.createObjectNode();
 			error.put(JSON_ERROR_MSG,
 					"Sort Code is null");
 			Response myResponse = Response.status(400).entity(error.toString())
@@ -419,7 +485,7 @@ public class CustomerResource
 		if (!inputSortCode.equals(this.getSortCode()))
 		// Sortcode invalid
 		{
-			JSONObject error = new JSONObject();
+			ObjectNode error = mapper.createObjectNode();
 			error.put(JSON_ERROR_MSG, "Sortcode " + inputSortCode
 					+ " not valid for this bank (" + this.getSortCode() + ")");
 			logger.log(Level.WARNING,
@@ -430,7 +496,7 @@ public class CustomerResource
 
 		if(customer.getCustomerAddress() == null)
 		{
-			JSONObject error = new JSONObject();
+			ObjectNode error = mapper.createObjectNode();
 			error.put(JSON_ERROR_MSG,
 					"Customer address is null");
 			Response myResponse = Response.status(400).entity(error.toString())
@@ -443,44 +509,83 @@ public class CustomerResource
 			return myResponse;
 		}
 
-		JSONObject response = new JSONObject();
+		ObjectNode response = mapper.createObjectNode();
 
-		com.ibm.cics.cip.bankliberty.web.vsam.Customer vsamCustomer = new com.ibm.cics.cip.bankliberty.web.vsam.Customer();
 		customer.setId(id.toString());
 		customer.setSortCode(this.getSortCode().toString());
-		vsamCustomer = vsamCustomer.updateCustomer(customer);
-		if (vsamCustomer != null)
+
+		// UPDCUST changes name and address only; balances, credit score, date of
+		// birth and review date are never modified, and no PROCTRAN record is
+		// written for an update. Delegate to the bank-core customer service,
+		// which owns the COBOL UPDCUST business logic inside one @Transactional
+		// boundary; webui only adapts the JSON envelopes (F-CUST-1 / U3 / R3).
+		try
 		{
-			if (vsamCustomer.isNotFound())
+			ObjectNode updCust = mapper.createObjectNode();
+			updCust.put("CommScode", padSortCode(this.getSortCode()));
+			updCust.put("CommCustno", id.toString());
+			updCust.put("CommName", customer.getCustomerName());
+			updCust.put("CommAddress", customer.getCustomerAddress());
+			ObjectNode requestEnvelope = mapper.createObjectNode();
+			requestEnvelope.set("UpdCust", updCust);
+
+			BankCoreClient.BankCoreResult result = BankCoreClient.put(
+					"/updcust/update",
+					mapper.writeValueAsString(requestEnvelope));
+
+			JsonNode body = result.getBody();
+			JsonNode responseEnvelope = body == null ? null
+					: body.get("UpdCust");
+			// A missing customer surfaces as CommUpdSuccess != "Y"; reproduce
+			// the legacy 404 "not found." envelope verbatim.
+			if (!result.isHttpSuccess() || responseEnvelope == null
+					|| !"Y".equals(responseEnvelope.path("CommUpdSuccess")
+							.asText("").trim()))
 			{
-				JSONObject error = new JSONObject();
+				ObjectNode error = mapper.createObjectNode();
 				error.put(JSON_ERROR_MSG,
 						CUSTOMER_PREFIX + id.toString() + " not found.");
 				Response myResponse = Response.status(404)
 						.entity(error.toString()).build();
 				logger.log(Level.WARNING,
-						() -> "Failed to find customer in com.ibm.cics.cip.bankliberty.web.vsam.Customer");
+						() -> "Failed to find customer to update");
 				logger.exiting(this.getClass().getName(),
 						"updateCustomerInternal() exiting", myResponse);
 				return myResponse;
 			}
-			response.put(JSON_ID, vsamCustomer.getCustomerNumber());
-			response.put(JSON_SORT_CODE, vsamCustomer.getSortcode().trim());
-			response.put(JSON_CUSTOMER_NAME, vsamCustomer.getName().trim());
+
+			response.put(JSON_ID,
+					responseEnvelope.path("CommCustno").asText());
+			response.put(JSON_SORT_CODE,
+					responseEnvelope.path("CommScode").asText().trim());
+			response.put(JSON_CUSTOMER_NAME,
+					responseEnvelope.path("CommName").asText().trim());
 			response.put(JSON_CUSTOMER_ADDRESS,
-					vsamCustomer.getAddress().trim());
-			response.put(JSON_DATE_OF_BIRTH,
-					vsamCustomer.getDob().toString().trim());
+					responseEnvelope.path("CommAddress").asText().trim());
+			response.put(JSON_DATE_OF_BIRTH, BankCoreClient
+					.toIsoDate(responseEnvelope.path("CommDob").asInt()));
 		}
-		else
+		catch (InterruptedException e)
 		{
-			JSONObject error = new JSONObject();
-			error.put(JSON_ERROR_MSG,
-					"Failed to update customer in com.ibm.cics.cip.bankliberty.web.vsam.Customer");
+			Thread.currentThread().interrupt();
+			ObjectNode error = mapper.createObjectNode();
+			error.put(JSON_ERROR_MSG, "Failed to update customer");
 			Response myResponse = Response.status(500).entity(error.toString())
 					.build();
 			logger.log(Level.WARNING,
-					() -> "Failed to update customer in com.ibm.cics.cip.bankliberty.web.vsam.Customer");
+					() -> "Failed to update customer " + e.getMessage());
+			logger.exiting(this.getClass().getName(),
+					"updateCustomerInternal() exiting", myResponse);
+			return myResponse;
+		}
+		catch (IOException e)
+		{
+			ObjectNode error = mapper.createObjectNode();
+			error.put(JSON_ERROR_MSG, "Failed to update customer");
+			Response myResponse = Response.status(500).entity(error.toString())
+					.build();
+			logger.log(Level.WARNING,
+					() -> "Failed to update customer " + e.getMessage());
 			logger.exiting(this.getClass().getName(),
 					"updateCustomerInternal() exiting", myResponse);
 			return myResponse;
@@ -502,8 +607,6 @@ public class CustomerResource
 		try
 		{
 			Response myResponse = getCustomerInternal(id);
-			HBankDataAccess myHBankDataAccess = new HBankDataAccess();
-			myHBankDataAccess.terminate();
 			logger.exiting(this.getClass().getName(), "getCustomerExternal",
 					myResponse);
 			return myResponse;
@@ -529,7 +632,7 @@ public class CustomerResource
 				"getCustomerInternal for customerNumber " + id);
 		Integer sortCode = this.getSortCode();
 
-		JSONObject response = new JSONObject();
+		ObjectNode response = mapper.createObjectNode();
 
 		if (id.longValue() < 0)
 		{
@@ -544,29 +647,51 @@ public class CustomerResource
 			return myResponse;
 		}
 
-		com.ibm.cics.cip.bankliberty.web.vsam.Customer vsamCustomer = new com.ibm.cics.cip.bankliberty.web.vsam.Customer();
-		vsamCustomer = vsamCustomer.getCustomer(id, sortCode.intValue());
-		if (vsamCustomer != null)
+		boolean found = false;
+		try (Connection conn = getConnection();
+				PreparedStatement select = conn.prepareStatement(
+						"SELECT sort_code, customer_number, name, address, date_of_birth, "
+								+ "credit_score, cs_review_date FROM customer "
+								+ "WHERE sort_code = ? AND customer_number = ?"))
 		{
-			response.put(JSON_SORT_CODE, vsamCustomer.getSortcode().trim());
-			response.put(JSON_ID, vsamCustomer.getCustomerNumber().trim());
-			response.put(JSON_CUSTOMER_NAME, vsamCustomer.getName().trim());
-			response.put(JSON_CUSTOMER_ADDRESS,
-					vsamCustomer.getAddress().trim());
-			response.put(JSON_DATE_OF_BIRTH, vsamCustomer.getDob().toString());
-			response.put(JSON_CUSTOMER_CREDIT_SCORE,
-					vsamCustomer.getCreditScore().trim());
-			response.put(JSON_CUSTOMER_REVIEW_DATE,
-					vsamCustomer.getReviewDate().toString());
+			select.setString(1, padSortCode(sortCode));
+			select.setString(2, padCustomerNumber(id.toString()));
+			try (ResultSet rs = select.executeQuery())
+			{
+				if (rs.next())
+				{
+					found = true;
+					response.put(JSON_SORT_CODE,
+							rs.getString("sort_code").trim());
+					response.put(JSON_ID,
+							rs.getString("customer_number").trim());
+					response.put(JSON_CUSTOMER_NAME,
+							rs.getString("name").trim());
+					response.put(JSON_CUSTOMER_ADDRESS,
+							rs.getString("address").trim());
+					response.put(JSON_DATE_OF_BIRTH,
+							rs.getDate("date_of_birth").toString());
+					response.put(JSON_CUSTOMER_CREDIT_SCORE,
+							Integer.toString(rs.getInt("credit_score")).trim());
+					response.put(JSON_CUSTOMER_REVIEW_DATE,
+							rs.getDate("cs_review_date").toString());
+				}
+			}
 		}
-		else
+		catch (SQLException e)
 		{
+			logger.log(Level.WARNING,
+					() -> "Exception reading customer " + id + " "
+							+ e.getMessage());
+		}
 
+		if (!found)
+		{
 			response.put(JSON_ERROR_MSG, CUSTOMER_PREFIX + id + NOT_FOUND_MSG);
 			Response myResponse = Response.status(404)
 					.entity(response.toString()).build();
 			logger.log(Level.INFO,
-					() -> "Customer not found in in com.ibm.cics.cip.bankliberty.web.vsam.Customer");
+					() -> "Customer not found");
 			logger.exiting(this.getClass().getName(),
 					GET_CUSTOMER_INTERNAL_EXIT, myResponse);
 			return myResponse;
@@ -587,8 +712,6 @@ public class CustomerResource
 		logger.entering(this.getClass().getName(),
 				"deleteCustomerExtnernal(Long id) for customerNumber " + id);
 		Response myResponse = deleteCustomerInternal(id);
-		HBankDataAccess myHBankDataAccess = new HBankDataAccess();
-		myHBankDataAccess.terminate();
 		logger.exiting(this.getClass().getName(),
 				"deleteCustomerExternal(Long id)", myResponse);
 		return myResponse;
@@ -602,7 +725,7 @@ public class CustomerResource
 
 		Integer sortCode = this.getSortCode();
 
-		JSONObject response = new JSONObject();
+		ObjectNode response = mapper.createObjectNode();
 
 		if (id.longValue() < 0)
 		{
@@ -617,142 +740,76 @@ public class CustomerResource
 			return myResponse;
 		}
 
-		// First we need to delete all the accounts
-
-		AccountsResource myAccountsResource = new AccountsResource();
-
-		JSONObject myAccountsJSON;
+		// Delete the customer through the bank-core customer service, which owns
+		// the COBOL DELCUS business logic: it cascades the deletion of the
+		// customer's accounts (each appending an account-close PROCTRAN record
+		// capturing the terminal balance) and then deletes the customer and
+		// appends the customer-close PROCTRAN record, all atomically inside one
+		// @Transactional boundary (reproducing the CICS SYNCPOINT/ROLLBACK
+		// semantics). webui no longer iterates accounts, mutates the database, or
+		// opens a separate audit transaction (F-CUST-1 / F-TXN-1 / U3 / R3).
 		try
 		{
-			myAccountsJSON = JSONObject.parse(myAccountsResource
-					.getAccountsByCustomerInternal(id).getEntity().toString());
+			BankCoreClient.BankCoreResult result = BankCoreClient
+					.delete("/delcus/remove/"
+							+ BankCoreClient.encodeSegment(id.toString()));
 
-			//
-			JSONArray accountsToDelete = (JSONArray) myAccountsJSON
-					.get("accounts");
-			for (int i = 0; i < accountsToDelete.size(); i++)
+			JsonNode body = result.getBody();
+			JsonNode responseEnvelope = body == null ? null
+					: body.get("DelCus");
+			// A missing customer surfaces as CommDelSuccess != "Y"; reproduce
+			// the legacy 404 "not found" envelope verbatim.
+			if (!result.isHttpSuccess() || responseEnvelope == null
+					|| !"Y".equals(responseEnvelope.path("CommDelSuccess")
+							.asText("").trim()))
 			{
-
-				JSONObject accountToDelete = (JSONObject) accountsToDelete
-						.get(i);
-				Long accountToDeleteLong = Long
-						.parseLong((String) accountToDelete.get(JSON_ID));
-				Response deleteAccountResponse = myAccountsResource
-						.deleteAccountInternal(accountToDeleteLong);
-
-				if (deleteAccountResponse.getStatus() == 404)
-				{
-
-					response.put(JSON_ERROR_MSG,
-							"Error deleting account " + accountToDeleteLong
-									+ " for customer " + id
-									+ ",account not found");
-					logger.log(Level.SEVERE,
-							() -> "Customer: deleteAccount: Failed to delete account, not found");
-					Task.getTask().rollback();
-					Response myResponse = Response.status(404)
-							.entity(response.toString()).build();
-					logger.log(Level.WARNING,
-							() -> "Customer: deleteAccount: Failed to delete account, not found for customer "
-									+ id + " in deleteCustomerInternal()");
-					logger.exiting(this.getClass().getName(),
-							DELETE_CUSTOMER_INTERNAL_EXIT, myResponse);
-					return myResponse;
-				}
-
-				if (deleteAccountResponse.getStatus() != 200)
-				{
-					response.put(JSON_ERROR_MSG, "Error deleting account "
-							+ accountToDeleteLong + " for customer " + id);
-					logger.log(Level.SEVERE,
-							() -> "Customer: deleteAccount: Failed to delete account, error");
-					Task.getTask().rollback();
-					Response myResponse = Response
-							.status(deleteAccountResponse.getStatus())
-							.entity(response.toString()).build();
-					logger.exiting(this.getClass().getName(),
-							DELETE_CUSTOMER_INTERNAL_EXIT, myResponse);
-					return myResponse;
-				}
+				response.put(JSON_ERROR_MSG,
+						CUSTOMER_PREFIX + id + NOT_FOUND_MSG);
+				Response myResponse = Response.status(404)
+						.entity(response.toString()).build();
+				logger.log(Level.WARNING,
+						() -> "CustomerResource.deleteCustomerInternal() customer "
+								+ id + NOT_FOUND_MSG);
+				logger.exiting(this.getClass().getName(),
+						DELETE_CUSTOMER_INTERNAL, myResponse);
+				return myResponse;
 			}
-		}
-		catch (IOException | InvalidRequestException e)
-		{
 
-			response.put(JSON_ERROR_MSG,
-					"Error obtaining accounts to delete for customer " + id);
+			response.put(JSON_SORT_CODE, sortCode.toString().trim());
+			response.put(JSON_ID, padCustomerNumber(Integer.toString(
+					responseEnvelope.path("CommCustno").asInt())));
+			response.put(JSON_CUSTOMER_NAME,
+					responseEnvelope.path("CommName").asText().trim());
+			response.put(JSON_CUSTOMER_ADDRESS,
+					responseEnvelope.path("CommAddr").asText().trim());
+			response.put(JSON_DATE_OF_BIRTH, BankCoreClient
+					.toIsoDate(responseEnvelope.path("CommDob").asText()));
+			response.put(JSON_CUSTOMER_CREDIT_SCORE, Integer.toString(
+					responseEnvelope.path("CommCreditScore").asInt()));
+			response.put(JSON_CUSTOMER_REVIEW_DATE, BankCoreClient.toIsoDate(
+					responseEnvelope.path("CommCsReviewDate").asText()));
+		}
+		catch (InterruptedException e)
+		{
+			Thread.currentThread().interrupt();
+			ObjectNode error = mapper.createObjectNode();
+			error.put(JSON_ERROR_MSG, "Failed to delete customer " + id);
 			Response myResponse = Response.status(500)
-					.entity(response.toString()).build();
+					.entity(error.toString()).build();
 			logger.log(Level.WARNING,
-					() -> "Error obtaining accounts to delete for customer "
-							+ id + " in deleteCustomerInternal()");
-			logger.exiting(this.getClass().getName(),
-					GET_CUSTOMER_INTERNAL_EXIT, myResponse);
-			return myResponse;
-		}
-
-		// If we are still here then we can try to delete the customer
-
-		com.ibm.cics.cip.bankliberty.web.vsam.Customer vsamCustomer = new com.ibm.cics.cip.bankliberty.web.vsam.Customer();
-
-		vsamCustomer = vsamCustomer.deleteCustomer(id, sortCode);
-
-		if (vsamCustomer.isNotFound())
-		{
-			response.put(JSON_ERROR_MSG, CUSTOMER_PREFIX + id + NOT_FOUND_MSG);
-			Response myResponse = Response.status(404)
-					.entity(response.toString()).build();
-			logger.log(Level.WARNING,
-					() -> "CustomerResource.deleteCustomerInternal() customer "
-							+ id + NOT_FOUND_MSG);
+					() -> "Error deleting customer " + id + " " + e.getMessage());
 			logger.exiting(this.getClass().getName(), DELETE_CUSTOMER_INTERNAL,
 					myResponse);
 			return myResponse;
 		}
-		response.put(JSON_SORT_CODE, vsamCustomer.getSortcode().trim());
-		response.put(JSON_ID, vsamCustomer.getCustomerNumber().trim());
-		response.put(JSON_CUSTOMER_NAME, vsamCustomer.getName().trim());
-		response.put(JSON_CUSTOMER_ADDRESS, vsamCustomer.getAddress().trim());
-
-		response.put(JSON_DATE_OF_BIRTH, vsamCustomer.getDob().toString());
-
-		response.put(JSON_CUSTOMER_CREDIT_SCORE, vsamCustomer.getCreditScore());
-		response.put(JSON_CUSTOMER_REVIEW_DATE,
-				vsamCustomer.getReviewDate().toString());
-
-		ProcessedTransactionResource myProcessedTransactionResource = new ProcessedTransactionResource();
-
-		ProcessedTransactionDeleteCustomerJSON myDeletedCustomer = new ProcessedTransactionDeleteCustomerJSON();
-		myDeletedCustomer.setAccountNumber("0");
-		myDeletedCustomer.setCustomerDOB(vsamCustomer.getDob());
-		myDeletedCustomer.setCustomerName(vsamCustomer.getName());
-
-
-		myDeletedCustomer.setSortCode(vsamCustomer.getSortcode());
-		myDeletedCustomer.setCustomerNumber(vsamCustomer.getCustomerNumber());
-
-
-		Response writeDeleteCustomerResponse = myProcessedTransactionResource
-				.writeDeleteCustomerInternal(myDeletedCustomer);
-		if (writeDeleteCustomerResponse.getStatus() != 200)
+		catch (IOException e)
 		{
-			JSONObject error = new JSONObject();
-			error.put(JSON_ERROR_MSG, "Failed to write to PROCTRAN data store");
-			try
-			{
-				logger.log(Level.SEVERE,
-						() -> "Customer: deleteCustomer: Failed to write to proctran");
-				Task.getTask().rollback();
-			}
-			catch (InvalidRequestException e)
-			{
-				logger.log(Level.SEVERE,
-						() -> "Customer: deleteCustomer: Failed to rollback");
-			}
-			Response myResponse = Response.status(500).entity(error.toString())
-					.build();
+			ObjectNode error = mapper.createObjectNode();
+			error.put(JSON_ERROR_MSG, "Failed to delete customer " + id);
+			Response myResponse = Response.status(500)
+					.entity(error.toString()).build();
 			logger.log(Level.WARNING,
-					() -> "CustomerResource.deleteCustomerInternal() failed to write to proctran");
+					() -> "Error deleting customer " + id + " " + e.getMessage());
 			logger.exiting(this.getClass().getName(), DELETE_CUSTOMER_INTERNAL,
 					myResponse);
 			return myResponse;
@@ -774,8 +831,6 @@ public class CustomerResource
 		logger.entering(this.getClass().getName(),
 				"getCustomersTownExternal(String town) for town " + town);
 		Response myResponse = getCustomersTownInternal(town);
-		HBankDataAccess myHBankDataAccess = new HBankDataAccess();
-		myHBankDataAccess.terminate();
 		logger.exiting(this.getClass().getName(),
 				"getCustomersTownExternal(String town)", myResponse);
 		return myResponse;
@@ -788,37 +843,39 @@ public class CustomerResource
 		logger.entering(this.getClass().getName(),
 				"getCustomersTownInternal(String town) for town " + town);
 
-		JSONArray allCustomers = new JSONArray();
+		ArrayNode allCustomers = mapper.createArrayNode();
 
-		JSONObject response = new JSONObject();
-
-		com.ibm.cics.cip.bankliberty.web.vsam.Customer myCustomer = new Customer();
-		myCustomer.setSortcode(this.getSortCode().toString());
-		com.ibm.cics.cip.bankliberty.web.vsam.Customer[] vsamCustomers = myCustomer
-				.getCustomersByTown(town);
-
-		for (int i = 0; i < vsamCustomers.length; i++)
+		try (Connection conn = getConnection();
+				PreparedStatement select = conn.prepareStatement(
+						"SELECT customer_number, name, address, date_of_birth "
+								+ "FROM customer WHERE sort_code = ? "
+								+ "AND strpos(address, ?) > 0 "
+								+ "ORDER BY customer_number"))
 		{
-			response.put(JSON_ID, vsamCustomers[i].getCustomerNumber().trim());
-			response.put(JSON_CUSTOMER_NAME, vsamCustomers[i].getName().trim());
-			response.put(JSON_CUSTOMER_ADDRESS,
-					vsamCustomers[i].getAddress().trim());
-
-			Calendar dobCalendar = Calendar.getInstance();
-			dobCalendar.setTime(vsamCustomers[i].getDob());
-			Integer dobDD = dobCalendar.get(Calendar.DAY_OF_MONTH);
-			String dateOfBirth = dobDD.toString();
-			dateOfBirth = dateOfBirth.concat("-");
-
-			Integer dobMM = dobCalendar.get(Calendar.MONTH) + 1;
-			dateOfBirth = dateOfBirth.concat(dobMM.toString());
-			dateOfBirth = dateOfBirth.concat("-");
-
-			Integer dobYYYY = dobCalendar.get(Calendar.YEAR);
-			dateOfBirth = dateOfBirth.concat(dobYYYY.toString());
-
-			response.put(JSON_DATE_OF_BIRTH, dateOfBirth);
-			allCustomers.add(response);
+			select.setString(1, padSortCode(this.getSortCode()));
+			select.setString(2, town);
+			try (ResultSet rs = select.executeQuery())
+			{
+				while (rs.next())
+				{
+					ObjectNode response = mapper.createObjectNode();
+					response.put(JSON_ID,
+							rs.getString("customer_number").trim());
+					response.put(JSON_CUSTOMER_NAME,
+							rs.getString("name").trim());
+					response.put(JSON_CUSTOMER_ADDRESS,
+							rs.getString("address").trim());
+					response.put(JSON_DATE_OF_BIRTH,
+							formatDayMonthYear(rs.getDate("date_of_birth")));
+					allCustomers.add(response);
+				}
+			}
+		}
+		catch (SQLException e)
+		{
+			logger.log(Level.WARNING,
+					() -> "Exception listing customers by town " + town + " "
+							+ e.getMessage());
 		}
 
 		logger.exiting(this.getClass().getName(),
@@ -838,8 +895,6 @@ public class CustomerResource
 				"getCustomersSurnameExternal(String surname) for surname "
 						+ surname);
 		Response myResponse = getCustomersSurnameInternal(surname);
-		HBankDataAccess myHBankDataAccess = new HBankDataAccess();
-		myHBankDataAccess.terminate();
 		logger.exiting(this.getClass().getName(),
 				"getCustomersSurnameExternal(String surname)", myResponse);
 		return myResponse;
@@ -853,37 +908,39 @@ public class CustomerResource
 				"getCustomersSurnameInternal(String surname) for surname "
 						+ surname);
 
-		JSONArray allCustomers = new JSONArray();
+		ArrayNode allCustomers = mapper.createArrayNode();
 
-		JSONObject response = new JSONObject();
-
-		com.ibm.cics.cip.bankliberty.web.vsam.Customer myCustomer = new Customer();
-		myCustomer.setSortcode(this.getSortCode().toString());
-		com.ibm.cics.cip.bankliberty.web.vsam.Customer[] vsamCustomers = myCustomer
-				.getCustomersBySurname(surname);
-
-		for (int i = 0; i < vsamCustomers.length; i++)
+		try (Connection conn = getConnection();
+				PreparedStatement select = conn.prepareStatement(
+						"SELECT customer_number, name, address, date_of_birth "
+								+ "FROM customer WHERE sort_code = ? "
+								+ "AND strpos(name, ?) > 0 "
+								+ "ORDER BY customer_number"))
 		{
-			response.put(JSON_ID, vsamCustomers[i].getCustomerNumber().trim());
-			response.put(JSON_CUSTOMER_NAME, vsamCustomers[i].getName().trim());
-			response.put(JSON_CUSTOMER_ADDRESS,
-					vsamCustomers[i].getAddress().trim());
-
-			Calendar myCalendar = Calendar.getInstance();
-			myCalendar.setTime(vsamCustomers[i].getDob());
-			Integer dobDD = myCalendar.get(Calendar.DAY_OF_MONTH);
-			String dateOfBirth = dobDD.toString();
-			dateOfBirth = dateOfBirth.concat("-");
-
-			Integer dobMM = myCalendar.get(Calendar.MONTH) + 1;
-			dateOfBirth = dateOfBirth.concat(dobMM.toString());
-			dateOfBirth = dateOfBirth.concat("-");
-
-			Integer dobYYYY = myCalendar.get(Calendar.YEAR);
-			dateOfBirth = dateOfBirth.concat(dobYYYY.toString());
-
-			response.put(JSON_DATE_OF_BIRTH, dateOfBirth);
-			allCustomers.add(response);
+			select.setString(1, padSortCode(this.getSortCode()));
+			select.setString(2, surname);
+			try (ResultSet rs = select.executeQuery())
+			{
+				while (rs.next())
+				{
+					ObjectNode response = mapper.createObjectNode();
+					response.put(JSON_ID,
+							rs.getString("customer_number").trim());
+					response.put(JSON_CUSTOMER_NAME,
+							rs.getString("name").trim());
+					response.put(JSON_CUSTOMER_ADDRESS,
+							rs.getString("address").trim());
+					response.put(JSON_DATE_OF_BIRTH,
+							formatDayMonthYear(rs.getDate("date_of_birth")));
+					allCustomers.add(response);
+				}
+			}
+		}
+		catch (SQLException e)
+		{
+			logger.log(Level.WARNING,
+					() -> "Exception listing customers by surname " + surname
+							+ " " + e.getMessage());
 		}
 
 		logger.exiting(this.getClass().getName(),
@@ -901,8 +958,6 @@ public class CustomerResource
 		logger.entering(this.getClass().getName(),
 				"getCustomersAgeExternal(String age) for age " + age);
 		Response myResponse = getCustomersAgeInternal(age);
-		HBankDataAccess myHBankDataAccess = new HBankDataAccess();
-		myHBankDataAccess.terminate();
 		logger.entering(this.getClass().getName(),
 				"getCustomersAgeExternal(String age)", myResponse);
 		return myResponse;
@@ -915,43 +970,50 @@ public class CustomerResource
 		logger.entering(this.getClass().getName(),
 				"getCustomersAgeInternalInternal(String age) for age " + age);
 
-		JSONArray allCustomers = new JSONArray();
-		JSONObject response = new JSONObject();
+		ArrayNode allCustomers = mapper.createArrayNode();
+		ObjectNode response = mapper.createObjectNode();
 
-		com.ibm.cics.cip.bankliberty.web.vsam.Customer myCustomer = new Customer();
-		myCustomer.setSortcode(this.getSortCode().toString());
-		com.ibm.cics.cip.bankliberty.web.vsam.Customer[] vsamCustomers = myCustomer
-				.getCustomersByAge(Integer.parseInt(age));
+		int requestedAge = Integer.parseInt(age);
 
-		for (int i = 0; i < vsamCustomers.length; i++)
+		try (Connection conn = getConnection();
+				PreparedStatement select = conn.prepareStatement(
+						"SELECT customer_number, name, address, date_of_birth "
+								+ "FROM customer WHERE sort_code = ? "
+								+ "ORDER BY customer_number"))
 		{
-			JSONObject customer = new JSONObject();
-			customer.put(JSON_ID, vsamCustomers[i].getCustomerNumber().trim());
-			customer.put(JSON_CUSTOMER_NAME, vsamCustomers[i].getName().trim());
-			customer.put(JSON_CUSTOMER_ADDRESS,
-					vsamCustomers[i].getAddress().trim());
-
-			Calendar myCalendar = Calendar.getInstance();
-			myCalendar.setTime(vsamCustomers[i].getDob());
-			Integer dobDD = myCalendar.get(Calendar.DAY_OF_MONTH);
-			String dateOfBirth = dobDD.toString();
-			dateOfBirth = dateOfBirth.concat("-");
-
-			Integer dobMM = myCalendar.get(Calendar.MONTH) + 1;
-			dateOfBirth = dateOfBirth.concat(dobMM.toString());
-			dateOfBirth = dateOfBirth.concat("-");
-
-			Integer dobYYYY = myCalendar.get(Calendar.YEAR);
-			dateOfBirth = dateOfBirth.concat(dobYYYY.toString());
-
-			customer.put(JSON_DATE_OF_BIRTH, dateOfBirth);
-			allCustomers.add(customer);
+			select.setString(1, padSortCode(this.getSortCode()));
+			try (ResultSet rs = select.executeQuery())
+			{
+				while (rs.next())
+				{
+					java.sql.Date dob = rs.getDate("date_of_birth");
+					if (customerAgeInYears(dob) == requestedAge)
+					{
+						ObjectNode customer = mapper.createObjectNode();
+						customer.put(JSON_ID,
+								rs.getString("customer_number").trim());
+						customer.put(JSON_CUSTOMER_NAME,
+								rs.getString("name").trim());
+						customer.put(JSON_CUSTOMER_ADDRESS,
+								rs.getString("address").trim());
+						customer.put(JSON_DATE_OF_BIRTH,
+								formatDayMonthYear(dob));
+						allCustomers.add(customer);
+					}
+				}
+			}
+		}
+		catch (SQLException e)
+		{
+			logger.log(Level.WARNING,
+					() -> "Exception listing customers by age " + age + " "
+							+ e.getMessage());
 		}
 
 		logger.exiting(this.getClass().getName(),
 				"getCustomersAgeInternal(String age)",
 				Response.status(200).entity(allCustomers.toString()).build());
-		response.put(JSON_CUSTOMERS, allCustomers);
+		response.set(JSON_CUSTOMERS, allCustomers);
 		response.put(JSON_NUMBER_OF_CUSTOMERS, allCustomers.size());
 		return Response.status(200).entity(response.toString()).build();
 	}
@@ -988,8 +1050,6 @@ public class CustomerResource
 		}
 		Response myResponse = getCustomersInternal(limit, offset,
 				countOnlyReal);
-		HBankDataAccess myHBankDataAccess = new HBankDataAccess();
-		myHBankDataAccess.terminate();
 		logger.exiting(this.getClass().getName(),
 				"getCustomersExternal(Integer limit, Integer offset, Boolean countOnly)",
 				myResponse);
@@ -1005,8 +1065,8 @@ public class CustomerResource
 						+ limit + " " + offset + " " + countOnly);
 		Integer sortCode = this.getSortCode();
 
-		JSONObject response = new JSONObject();
-		JSONArray customers = null;
+		ObjectNode response = mapper.createObjectNode();
+		ArrayNode customers = null;
 
 		if (offset == null)
 		{
@@ -1025,54 +1085,85 @@ public class CustomerResource
 
 		if (countOnly)
 		{
-			com.ibm.cics.cip.bankliberty.web.vsam.Customer vsamCustomer = new com.ibm.cics.cip.bankliberty.web.vsam.Customer();
-			long customerCount = vsamCustomer
-					.getCustomersCountOnly();
+			long customerCount = -1L;
+			try (Connection conn = getConnection();
+					PreparedStatement select = conn.prepareStatement(
+							"SELECT number_of_customers FROM customer_control "
+									+ "WHERE sort_code = ?"))
+			{
+				select.setString(1, padSortCode(sortCode));
+				try (ResultSet rs = select.executeQuery())
+				{
+					if (rs.next())
+					{
+						customerCount = rs.getLong("number_of_customers");
+					}
+				}
+			}
+			catch (SQLException e)
+			{
+				logger.severe("Error reading control record for customer file "
+						+ e.getMessage());
+			}
 			response.put(JSON_NUMBER_OF_CUSTOMERS, customerCount);
 		}
 		else
 		{
-			com.ibm.cics.cip.bankliberty.web.vsam.Customer[] myCustomers = null;
-			com.ibm.cics.cip.bankliberty.web.vsam.Customer vsamCustomer = new com.ibm.cics.cip.bankliberty.web.vsam.Customer();
-			myCustomers = vsamCustomer.getCustomers(sortCode.intValue(), limit,
-					offset);
-
-			if (myCustomers != null)
+			boolean dataAccessFailed = false;
+			customers = mapper.createArrayNode();
+			try (Connection conn = getConnection();
+					PreparedStatement select = conn.prepareStatement(
+							"SELECT sort_code, customer_number, name, address, date_of_birth, "
+									+ "credit_score, cs_review_date FROM customer "
+									+ "WHERE sort_code = ? ORDER BY customer_number "
+									+ "LIMIT ? OFFSET ?"))
 			{
-				customers = new JSONArray(myCustomers.length);
-
-				for (int i = 0; i < myCustomers.length; i++)
+				select.setString(1, padSortCode(sortCode));
+				select.setInt(2, limit.intValue());
+				select.setInt(3, offset.intValue());
+				try (ResultSet rs = select.executeQuery())
 				{
-					JSONObject customer = new JSONObject();
-					customer.put(JSON_SORT_CODE,
-							myCustomers[i].getSortcode().trim());
-					customer.put(JSON_CUSTOMER_NAME,
-							myCustomers[i].getName().trim());
-					customer.put(JSON_ID,
-							myCustomers[i].getCustomerNumber().trim());
-					customer.put(JSON_CUSTOMER_ADDRESS,
-							myCustomers[i].getAddress().trim());
-					customer.put(JSON_DATE_OF_BIRTH,
-							myCustomers[i].getDob().toString());
-					customer.put(JSON_CUSTOMER_CREDIT_SCORE,
-							myCustomers[i].getCreditScore().trim());
-					customer.put(JSON_CUSTOMER_REVIEW_DATE,
-							myCustomers[i].getReviewDate().toString());
-					customers.add(customer);
-
+					while (rs.next())
+					{
+						ObjectNode customer = mapper.createObjectNode();
+						customer.put(JSON_SORT_CODE,
+								rs.getString("sort_code").trim());
+						customer.put(JSON_CUSTOMER_NAME,
+								rs.getString("name").trim());
+						customer.put(JSON_ID,
+								rs.getString("customer_number").trim());
+						customer.put(JSON_CUSTOMER_ADDRESS,
+								rs.getString("address").trim());
+						customer.put(JSON_DATE_OF_BIRTH,
+								rs.getDate("date_of_birth").toString());
+						customer.put(JSON_CUSTOMER_CREDIT_SCORE,
+								Integer.toString(rs.getInt("credit_score"))
+										.trim());
+						customer.put(JSON_CUSTOMER_REVIEW_DATE,
+								rs.getDate("cs_review_date").toString());
+						customers.add(customer);
+					}
 				}
-				response.put(JSON_CUSTOMERS, customers);
-				response.put(JSON_NUMBER_OF_CUSTOMERS, customers.size());
+			}
+			catch (SQLException e)
+			{
+				dataAccessFailed = true;
+				logger.severe("Error listing customers " + e.getMessage());
+			}
 
+			if (!dataAccessFailed)
+			{
+				response.set(JSON_CUSTOMERS, customers);
+				response.put(JSON_NUMBER_OF_CUSTOMERS, customers.size());
 			}
 			else
 			{
 
 				response.put(JSON_ERROR_MSG,
-						"Customers cannot be listed in com.ibm.cics.cip.bankliberty.web.vsam.Customer");
+						"Customers cannot be listed");
 				logger.log(Level.WARNING, () -> this.getClass().getName()
 						+ ".getCustomersInternal() "
-						+ " Customers cannot be listed in com.ibm.cics.cip.bankliberty.web.vsam.Customer");
+						+ " Customers cannot be listed");
 				Response myResponse = Response.status(404)
 						.entity(response.toString()).build();
 				logger.exiting(this.getClass().getName(),
@@ -1122,8 +1213,6 @@ public class CustomerResource
 		}
 		Response myResponse = getCustomersByNameInternal(name, limit, offset,
 				countOnlyReal);
-		HBankDataAccess myHBankDataAccess = new HBankDataAccess();
-		myHBankDataAccess.terminate();
 		logger.exiting(this.getClass().getName(),
 				"getCustomersByNameExternal(String name, Integer limit, Integer offset, Boolean countOnly)",
 				myResponse);
@@ -1140,61 +1229,90 @@ public class CustomerResource
 						+ name + " " + limit + " " + offset + " " + countOnly);
 		Integer sortCode = this.getSortCode();
 
-		JSONObject response = new JSONObject();
-		JSONArray customers = null;
+		ObjectNode response = mapper.createObjectNode();
+		ArrayNode customers = null;
 
 		if (countOnly)
 		{
-			com.ibm.cics.cip.bankliberty.web.vsam.Customer vsamCustomer = new com.ibm.cics.cip.bankliberty.web.vsam.Customer();
-			long numberOfCustomers = 0;
-			numberOfCustomers = vsamCustomer
-					.getCustomersByNameCountOnly(sortCode.intValue(), name);
+			long numberOfCustomers = -1L;
+			try (Connection conn = getConnection();
+					PreparedStatement select = conn.prepareStatement(
+							"SELECT COUNT(*) FROM customer WHERE sort_code = ? "
+									+ "AND strpos(name, ?) > 0"))
+			{
+				select.setString(1, padSortCode(sortCode));
+				select.setString(2, name);
+				try (ResultSet rs = select.executeQuery())
+				{
+					if (rs.next())
+					{
+						numberOfCustomers = rs.getLong(1);
+					}
+				}
+			}
+			catch (SQLException e)
+			{
+				logger.log(Level.FINE, e::getMessage);
+			}
 			response.put(JSON_NUMBER_OF_CUSTOMERS, numberOfCustomers);
 		}
 		else
 		{
-			com.ibm.cics.cip.bankliberty.web.vsam.Customer[] myCustomers = null;
-			com.ibm.cics.cip.bankliberty.web.vsam.Customer vsamCustomer = new com.ibm.cics.cip.bankliberty.web.vsam.Customer();
-			vsamCustomer.setSortcode(sortCode.toString());
-
-			myCustomers = vsamCustomer.getCustomersByName(sortCode.intValue(),
-					limit, offset, name);
-
-			if (myCustomers != null)
+			boolean dataAccessFailed = false;
+			customers = mapper.createArrayNode();
+			try (Connection conn = getConnection();
+					PreparedStatement select = conn.prepareStatement(
+							"SELECT sort_code, customer_number, name, address, date_of_birth, "
+									+ "credit_score, cs_review_date FROM customer "
+									+ "WHERE sort_code = ? AND strpos(name, ?) > 0 "
+									+ "ORDER BY customer_number LIMIT ?"))
 			{
-				customers = new JSONArray(myCustomers.length);
-
-				for (int i = 0; i < myCustomers.length; i++)
+				select.setString(1, padSortCode(sortCode));
+				select.setString(2, name);
+				select.setInt(3, limit);
+				try (ResultSet rs = select.executeQuery())
 				{
-					JSONObject customer = new JSONObject();
-					customer.put(JSON_SORT_CODE,
-							myCustomers[i].getSortcode().trim());
-					customer.put(JSON_CUSTOMER_NAME,
-							myCustomers[i].getName().trim());
-					customer.put(JSON_ID,
-							myCustomers[i].getCustomerNumber().trim());
-					customer.put(JSON_CUSTOMER_ADDRESS,
-							myCustomers[i].getAddress().trim());
-					customer.put(JSON_DATE_OF_BIRTH,
-							myCustomers[i].getDob().toString());
-					customer.put(JSON_CUSTOMER_CREDIT_SCORE,
-							myCustomers[i].getCreditScore().trim());
-					customer.put(JSON_CUSTOMER_REVIEW_DATE,
-							myCustomers[i].getReviewDate().toString());
-					customers.add(customer);
-
+					while (rs.next())
+					{
+						ObjectNode customer = mapper.createObjectNode();
+						customer.put(JSON_SORT_CODE,
+								rs.getString("sort_code").trim());
+						customer.put(JSON_CUSTOMER_NAME,
+								rs.getString("name").trim());
+						customer.put(JSON_ID,
+								rs.getString("customer_number").trim());
+						customer.put(JSON_CUSTOMER_ADDRESS,
+								rs.getString("address").trim());
+						customer.put(JSON_DATE_OF_BIRTH,
+								rs.getDate("date_of_birth").toString());
+						customer.put(JSON_CUSTOMER_CREDIT_SCORE,
+								Integer.toString(rs.getInt("credit_score"))
+										.trim());
+						customer.put(JSON_CUSTOMER_REVIEW_DATE,
+								rs.getDate("cs_review_date").toString());
+						customers.add(customer);
+					}
 				}
-				response.put(JSON_CUSTOMERS, customers);
-				response.put(JSON_NUMBER_OF_CUSTOMERS, customers.size());
+			}
+			catch (SQLException e)
+			{
+				dataAccessFailed = true;
+				logger.severe("Error listing customers by name "
+						+ e.getMessage());
+			}
 
+			if (!dataAccessFailed)
+			{
+				response.set(JSON_CUSTOMERS, customers);
+				response.put(JSON_NUMBER_OF_CUSTOMERS, customers.size());
 			}
 			else
 			{
 				response.put(JSON_ERROR_MSG,
-						"Customers cannot be listed in com.ibm.cics.cip.bankliberty.web.vsam.Customer");
+						"Customers cannot be listed");
 				logger.log(Level.WARNING, () -> this.getClass().getName()
 						+ ".getCustomersByNameInternal() "
-						+ " Customers cannot be listed in com.ibm.cics.cip.bankliberty.web.vsam.Customer");
+						+ " Customers cannot be listed");
 				Response myResponse = Response.status(404)
 						.entity(response.toString()).build();
 				logger.exiting(this.getClass().getName(),
@@ -1207,6 +1325,112 @@ public class CustomerResource
 				Response.status(200).entity(response.toString()).build());
 		return Response.status(200).entity(response.toString()).build();
 
+	}
+
+
+	/**
+	 * Computes a customer's age in completed years from the date of birth,
+	 * reproducing the legacy age calculation used by the customer search.
+	 *
+	 * @param dob the date of birth
+	 * @return the age in completed years
+	 */
+	private int customerAgeInYears(java.util.Date dob)
+	{
+		Calendar nowCalendar = Calendar.getInstance();
+		Calendar birthCalendar = Calendar.getInstance();
+		birthCalendar.setTime(dob);
+		int age = nowCalendar.get(Calendar.YEAR)
+				- birthCalendar.get(Calendar.YEAR);
+		if (birthCalendar.get(Calendar.MONTH) > nowCalendar.get(Calendar.MONTH))
+		{
+			return age - 1;
+		}
+		if (birthCalendar.get(Calendar.MONTH) == nowCalendar.get(Calendar.MONTH)
+				&& birthCalendar.get(Calendar.DAY_OF_MONTH) > nowCalendar
+						.get(Calendar.DAY_OF_MONTH))
+		{
+			return age - 1;
+		}
+		return age;
+	}
+
+
+	/**
+	 * Formats a date as {@code D-M-YYYY} (day-month-year, no leading zeros),
+	 * matching the date string the town/surname/age search endpoints have always
+	 * emitted for the {@code dateOfBirth} field.
+	 *
+	 * @param date the date to format
+	 * @return the {@code D-M-YYYY} string
+	 */
+	private String formatDayMonthYear(java.util.Date date)
+	{
+		Calendar dobCalendar = Calendar.getInstance();
+		dobCalendar.setTime(date);
+		Integer dobDD = dobCalendar.get(Calendar.DAY_OF_MONTH);
+		String dateOfBirth = dobDD.toString();
+		dateOfBirth = dateOfBirth.concat("-");
+
+		Integer dobMM = dobCalendar.get(Calendar.MONTH) + 1;
+		dateOfBirth = dateOfBirth.concat(dobMM.toString());
+		dateOfBirth = dateOfBirth.concat("-");
+
+		Integer dobYYYY = dobCalendar.get(Calendar.YEAR);
+		dateOfBirth = dateOfBirth.concat(dobYYYY.toString());
+
+		return dateOfBirth;
+	}
+
+
+	/**
+	 * Left-zero-pads a customer number to the fixed display width of
+	 * {@value #CUSTOMER_NUMBER_LENGTH} digits, reproducing the legacy
+	 * fixed-width CUSTOMER-NUMBER / customer_number CHAR(10) representation.
+	 *
+	 * @param customerNumber the customer number as a string
+	 * @return the zero-padded 10-character customer number
+	 */
+	private static String padCustomerNumber(String customerNumber)
+	{
+		StringBuilder myStringBuilder = new StringBuilder();
+		for (int z = customerNumber.length(); z < CUSTOMER_NUMBER_LENGTH; z++)
+		{
+			myStringBuilder.append('0');
+		}
+		myStringBuilder.append(customerNumber);
+		return myStringBuilder.toString();
+	}
+
+
+	/**
+	 * Renders the bank sort code as the fixed 6-character string used by the
+	 * relational {@code sort_code CHAR(6)} key.
+	 *
+	 * @param sortCode the numeric sort code
+	 * @return the 6-character zero-padded sort code
+	 */
+	private static String padSortCode(Integer sortCode)
+	{
+		return String.format("%06d", sortCode);
+	}
+
+
+	/**
+	 * Opens a JDBC connection to the shared PostgreSQL bank-core store for the
+	 * read-only gap endpoints this resource still serves directly. The
+	 * connection coordinates (host, port, database, user, password) are
+	 * externalised in {@link DatabaseConfig} so that no credential is hardcoded
+	 * in source (F-CONFIG-SEC-1 / CWE-798); the documented local-development
+	 * defaults ({@code localhost:5432/cbsa}, user/password {@code cbsa}) apply
+	 * only when no override is supplied.
+	 *
+	 * @return an open {@link Connection} that the caller must close
+	 * @throws SQLException if the connection cannot be established
+	 */
+	private Connection getConnection() throws SQLException
+	{
+		return DatabaseConfig.getConnection();
 	}
 
 

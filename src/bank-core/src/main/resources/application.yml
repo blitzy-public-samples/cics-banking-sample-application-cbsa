@@ -1,0 +1,115 @@
+# =============================================================================
+# bank-core - Spring Boot runtime configuration
+# -----------------------------------------------------------------------------
+# Standalone, mainframe-free reimplementation of the CBSA COBOL banking core.
+# Runs on Spring Boot 3.5.11 / Java 17 with embedded Tomcat, backed by
+# PostgreSQL via Spring Data JPA / Hibernate, with Flyway owning the schema.
+#
+# Design intent encoded here:
+#   * The relational schema is authoritative and version-controlled by Flyway
+#     (V1__create_core_tables.sql, V2__seed_control_rows.sql). Hibernate runs in
+#     `validate` mode only - it verifies the JPA entity mappings against the
+#     Flyway-created schema and NEVER mutates it (ADR-003 / sec. 6.2).
+#   * Transaction boundaries are the @Transactional service layer (sec. 0.3.3/sec. 5.1),
+#     so Open-Session-In-View is disabled for clean transaction semantics.
+#   * The asynchronous credit-agency fan-out (F-017) runs five concurrent tasks
+#     against a 3-second deadline, so the task executor is sized for >= 5
+#     simultaneously runnable threads.
+#   * The 10 frozen REST endpoints (F-019) are served at ROOT paths on port 8080
+#     so the preserved React/Carbon front end and the two interface modules need
+#     only a base-URL re-point. It is served at the ROOT context with no path
+#     prefix configured.
+# =============================================================================
+
+spring:
+
+  # Application identity (used in logs and management endpoints).
+  application:
+    name: bank-core
+
+  # ---------------------------------------------------------------------------
+  # Datasource - PostgreSQL.
+  # Local PostgreSQL stands in for the legacy VSAM/Db2 mainframe data store.
+  # DB_HOST is overridable (e.g. a Blitzy secret) and defaults to localhost;
+  # the database, user, and password are all `cbsa` per the setup constraint
+  # (AAP sec. 0.7).
+  # ---------------------------------------------------------------------------
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:5432/cbsa
+    username: cbsa
+    password: cbsa
+    driver-class-name: org.postgresql.Driver
+    # HikariCP is the default pool (transitive via spring-boot-starter-data-jpa).
+    # Kept intentionally minimal - not over-tuned.
+    hikari:
+      pool-name: bank-core-pool
+      maximum-pool-size: 10
+
+  # ---------------------------------------------------------------------------
+  # JPA / Hibernate.
+  # The schema is owned by Flyway, NOT Hibernate. `validate` makes Hibernate
+  # verify the entity mappings against the migrated schema at startup and fail
+  # fast on any mismatch; it must never mutate or generate the schema itself
+  # (only the `validate` mode is permitted here).
+  # Explicit @Table/@Column names on the entities must match the V1 DDL
+  # verbatim, so no naming-strategy override is applied here.
+  # ---------------------------------------------------------------------------
+  jpa:
+    # OSIV off - the @Transactional service layer defines all persistence
+    # boundaries (no lazy-loading outside a transaction).
+    open-in-view: false
+    # Keep SQL logging off by default (production-clean).
+    show-sql: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        # Dialect is intentionally NOT pinned: Hibernate auto-detects
+        # PostgreSQLDialect from the JDBC connection metadata, so an explicit
+        # hibernate.dialect is redundant and emits a startup warning.
+        # Pretty-print SQL when it is enabled (no effect while show-sql is off).
+        format_sql: true
+
+  # ---------------------------------------------------------------------------
+  # Flyway - schema-migration engine (net-new; has no COBOL counterpart).
+  # Migrations are discovered on the classpath under db/migration and are
+  # applied automatically before Hibernate validation during startup.
+  # ---------------------------------------------------------------------------
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    # Safety guard: never allow a destructive `clean` against the schema.
+    clean-disabled: true
+
+  # ---------------------------------------------------------------------------
+  # Asynchronous task executor - credit-agency fan-out (F-017 / sec. 0.6).
+  # CustomerService dispatches five async CreditAgencyService tasks (one per
+  # legacy CRDTAGY1-5 program) that must run concurrently within a 3-second
+  # deadline.
+  # core-size is 5 so all five tasks of a single create start immediately on
+  # resident threads. queue-capacity is 0 (a direct-handoff SynchronousQueue) so
+  # the pool GROWS toward max-size on burst instead of parking surplus tasks in a
+  # queue; a non-zero queue would cap effective parallelism at 5 threads and make
+  # concurrent customer-creates miss the orTimeout(3s) budget and fail with a
+  # spurious 'C' (F2-01). max-size is 50 so up to ten concurrent creates (five
+  # agency tasks each) can fan out at once. These values configure Spring Boot's
+  # auto-configured ThreadPoolTaskExecutor and stay aligned with the dedicated
+  # executor declared in config/AsyncConfig.java.
+  # ---------------------------------------------------------------------------
+  task:
+    execution:
+      pool:
+        core-size: 5
+        max-size: 50
+        queue-capacity: 0
+      thread-name-prefix: credit-agency-
+
+# -----------------------------------------------------------------------------
+# Server - embedded Tomcat.
+# ROOT context on port 8080: the re-point target for the preserved front ends
+# and interface modules. No servlet path prefix is configured - the frozen
+# 10-endpoint contract (F-019) is exposed at root paths under
+# http://localhost:8080.
+# -----------------------------------------------------------------------------
+server:
+  port: 8080

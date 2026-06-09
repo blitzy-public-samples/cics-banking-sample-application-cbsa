@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright IBM Corp. 2023 -->
+<!--
+  Maven build descriptor for the standalone bank-core module.
+
+  This module is the pure-Java, Spring Boot reimplementation of the CBSA
+  (Bank Sample Application) COBOL banking core. It runs on Spring Boot 3.5.14
+  (Java 17) with embedded Tomcat and is backed by PostgreSQL via Spring Data
+  JPA / Hibernate, with Flyway managing the relational schema.
+
+  The Spring Boot baseline is 3.5.14 (raised from 3.5.11): Spring Boot
+  3.5.0 - 3.5.13 are in the affected range of CVE-2026-40973 /
+  GHSA-wwpq-f5c3-7hvx (High - Spring Boot accepts a predictable temporary
+  directory without ownership verification, enabling local session hijacking
+  and potential code execution); 3.5.14 is the security-fix release for the
+  3.5.x line.
+
+  It is a clean, mainframe-free module: it deliberately carries none of the
+  legacy IBM mainframe libraries or bundle-packaging plugins, and it builds a
+  plain runnable JAR. Dependency versions are resolved by the Spring Boot
+  parent BOM (no explicit <version> element on the starters or the Flyway
+  artifacts); the PostgreSQL JDBC driver version is pinned via the
+  <postgresql.version> property to take the CVE-2026-42198 security fix (the
+  3.5.14 BOM otherwise manages it to the vulnerable 42.7.10 - see <properties>).
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+
+
+	<parent>
+		<groupId>org.springframework.boot</groupId>
+		<artifactId>spring-boot-starter-parent</artifactId>
+		<version>3.5.14</version>
+		<relativePath /> <!-- lookup parent from repository -->
+	</parent>
+
+
+	<groupId>com.ibm.cics.cip.bank</groupId>
+	<artifactId>bank-core</artifactId>
+	<version>1.0</version>
+	<packaging>jar</packaging>
+	<name>bank-core</name>
+	<description>Standalone Spring Boot reimplementation of the CBSA COBOL banking core, backed by PostgreSQL</description>
+
+
+	<properties>
+		<java.version>17</java.version>
+		<!--
+			Pin the PostgreSQL JDBC driver to 42.7.11, overriding the version
+			the Spring Boot 3.5.14 BOM would otherwise manage (42.7.10).
+			pgJDBC releases from 42.2.0 up to (but excluding) 42.7.11 are
+			vulnerable to CVE-2026-42198 - a client-side SCRAM-SHA-256
+			denial of service in which a malicious server can force unbounded
+			PBKDF2 iteration counts; 42.7.11 is the security fix release.
+			spring-boot-starter-parent honours this well-known version
+			property when resolving org.postgresql:postgresql.
+		-->
+		<postgresql.version>42.7.11</postgresql.version>
+
+		<!--
+			Jackson is intentionally NOT pinned here. The Spring Boot 3.5.14 BOM
+			manages jackson-bom to 2.21.2, which is already past the patched
+			2.21.1 release for advisory GHSA-72hv-8253-57qq (async / non-blocking
+			JSON parser maxNumberLength bypass -> CPU / memory denial of service
+			via oversized numeric tokens; affected jackson-core <= 2.18.5 and
+			2.19.0 - 2.21.0, fixed in 2.21.1). Letting the 3.5.14 BOM manage the
+			Jackson release train therefore yields a secure, internally aligned
+			set of jackson-core / -databind / -annotations / datatype modules;
+			adding an explicit 2.21.1 pin would only downgrade the BOM-managed
+			2.21.2 and is omitted for that reason.
+		-->
+
+		<!--
+			Pin embedded Tomcat to 10.1.55, overriding the version the Spring
+			Boot 3.5.14 BOM would otherwise manage (10.1.54). Tomcat 10.1.54
+			already carries the fixes for CVE-2026-29145 (Critical - CLIENT_CERT
+			authentication does not fail as expected when soft-fail is disabled;
+			fixed in 10.1.53) and CVE-2026-34483 (High - improper output escaping
+			in the JsonAccessLogValve; fixed in 10.1.54), but it still precedes
+			the fix for CVE-2026-43512 (digest authentication bypass; fixed in
+			10.1.55). 10.1.55 clears that remaining advisory.
+			spring-boot-starter-parent honours the tomcat.version property, which
+			moves tomcat-embed-core, -el and -websocket together. (bank-core uses
+			neither client-certificate/mTLS auth, the JsonAccessLogValve, nor
+			digest auth, so none of these paths are reachable, but the dependency
+			is upgraded so no SCA scan flags the introduced module.)
+		-->
+		<tomcat.version>10.1.55</tomcat.version>
+
+		<!--
+			Pin Logback to 1.5.34, overriding the version the Spring Boot 3.5.14
+			BOM would otherwise manage (1.5.32 - which even the 3.5.14 patch still
+			ships, so the parent bump to 3.5.14 alone does NOT remediate this).
+			Logback
+			1.5.32 precedes the fixes for CVE-2026-9828 (HardenedModelInputStream
+			deserialization whitelist bypass; fixed in 1.5.33), CVE-2026-10532
+			(proxy-class deserialization bypass; fixed in 1.5.34) and CVE-2026-1225
+			(arbitrary-component instantiation via crafted configuration; fixed in
+			1.5.34). 1.5.34 clears all three. spring-boot-starter-parent honours
+			the logback.version property, moving logback-core and logback-classic
+			together. (bank-core uses only the default local file/console appenders
+			- no serialized-event receivers and no attacker-controlled config - so
+			the paths are not reachable, but the dependency is upgraded for a clean
+			SCA posture.)
+		-->
+		<logback.version>1.5.34</logback.version>
+
+		<!--
+			Spring Framework is intentionally NOT pinned here. The Spring Boot
+			3.5.14 BOM already manages the org.springframework:spring-* modules to
+			6.2.18, which is past the 6.2.17 fix for CVE-2026-22735 (Server-Sent
+			Event stream corruption, Low) and CVE-2026-22737 (Script View
+			Templates). bank-core is a JSON REST API that uses neither Server-Sent
+			Events nor script view templates, so neither path is reachable in any
+			case; letting the 3.5.14 BOM manage spring-core / -beans / -context /
+			-web / -webmvc keeps them mutually aligned on the secure 6.2.18, and an
+			explicit pin to that same version would be redundant.
+		-->
+	</properties>
+
+
+	<dependencies>
+
+		<!-- REST controllers + embedded Tomcat (replaces the legacy Liberty / z/OS Connect runtime). -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-web</artifactId>
+		</dependency>
+
+		<!-- Spring Data JPA + Hibernate (replaces the legacy file-control / embedded Db2 SQL data path). -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-data-jpa</artifactId>
+		</dependency>
+
+		<!-- Jakarta Bean Validation (BMS field rules -> annotations, F-021). -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-validation</artifactId>
+		</dependency>
+
+		<!-- PostgreSQL JDBC driver (replaces VSAM / Db2). Runtime-only: not needed at compile time. -->
+		<dependency>
+			<groupId>org.postgresql</groupId>
+			<artifactId>postgresql</artifactId>
+			<scope>runtime</scope>
+		</dependency>
+
+		<!-- Schema-migration engine (net-new; materializes the relational schema). -->
+		<dependency>
+			<groupId>org.flywaydb</groupId>
+			<artifactId>flyway-core</artifactId>
+		</dependency>
+
+		<!-- Flyway PostgreSQL support module. -->
+		<dependency>
+			<groupId>org.flywaydb</groupId>
+			<artifactId>flyway-database-postgresql</artifactId>
+		</dependency>
+
+		<!-- JUnit 5, Mockito, Spring Test (service parity + controller contract tests). -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+
+	</dependencies>
+
+
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.springframework.boot</groupId>
+				<artifactId>spring-boot-maven-plugin</artifactId>
+			</plugin>
+
+			<!--
+				Surefire test inclusion. Maven Surefire's default includes are
+				**/Test*.java, **/*Test.java, **/*Tests.java and
+				**/*TestCase.java, which EXCLUDE the controller contract tests
+				named *IT.java. The frozen z/OS Connect REST contract (F-019)
+				is guarded by those *ControllerIT slices, so they must run as
+				part of the default `mvn clean package` build rather than only
+				when explicitly selected. The slices are pure @WebMvcTest
+				(no PostgreSQL, no Testcontainers), so running them with the
+				unit tests under Surefire is safe and keeps the baseline build
+				command green end to end. Surefire (not Failsafe) is used
+				because the baseline command is `package`; Failsafe binds to
+				the later integration-test/verify phases. Declaring <includes>
+				replaces the default set, so the four defaults are restated
+				alongside **/*IT.java. The plugin version is managed by the
+				Spring Boot parent BOM.
+			-->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-surefire-plugin</artifactId>
+				<configuration>
+					<includes>
+						<include>**/Test*.java</include>
+						<include>**/*Test.java</include>
+						<include>**/*Tests.java</include>
+						<include>**/*TestCase.java</include>
+						<include>**/*IT.java</include>
+					</includes>
+				</configuration>
+			</plugin>
+		</plugins>
+	</build>
+</project>

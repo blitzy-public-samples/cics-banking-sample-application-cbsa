@@ -25,7 +25,7 @@ public class UpdateAccountJson
 		updacc = new UpdaccJson(updateAccountForm.getCustNumber(),
 				updateAccountForm.getAcctNumber(),
 				updateAccountForm.getAcctType(),
-				updateAccountForm.getAcctInterestRateFloat(),
+				updateAccountForm.getAcctInterestRateBigDecimal(),
 				updateAccountForm.getAcctOpenedDate(),
 				updateAccountForm.getAcctOverdraftInt(),
 				updateAccountForm.getAcctLastStatementDate(),

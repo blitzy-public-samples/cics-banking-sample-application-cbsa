@@ -83,7 +83,18 @@
 .control-panel-parent {
   display: flex;
   justify-content: space-between;
-  width: 105rem;
+  // Use a fluid max-width instead of a fixed 105rem (1680px) so the control
+  // panel never forces horizontal page overflow below ~1688px (it previously
+  // overflowed at every viewport, including standard desktop). The flex
+  // children shrink to fit within the available width. QA F4 finding #5.
+  // The parent is a Carbon cds--subgrid of 16 auto-sized tracks; a default
+  // grid-column:auto would place this flex container in a single ~77px track
+  // and collapse it. Span the full subgrid (1 / -1) and fill it (width:100%)
+  // so the two-column control panel scales fluidly to the viewport at every
+  // breakpoint without the old fixed 1680px overflow. QA F4 finding #5.
+  grid-column: 1 / -1;
+  width: 100%;
+  max-width: 100%;
 }
 
 .control-panel-left-child {

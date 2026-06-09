@@ -90,7 +90,15 @@
 .control-panel-parent {
   display: flex;
   justify-content: space-between;
-  width: 105rem;
+  // Fluid width (was 105rem / 1680px). This file's rule is last in the
+  // app.scss cascade for .control-panel-parent, so it is the effective value
+  // applied to the AdminPage control panel. QA F4 finding #5.
+  // Parent is a Carbon cds--subgrid of 16 auto tracks; span the full subgrid
+  // (1 / -1) and fill it (width:100%) so the flex container does not collapse
+  // into a single ~77px track. Fluid at every breakpoint, no 1680px overflow.
+  grid-column: 1 / -1;
+  width: 100%;
+  max-width: 100%;
 }
 
 .control-panel-left-child {
@@ -126,16 +134,35 @@ div.gap {
   width: 100%;
   display: flex;
   justify-content: space-between;
+
+  // .upper / .left-part / .right-part are GLOBAL classes; this file is last in
+  // the app.scss cascade among the files that define them, so these rules are
+  // the effective ones on the CustomerDetails / AccountDetails / Delete pages.
+  // Below the lg breakpoint the side-by-side 15% / 84% split squeezes the
+  // instruction paragraph + search form into a ~111px column, so stack the
+  // columns and let each use the full width. QA F4 finding #6.
+  @include breakpoint-down(lg) {
+    flex-direction: column;
+  }
 }
 
 .left-part {
   width: 15%;
+
+  @include breakpoint-down(lg) {
+    width: 100%;
+  }
 }
 
 .right-part {
   width: 84%;
   height: 250px;
   margin-right: 35px;
+
+  @include breakpoint-down(lg) {
+    width: 100%;
+    margin-right: 0;
+  }
 }
 .header-filler {
   width: 40px;

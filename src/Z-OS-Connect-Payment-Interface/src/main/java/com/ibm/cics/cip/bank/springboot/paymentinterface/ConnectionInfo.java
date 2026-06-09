@@ -14,11 +14,11 @@ public class ConnectionInfo
 
 	@Parameter(names =
 	{ "--port", "-p" }, description = "Port to connect with")
-	private static int port = 38417;
+	private static int port = 8080;
 
 	@Parameter(names =
 	{ "--address", "--url", "-a", "-u" }, description = "Address to use")
-	private static String address = "127.0.0.1";
+	private static String address = "localhost";
 
 
 	private ConnectionInfo()
@@ -32,7 +32,11 @@ public static String getAddressAndPort() {
     }
 
     public static int getPort() {
-        port = Integer.parseInt(System.getProperty("CBSA_ZOSCONN_PORT"));
+        try {
+            port = Integer.parseInt(System.getProperty("CBSA_ZOSCONN_PORT", "8080"));
+        } catch (NumberFormatException e) {
+            port = 8080;
+        }
         return port;
     }
 
@@ -45,7 +49,7 @@ public static String getAddressAndPort() {
     }
 
     public static String getAddress() {
-        address = System.getProperty("CBSA_ZOSCONN_HOST");
+        address = System.getProperty("CBSA_ZOSCONN_HOST", "localhost");
         return address;
     }
 

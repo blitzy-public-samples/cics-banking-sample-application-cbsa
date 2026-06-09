@@ -23,6 +23,28 @@
 		<maven.compiler.target>17</maven.compiler.target>
 	</properties>
 
+	<!--
+		Centralise the Jackson version through the official jackson-bom so the
+		jackson-databind, jackson-core, and jackson-annotations artifacts in the
+		webui dependency tree always resolve to one mutually-compatible, patched
+		release train. The 2.21.1 line is selected because earlier lines resolve a
+		jackson-core that falls inside the published GHSA advisory range
+		(<= 2.18.5 and >= 2.19.0, < 2.21.1); 2.21.1 is the patched core (F-DEP-1).
+		Using the BOM (rather than three independent version pins) guarantees the
+		three components stay aligned on every future bump.
+	-->
+	<dependencyManagement>
+		<dependencies>
+			<dependency>
+				<groupId>com.fasterxml.jackson</groupId>
+				<artifactId>jackson-bom</artifactId>
+				<version>2.21.1</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
+
 	<dependencies>
 		<dependency>
 			<groupId>jakarta.ws.rs</groupId>
@@ -36,24 +58,44 @@
 			<scope>provided</scope>
 		</dependency>
 
-
+		<!--
+			Jackson JSON binding for the surviving JAX-RS resources. Versions are
+			supplied by the imported jackson-bom (2.21.1) above so databind, core,
+			and annotations stay aligned on the patched release train (F-DEP-1).
+			core and annotations are declared explicitly (in addition to databind,
+			which would otherwise pull them transitively) so the patched, aligned
+			versions are visible directly in the webui dependency tree.
+		-->
 		<dependency>
-			<groupId>com.ibm.cics</groupId>
-			<artifactId>com.ibm.cics.server</artifactId>
+			<groupId>com.fasterxml.jackson.core</groupId>
+			<artifactId>jackson-databind</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>com.fasterxml.jackson.core</groupId>
+			<artifactId>jackson-core</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>com.fasterxml.jackson.core</groupId>
+			<artifactId>jackson-annotations</artifactId>
 		</dependency>
 
+		<!--
+			PostgreSQL JDBC driver for the data re-point of the processed-transaction
+			(PROCTRAN) resource onto the shared bank-core PostgreSQL store
+			(jdbc:postgresql://${DB_HOST:localhost}:5432/cbsa). Replaces the deleted
+			Db2/JCICS data path. Version 42.7.11 matches the driver pinned by
+			bank-core (via its <postgresql.version> override) so the whole reactor
+			shares one driver version and stays clear of CVE-2026-42198 - a
+			client-side SCRAM-SHA-256 denial of service affecting pgJDBC releases
+			from 42.2.0 up to (but excluding) 42.7.11. Runtime scope: the resource
+			compiles against the JDK java.sql API and only needs the driver on the
+			classpath at runtime, where it is packaged into WEB-INF/lib of the WAR.
+		-->
 		<dependency>
-			<groupId>com.ibm.websphere.appserver.api</groupId>
-			<artifactId>com.ibm.websphere.appserver.api.json</artifactId>
-			<version>1.0.108</version>
-			<scope>provided</scope>
-		</dependency>
-
-		<dependency>
-			<groupId>com.ibm.jzos</groupId>
-			<artifactId>ibm.jzos</artifactId>
-			<version>4.0.0.0</version>
-			<scope>provided</scope>
+			<groupId>org.postgresql</groupId>
+			<artifactId>postgresql</artifactId>
+			<version>42.7.11</version>
+			<scope>runtime</scope>
 		</dependency>
 
 		<dependency>

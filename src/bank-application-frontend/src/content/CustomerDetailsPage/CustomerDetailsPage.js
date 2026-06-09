@@ -26,7 +26,10 @@ const CustomerDetailsPage = () => {
    */
   const [isOpened, setTableOpened] = useState(false);
   const [customerDetailsRows, setRows] = useState([]);
-  const [accountDetailsRows, setAccountRows] = useState([]);
+  // Accounts are keyed by customer id so that, in a multi-result name search,
+  // each customer row renders its OWN distinct accounts rather than a single
+  // shared list that gets overwritten by the last fetched customer. QA F4 #2.
+  const [accountDetailsRows, setAccountRows] = useState({});
   const [noResultsOpened, setNoResultsOpened] = useState(false)
   var [numSearch, setNumSearch] = useState("");
   var [nameSearch, setNameSearch] = useState("")
@@ -75,6 +78,9 @@ const CustomerDetailsPage = () => {
   async function getCustomersByName(searchQuery) {
     let responseData;
     let rowBuild = [];
+    // Clear any accounts from a previous search so stale per-customer entries
+    // do not linger across searches. QA F4 #2.
+    setAccountRows({});
     await axios
       .get(process.env.REACT_APP_CUSTOMER_URL + `/name?name=${searchQuery}&limit=10`)
       .then(response => {
@@ -119,6 +125,9 @@ const CustomerDetailsPage = () => {
   async function getCustomerByNum(searchQuery) {
     let responseData;
     let rowBuild = [];
+    // Clear any accounts from a previous search so stale per-customer entries
+    // do not linger across searches. QA F4 #2.
+    setAccountRows({});
     await axios
       .get(process.env.REACT_APP_CUSTOMER_URL + `/${searchQuery}`)
       .then(response => {
@@ -180,7 +189,9 @@ const CustomerDetailsPage = () => {
           };
           accountRowBuild.push(row)
         });
-        setAccountRows(accountRowBuild)
+        // Store this customer's accounts under its id (keyed map) rather than
+        // overwriting a single shared array. QA F4 #2.
+        setAccountRows(prev => ({ ...prev, [customerID]: accountRowBuild }))
       }).catch(function (error) {
         if (error.response) {
           console.log(error)

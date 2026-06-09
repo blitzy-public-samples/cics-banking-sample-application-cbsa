@@ -59,6 +59,7 @@ const AccountDeletePage = () => {
                   <div className="left-part">
                     <h3 className='inputOptions'> Delete an existing account</h3>
                     <NumberInput
+                      id="delete-account-number"
                       className="customer-list-view"
                       label='Enter account number'
                       min="0"

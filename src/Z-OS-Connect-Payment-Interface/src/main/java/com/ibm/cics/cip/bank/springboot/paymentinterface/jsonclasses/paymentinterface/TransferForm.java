@@ -3,6 +3,8 @@
 /*                                                                        */
 package com.ibm.cics.cip.bank.springboot.paymentinterface.jsonclasses.paymentinterface;
 
+import java.math.BigDecimal;
+
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
@@ -19,8 +21,11 @@ public class TransferForm
 	@NotNull
 	private boolean debit = true;
 
+	// QA Issue 5: transfer amount is COBOL S9(10)V99 money; AAP requires
+	// BigDecimal (scale-2) and prohibits float/double to preserve exact
+	// COBOL rounding through the payment path.
 	@NotNull
-	private Float amount;
+	private BigDecimal amount;
 
 	@NotNull
 	@Size(max = 16)
@@ -34,7 +39,8 @@ public class TransferForm
 
 
 	public TransferForm(@NotNull @Size(max = 8) String acctNumber,
-			@NotNull Float amount, @NotNull @Size(max = 16) String organisation)
+			@NotNull BigDecimal amount,
+			@NotNull @Size(max = 16) String organisation)
 	{
 		this.acctNumber = acctNumber;
 		this.amount = amount;
@@ -72,13 +78,13 @@ public class TransferForm
 	}
 
 
-	public Float getAmount()
+	public BigDecimal getAmount()
 	{
 		return amount;
 	}
 
 
-	public void setAmount(Float amount)
+	public void setAmount(BigDecimal amount)
 	{
 		this.amount = amount;
 	}

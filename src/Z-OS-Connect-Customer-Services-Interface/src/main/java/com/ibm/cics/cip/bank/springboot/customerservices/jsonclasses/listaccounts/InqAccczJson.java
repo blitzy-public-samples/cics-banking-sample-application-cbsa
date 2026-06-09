@@ -18,8 +18,12 @@ public class InqAccczJson
 	@JsonProperty("CommFailCode")
 	private int commFailCode;
 
+	// QA Issues 4 and 5: customer number is a fixed-width 10-digit COBOL
+	// identifier. int overflows for valid upper-bound values and discards
+	// leading zeroes, so bind into String to preserve the zero-padded
+	// identifier; bank-core emits CustomerNumber as a JSON string here.
 	@JsonProperty("CustomerNumber")
-	private int customerNumber;
+	private String customerNumber;
 
 	@JsonProperty("AccountDetails")
 	private List<AccountDetails> accountDetails;
@@ -46,13 +50,13 @@ public class InqAccczJson
 	}
 
 
-	public int getCustomerNumber()
+	public String getCustomerNumber()
 	{
 		return customerNumber;
 	}
 
 
-	public void setCustomerNumber(int customerNumberIn)
+	public void setCustomerNumber(String customerNumberIn)
 	{
 		customerNumber = customerNumberIn;
 	}

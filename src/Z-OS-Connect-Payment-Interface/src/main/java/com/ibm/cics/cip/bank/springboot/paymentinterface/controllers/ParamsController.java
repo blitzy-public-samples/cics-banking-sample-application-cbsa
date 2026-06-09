@@ -3,6 +3,8 @@
 /*                                                                        */
 package com.ibm.cics.cip.bank.springboot.paymentinterface.controllers;
 
+import java.math.BigDecimal;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ibm.cics.cip.bank.springboot.paymentinterface.ConnectionInfo;
@@ -35,7 +37,7 @@ public class ParamsController
 	@PostMapping("/submit")
 	public PaymentInterfaceJson submit(
 			@RequestParam(name = "acctnum", required = true) String acctNumber,
-			@RequestParam(name = "amount", required = true) float amount,
+			@RequestParam(name = "amount", required = true) BigDecimal amount,
 			@RequestParam(name = "organisation", required = true) String organisation)
 			throws JsonProcessingException
 	{

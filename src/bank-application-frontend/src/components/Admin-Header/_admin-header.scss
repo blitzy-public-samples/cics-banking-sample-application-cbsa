@@ -1,6 +1,7 @@
 //   Copyright IBM Corp. 2023
 
 @use '@carbon/react/scss/colors';
+@use '@carbon/react/scss/breakpoint' as *;
 
 // overriding header tooltip bg color
 // because the navigation is dark themed while the content is white
@@ -19,6 +20,15 @@ button.cds--header__action.cds--header__action__search {
   flex: 1 1;
   justify-content: flex-end;
   width: 850px;
+
+  // On small viewports a fixed 850px search action pushes the remaining global
+  // actions (notifications, user menu, app switcher) off the right edge of the
+  // screen. Let it shrink to its content so the actions stay on-screen.
+  // QA F4 #7.
+  @include breakpoint-down(md) {
+    width: auto;
+    max-width: 100%;
+  }
 }
 
 button.cds--btn.cds--btn--primary.cds--btn--primary--submit {

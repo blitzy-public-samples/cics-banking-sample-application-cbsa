@@ -10,7 +10,15 @@
 .control-panel-parent {
   display: flex;
   justify-content: space-between;
-  width: 105rem;
+  // Fluid width (was 105rem / 1680px) to avoid horizontal page overflow.
+  // .control-panel-parent is a global class; this rule participates in the
+  // cascade that styles the AdminPage control panel. QA F4 finding #5.
+  // Parent is a Carbon cds--subgrid of 16 auto tracks; span the full subgrid
+  // (1 / -1) and fill it (width:100%) so the flex container does not collapse
+  // into a single ~77px track. Fluid at every breakpoint, no 1680px overflow.
+  grid-column: 1 / -1;
+  width: 100%;
+  max-width: 100%;
 }
 
 .control-panel-left-child {
@@ -46,10 +54,21 @@ div.gap {
   width: 100%;
   display: flex;
   justify-content: space-between;
+
+  // On tablet/mobile the side-by-side 15%/84% split squeezes the instruction
+  // paragraph and search form into a ~111px column. Stack the columns below
+  // the lg breakpoint so the content uses the full column width. QA F4 #6.
+  @include breakpoint-down(lg) {
+    flex-direction: column;
+  }
 }
 
 .left-part {
   width: 15%;
+
+  @include breakpoint-down(lg) {
+    width: 100%;
+  }
 }
 
 .right-part {
@@ -57,6 +76,11 @@ div.gap {
   height: 250px;
   margin-right: 35px;
   text-align: center;
+
+  @include breakpoint-down(lg) {
+    width: 100%;
+    margin-right: 0;
+  }
 }
 
 .bee {
