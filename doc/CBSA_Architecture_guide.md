@@ -143,7 +143,7 @@ guide.
 In addition to the mainframe-hosted offerings described above, CBSA now
 includes a standalone, pure-Java reimplementation of the COBOL banking
 business logic. This module lives at `src/bank-core` (Java package
-`com.ibm.cics.cip.bank.core`), is built on Spring Boot 3.5.11 running on
+`com.ibm.cics.cip.bank.core`), is built on Spring Boot 3.5.14 running on
 Java 17, and is backed by a PostgreSQL database.
 
 Unlike the base/COBOL offering and the UI layers described above, the

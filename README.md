@@ -46,7 +46,7 @@ The interfaces are designed to exploit the underlying banking functionality, whi
 > - Transfer funds
 > - Open new accounts etc. etc.
 
-There is also a new **standalone Java core** (`src/bank-core`): a modern, pure-Java reimplementation of the COBOL banking business logic, built on Spring Boot 3.5.11 and Java 17 and backed by PostgreSQL (no CICS, z/OS, or z/OS Connect runtime is required). It recasts the COBOL programs and record copybooks as a layered Spring application (REST controllers, services, Spring Data JPA repositories and a PostgreSQL database) and preserves the same RESTful API contract, so the Carbon React UI and the Customer Services and Payment interfaces can be re-pointed to it with only a base-URL change.
+There is also a new **standalone Java core** (`src/bank-core`): a modern, pure-Java reimplementation of the COBOL banking business logic, built on Spring Boot 3.5.14 and Java 17 and backed by PostgreSQL (no CICS, z/OS, or z/OS Connect runtime is required). It recasts the COBOL programs and record copybooks as a layered Spring application (REST controllers, services, Spring Data JPA repositories and a PostgreSQL database) and preserves the same RESTful API contract, so the Carbon React UI and the Customer Services and Payment interfaces can be re-pointed to it with only a base-URL change.
 
 ## Architecture
 ![Payment and CS architecture diagram2](./doc/images/Architecture/Payment_and_Customer_Services_UI_CBSA_architecture_diagram2.jpg)
