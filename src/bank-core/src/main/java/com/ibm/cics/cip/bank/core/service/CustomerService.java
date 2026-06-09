@@ -677,7 +677,7 @@ public class CustomerService
 
 		// Wait for the fixed deadline, mirroring EXEC CICS DELAY FOR SECONDS(3).
 		CompletableFuture<Void> all = CompletableFuture
-				.allOf(futures.toArray(new CompletableFuture[0]));
+				.allOf(futures.toArray(new CompletableFuture<?>[0]));
 		try
 		{
 			all.get(CREDIT_CHECK_DEADLINE_SECONDS, TimeUnit.SECONDS);
