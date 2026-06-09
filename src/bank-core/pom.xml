@@ -50,6 +50,70 @@
 			property when resolving org.postgresql:postgresql.
 		-->
 		<postgresql.version>42.7.11</postgresql.version>
+
+		<!--
+			Pin the Jackson stack to the 2.21.1 patched release train,
+			overriding the version the Spring Boot 3.5.11 BOM would otherwise
+			manage (2.19.4). jackson-core <= 2.18.5 and 2.19.0 - 2.21.0 are in
+			the affected range of advisory GHSA-72hv-8253-57qq, in which the
+			async / non-blocking JSON parser bypasses the maxNumberLength
+			constraint and allows a CPU / memory denial of service via oversized
+			numeric tokens; 2.21.1 is the patched release. Driving the version
+			through the jackson-bom.version property keeps jackson-core,
+			-databind, -annotations and the datatype / dataformat modules
+			mutually aligned on one release train, and it matches the version
+			the sibling webui module already imports (jackson-bom 2.21.1) so the
+			whole reactor shares a single, patched Jackson version.
+		-->
+		<jackson-bom.version>2.21.1</jackson-bom.version>
+
+		<!--
+			Pin embedded Tomcat to 10.1.55, overriding the version the Spring
+			Boot 3.5.11 BOM would otherwise manage (10.1.52). Tomcat 10.1.52 is
+			in the affected range of CVE-2026-29145 (Critical - CLIENT_CERT
+			authentication does not fail as expected when soft-fail is disabled;
+			fixed in 10.1.53), CVE-2026-34483 (High - improper output escaping in
+			the JsonAccessLogValve; fixed in 10.1.54) and CVE-2026-43512 (digest
+			authentication bypass; fixed in 10.1.55). 10.1.55 clears all three.
+			spring-boot-starter-parent honours the tomcat.version property, which
+			moves tomcat-embed-core, -el and -websocket together. (bank-core uses
+			neither client-certificate/mTLS auth, the JsonAccessLogValve, nor
+			digest auth, so none of these paths are reachable, but the dependency
+			is upgraded so no SCA scan flags the introduced module.)
+		-->
+		<tomcat.version>10.1.55</tomcat.version>
+
+		<!--
+			Pin Logback to 1.5.34, overriding the version the Spring Boot 3.5.11
+			BOM would otherwise manage (1.5.32 - which the latest 3.5.x patch
+			still ships, so a parent bump alone would NOT remediate this). Logback
+			1.5.32 precedes the fixes for CVE-2026-9828 (HardenedModelInputStream
+			deserialization whitelist bypass; fixed in 1.5.33), CVE-2026-10532
+			(proxy-class deserialization bypass; fixed in 1.5.34) and CVE-2026-1225
+			(arbitrary-component instantiation via crafted configuration; fixed in
+			1.5.34). 1.5.34 clears all three. spring-boot-starter-parent honours
+			the logback.version property, moving logback-core and logback-classic
+			together. (bank-core uses only the default local file/console appenders
+			- no serialized-event receivers and no attacker-controlled config - so
+			the paths are not reachable, but the dependency is upgraded for a clean
+			SCA posture.)
+		-->
+		<logback.version>1.5.34</logback.version>
+
+		<!--
+			Pin the Spring Framework to 6.2.18, overriding the version the Spring
+			Boot 3.5.11 BOM would otherwise manage (6.2.16); 6.2.18 is the version
+			the latest Spring Boot 3.5.x patch aligns to. spring-web / spring-webmvc
+			6.2.0 - 6.2.16 are in the affected range of CVE-2026-22735 (Server-Sent
+			Event stream corruption, Low) and CVE-2026-22737 (Script View Templates),
+			both fixed in 6.2.17. Neither condition is met by bank-core (a JSON REST
+			API that uses no Server-Sent Events and no script view templates), but
+			the framework is upgraded so the introduced module carries no in-range
+			advisory. spring-framework.version moves every org.springframework:spring-*
+			module as a unit, so spring-core / -beans / -context / -web / -webmvc all
+			stay mutually aligned on 6.2.18.
+		-->
+		<spring-framework.version>6.2.18</spring-framework.version>
 	</properties>
 
 
