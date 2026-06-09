@@ -3,6 +3,8 @@
 /*                                                                        */
 package com.ibm.cics.cip.bank.springboot.customerservices.jsonclasses.deleteaccount;
 
+import java.math.BigDecimal;
+
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import com.ibm.cics.cip.bank.springboot.customerservices.JsonPropertyNamingStrategy;
@@ -20,8 +22,10 @@ public class DelaccJson
 	@JsonProperty("DelAccLastStmtDt")
 	private String delaccLastStatementDate;
 
+	// QA Issue 5: interest rate is COBOL 9(4)V99 money; AAP requires BigDecimal
+	// (scale-2) and prohibits float/double to preserve exact rounding.
 	@JsonProperty("DelAccIntRate")
-	private float delaccInterestRate;
+	private BigDecimal delaccInterestRate;
 
 	@JsonProperty("DelAccFailCd")
 	private int delaccDelFailCode;
@@ -42,10 +46,10 @@ public class DelaccJson
 	private String delaccNextStatementDate;
 
 	@JsonProperty("DelAccActualBal")
-	private float delaccActualBalance;
+	private BigDecimal delaccActualBalance;
 
 	@JsonProperty("DelAccAvailBal")
-	private float delaccAvailableBalance;
+	private BigDecimal delaccAvailableBalance;
 
 	@JsonProperty("DelAccCustno")
 	private String delaccCustno;
@@ -105,13 +109,13 @@ public class DelaccJson
 	}
 
 
-	public float getDelaccInterestRate()
+	public BigDecimal getDelaccInterestRate()
 	{
 		return delaccInterestRate;
 	}
 
 
-	public void setDelaccInterestRate(float delaccInterestRateIn)
+	public void setDelaccInterestRate(BigDecimal delaccInterestRateIn)
 	{
 		delaccInterestRate = delaccInterestRateIn;
 	}
@@ -204,25 +208,25 @@ public class DelaccJson
 	}
 
 
-	public float getDelaccActualBalance()
+	public BigDecimal getDelaccActualBalance()
 	{
 		return delaccActualBalance;
 	}
 
 
-	public void setDelaccActualBalance(float delaccActualBalanceIn)
+	public void setDelaccActualBalance(BigDecimal delaccActualBalanceIn)
 	{
 		delaccActualBalance = delaccActualBalanceIn;
 	}
 
 
-	public float getDelaccAvailableBalance()
+	public BigDecimal getDelaccAvailableBalance()
 	{
 		return delaccAvailableBalance;
 	}
 
 
-	public void setDelaccAvailableBalance(float delaccAvailableBalanceIn)
+	public void setDelaccAvailableBalance(BigDecimal delaccAvailableBalanceIn)
 	{
 		delaccAvailableBalance = delaccAvailableBalanceIn;
 	}

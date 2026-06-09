@@ -76,7 +76,7 @@ for the base/COBOL installation documentation.
 The diagram below shows the addition of the Carbon React UI. This utilises a
 JVM server running in the CICS region.
 
-![libertyUI architecture diagram](../doc/images/Architecture/LibertyUI_CBSA_architecture_diagram.jpg)
+![Carbon React UI architecture diagram](../doc/images/Architecture/CarbonReactUI_CBSA_architecture_diagram.jpg)
 
 ### Assumptions & Requirements for the Carbon React UI:
 

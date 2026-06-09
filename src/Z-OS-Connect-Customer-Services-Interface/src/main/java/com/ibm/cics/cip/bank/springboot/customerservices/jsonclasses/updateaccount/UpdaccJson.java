@@ -3,6 +3,8 @@
 /*                                                                        */
 package com.ibm.cics.cip.bank.springboot.customerservices.jsonclasses.updateaccount;
 
+import java.math.BigDecimal;
+
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import com.ibm.cics.cip.bank.springboot.customerservices.JsonPropertyNamingStrategy;
@@ -26,8 +28,10 @@ public class UpdaccJson
 	@JsonProperty("CommAccno")
 	private int commAccno;
 
+	// QA Issue 5: interest rate is COBOL 9(4)V99 money; AAP requires BigDecimal
+	// (scale-2) and prohibits float/double to preserve exact rounding.
 	@JsonProperty("CommIntRate")
-	private float commInterestRate;
+	private BigDecimal commInterestRate;
 
 	@JsonProperty("CommOpened")
 	private String commOpened;
@@ -42,10 +46,10 @@ public class UpdaccJson
 	private String commNextStatementDate;
 
 	@JsonProperty("CommAvailBal")
-	private float commAvailableBalance;
+	private BigDecimal commAvailableBalance;
 
 	@JsonProperty("CommActualBal")
-	private float commActualBalance;
+	private BigDecimal commActualBalance;
 
 	@JsonProperty("CommSuccess")
 	private String commSuccess;
@@ -57,10 +61,10 @@ public class UpdaccJson
 
 
 	public UpdaccJson(String commCustNoIn, int commAccNoIn,
-			AccountType commAccountTypeIn, float commInterestRateIn,
+			AccountType commAccountTypeIn, BigDecimal commInterestRateIn,
 			String commOpenedIn, int commOverdraftIn,
 			String commLastStatementDateIn, String commNextStatementDateIn,
-			float commAvailableBalanceIn, float commActualBalanceIn)
+			BigDecimal commAvailableBalanceIn, BigDecimal commActualBalanceIn)
 	{
 		commCustno = commCustNoIn;
 		commAccno = commAccNoIn;
@@ -162,13 +166,13 @@ public class UpdaccJson
 	}
 
 
-	public float getCommInterestRate()
+	public BigDecimal getCommInterestRate()
 	{
 		return commInterestRate;
 	}
 
 
-	public void setCommInterestRate(float commInterestRateIn)
+	public void setCommInterestRate(BigDecimal commInterestRateIn)
 	{
 		commInterestRate = commInterestRateIn;
 	}
@@ -222,25 +226,25 @@ public class UpdaccJson
 	}
 
 
-	public float getCommAvailableBalance()
+	public BigDecimal getCommAvailableBalance()
 	{
 		return commAvailableBalance;
 	}
 
 
-	public void setCommAvailableBalance(float commAvailableBalanceIn)
+	public void setCommAvailableBalance(BigDecimal commAvailableBalanceIn)
 	{
 		commAvailableBalance = commAvailableBalanceIn;
 	}
 
 
-	public float getCommActualBalance()
+	public BigDecimal getCommActualBalance()
 	{
 		return commActualBalance;
 	}
 
 
-	public void setCommActualBalance(float commActualBalanceIn)
+	public void setCommActualBalance(BigDecimal commActualBalanceIn)
 	{
 		commActualBalance = commActualBalanceIn;
 	}

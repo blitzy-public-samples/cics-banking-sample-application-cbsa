@@ -222,8 +222,13 @@ public class WebController implements WebMvcConfigurer
 	public static void checkIfResponseValidListAcc(AccountEnquiryJson response)
 			throws ItemNotFoundException
 	{
+		// QA Issues 4 and 5: InqAccCustno is now a fixed-width String identifier
+		// rather than int. The legacy "== 0" test detected the not-found
+		// sentinel (customer number zero); the String-safe equivalent treats a
+		// null, empty, or all-zeroes value as that same sentinel.
+		String inqaccCustno = response.getInqaccCommarea().getInqaccCustno();
 		if (response.getInqaccCommarea().getInaccSuccess().equals("N")
-				&& response.getInqaccCommarea().getInqaccCustno() == 0)
+				&& (inqaccCustno == null || inqaccCustno.matches("0*")))
 		{
 			throw new ItemNotFoundException(ACCOUNT);
 		}

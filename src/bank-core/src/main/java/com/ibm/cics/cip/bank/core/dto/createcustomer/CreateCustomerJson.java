@@ -28,6 +28,11 @@ import jakarta.validation.constraints.NotNull;
  * carries data only; it holds <em>no</em> business logic &mdash; behavioural
  * parity with the COBOL {@code CRECUST.cbl} lives in {@code CustomerService}.</p>
  *
+ * <p><strong>Title handling (QA Issue&nbsp;9).</strong> The customer title is
+ * carried as the first token of the inner {@link CrecustJson#getCommName()
+ * CommName}; there is deliberately no {@code CommTitle} wire field. See the
+ * "Title handling" note on {@link CrecustJson} for the full contract.</p>
+ *
  * <p><strong>Naming strategy.</strong> The class carries
  * {@code @JsonNaming(JacksonConfig.EnvelopeNamingStrategy.class)} to opt in to
  * the module's shared envelope naming behaviour (the {@code substring(3)}

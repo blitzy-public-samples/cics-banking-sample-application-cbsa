@@ -4,9 +4,16 @@
   Maven build descriptor for the standalone bank-core module.
 
   This module is the pure-Java, Spring Boot reimplementation of the CBSA
-  (Bank Sample Application) COBOL banking core. It runs on Spring Boot 3.5.11
+  (Bank Sample Application) COBOL banking core. It runs on Spring Boot 3.5.14
   (Java 17) with embedded Tomcat and is backed by PostgreSQL via Spring Data
   JPA / Hibernate, with Flyway managing the relational schema.
+
+  The Spring Boot baseline is 3.5.14 (raised from 3.5.11): Spring Boot
+  3.5.0 - 3.5.13 are in the affected range of CVE-2026-40973 /
+  GHSA-wwpq-f5c3-7hvx (High - Spring Boot accepts a predictable temporary
+  directory without ownership verification, enabling local session hijacking
+  and potential code execution); 3.5.14 is the security-fix release for the
+  3.5.x line.
 
   It is a clean, mainframe-free module: it deliberately carries none of the
   legacy IBM mainframe libraries or bundle-packaging plugins, and it builds a
@@ -14,7 +21,7 @@
   parent BOM (no explicit <version> element on the starters or the Flyway
   artifacts); the PostgreSQL JDBC driver version is pinned via the
   <postgresql.version> property to take the CVE-2026-42198 security fix (the
-  3.5.11 BOM otherwise manages it to the vulnerable 42.7.10 - see <properties>).
+  3.5.14 BOM otherwise manages it to the vulnerable 42.7.10 - see <properties>).
 -->
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
@@ -24,7 +31,7 @@
 	<parent>
 		<groupId>org.springframework.boot</groupId>
 		<artifactId>spring-boot-starter-parent</artifactId>
-		<version>3.5.11</version>
+		<version>3.5.14</version>
 		<relativePath /> <!-- lookup parent from repository -->
 	</parent>
 
@@ -41,7 +48,7 @@
 		<java.version>17</java.version>
 		<!--
 			Pin the PostgreSQL JDBC driver to 42.7.11, overriding the version
-			the Spring Boot 3.5.11 BOM would otherwise manage (42.7.10).
+			the Spring Boot 3.5.14 BOM would otherwise manage (42.7.10).
 			pgJDBC releases from 42.2.0 up to (but excluding) 42.7.11 are
 			vulnerable to CVE-2026-42198 - a client-side SCRAM-SHA-256
 			denial of service in which a malicious server can force unbounded
@@ -52,29 +59,27 @@
 		<postgresql.version>42.7.11</postgresql.version>
 
 		<!--
-			Pin the Jackson stack to the 2.21.1 patched release train,
-			overriding the version the Spring Boot 3.5.11 BOM would otherwise
-			manage (2.19.4). jackson-core <= 2.18.5 and 2.19.0 - 2.21.0 are in
-			the affected range of advisory GHSA-72hv-8253-57qq, in which the
-			async / non-blocking JSON parser bypasses the maxNumberLength
-			constraint and allows a CPU / memory denial of service via oversized
-			numeric tokens; 2.21.1 is the patched release. Driving the version
-			through the jackson-bom.version property keeps jackson-core,
-			-databind, -annotations and the datatype / dataformat modules
-			mutually aligned on one release train, and it matches the version
-			the sibling webui module already imports (jackson-bom 2.21.1) so the
-			whole reactor shares a single, patched Jackson version.
+			Jackson is intentionally NOT pinned here. The Spring Boot 3.5.14 BOM
+			manages jackson-bom to 2.21.2, which is already past the patched
+			2.21.1 release for advisory GHSA-72hv-8253-57qq (async / non-blocking
+			JSON parser maxNumberLength bypass -> CPU / memory denial of service
+			via oversized numeric tokens; affected jackson-core <= 2.18.5 and
+			2.19.0 - 2.21.0, fixed in 2.21.1). Letting the 3.5.14 BOM manage the
+			Jackson release train therefore yields a secure, internally aligned
+			set of jackson-core / -databind / -annotations / datatype modules;
+			adding an explicit 2.21.1 pin would only downgrade the BOM-managed
+			2.21.2 and is omitted for that reason.
 		-->
-		<jackson-bom.version>2.21.1</jackson-bom.version>
 
 		<!--
 			Pin embedded Tomcat to 10.1.55, overriding the version the Spring
-			Boot 3.5.11 BOM would otherwise manage (10.1.52). Tomcat 10.1.52 is
-			in the affected range of CVE-2026-29145 (Critical - CLIENT_CERT
+			Boot 3.5.14 BOM would otherwise manage (10.1.54). Tomcat 10.1.54
+			already carries the fixes for CVE-2026-29145 (Critical - CLIENT_CERT
 			authentication does not fail as expected when soft-fail is disabled;
-			fixed in 10.1.53), CVE-2026-34483 (High - improper output escaping in
-			the JsonAccessLogValve; fixed in 10.1.54) and CVE-2026-43512 (digest
-			authentication bypass; fixed in 10.1.55). 10.1.55 clears all three.
+			fixed in 10.1.53) and CVE-2026-34483 (High - improper output escaping
+			in the JsonAccessLogValve; fixed in 10.1.54), but it still precedes
+			the fix for CVE-2026-43512 (digest authentication bypass; fixed in
+			10.1.55). 10.1.55 clears that remaining advisory.
 			spring-boot-starter-parent honours the tomcat.version property, which
 			moves tomcat-embed-core, -el and -websocket together. (bank-core uses
 			neither client-certificate/mTLS auth, the JsonAccessLogValve, nor
@@ -84,9 +89,10 @@
 		<tomcat.version>10.1.55</tomcat.version>
 
 		<!--
-			Pin Logback to 1.5.34, overriding the version the Spring Boot 3.5.11
-			BOM would otherwise manage (1.5.32 - which the latest 3.5.x patch
-			still ships, so a parent bump alone would NOT remediate this). Logback
+			Pin Logback to 1.5.34, overriding the version the Spring Boot 3.5.14
+			BOM would otherwise manage (1.5.32 - which even the 3.5.14 patch still
+			ships, so the parent bump to 3.5.14 alone does NOT remediate this).
+			Logback
 			1.5.32 precedes the fixes for CVE-2026-9828 (HardenedModelInputStream
 			deserialization whitelist bypass; fixed in 1.5.33), CVE-2026-10532
 			(proxy-class deserialization bypass; fixed in 1.5.34) and CVE-2026-1225
@@ -101,19 +107,16 @@
 		<logback.version>1.5.34</logback.version>
 
 		<!--
-			Pin the Spring Framework to 6.2.18, overriding the version the Spring
-			Boot 3.5.11 BOM would otherwise manage (6.2.16); 6.2.18 is the version
-			the latest Spring Boot 3.5.x patch aligns to. spring-web / spring-webmvc
-			6.2.0 - 6.2.16 are in the affected range of CVE-2026-22735 (Server-Sent
-			Event stream corruption, Low) and CVE-2026-22737 (Script View Templates),
-			both fixed in 6.2.17. Neither condition is met by bank-core (a JSON REST
-			API that uses no Server-Sent Events and no script view templates), but
-			the framework is upgraded so the introduced module carries no in-range
-			advisory. spring-framework.version moves every org.springframework:spring-*
-			module as a unit, so spring-core / -beans / -context / -web / -webmvc all
-			stay mutually aligned on 6.2.18.
+			Spring Framework is intentionally NOT pinned here. The Spring Boot
+			3.5.14 BOM already manages the org.springframework:spring-* modules to
+			6.2.18, which is past the 6.2.17 fix for CVE-2026-22735 (Server-Sent
+			Event stream corruption, Low) and CVE-2026-22737 (Script View
+			Templates). bank-core is a JSON REST API that uses neither Server-Sent
+			Events nor script view templates, so neither path is reachable in any
+			case; letting the 3.5.14 BOM manage spring-core / -beans / -context /
+			-web / -webmvc keeps them mutually aligned on the secure 6.2.18, and an
+			explicit pin to that same version would be redundant.
 		-->
-		<spring-framework.version>6.2.18</spring-framework.version>
 	</properties>
 
 

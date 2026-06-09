@@ -3,6 +3,8 @@
 /*                                                                        */
 package com.ibm.cics.cip.bank.springboot.customerservices.jsonclasses.createaccount;
 
+import java.math.BigDecimal;
+
 import jakarta.validation.constraints.*;
 
 public class CreateAccountForm
@@ -18,7 +20,10 @@ public class CreateAccountForm
 
 	private int overdraftLimit;
 
-	private float interestRate;
+	// QA Issue 5: interest rate is monetary precision; AAP requires BigDecimal
+	// (scale-2) and prohibits float/double. Spring MVC binds the form value
+	// straight into BigDecimal.
+	private BigDecimal interestRate;
 
 
 	public int getOverdraftLimit()
@@ -33,13 +38,13 @@ public class CreateAccountForm
 	}
 
 
-	public float getInterestRate()
+	public BigDecimal getInterestRate()
 	{
 		return interestRate;
 	}
 
 
-	public void setInterestRate(float interestRate)
+	public void setInterestRate(BigDecimal interestRate)
 	{
 		this.interestRate = interestRate;
 	}

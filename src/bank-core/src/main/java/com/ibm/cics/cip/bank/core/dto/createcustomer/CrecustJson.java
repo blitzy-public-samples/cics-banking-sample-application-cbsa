@@ -69,6 +69,28 @@ import jakarta.validation.constraints.Size;
  * ({@code FAIL_ON_UNKNOWN_PROPERTIES=true}); this DTO therefore emits exactly
  * these nine wire keys and exposes no extra serialised getter.</p>
  *
+ * <h2>Title handling &mdash; there is no {@code CommTitle} wire field (QA Issue&nbsp;9)</h2>
+ * <p>The frozen {@code crecust} contract carries the customer's title
+ * <em>inside</em> {@link #commName}, never as a separate field. The legacy
+ * {@code CRECUST.cbl} reads the <strong>first whitespace-delimited token of
+ * {@code COMM-NAME}</strong> as the title and validates it against the permitted
+ * set (see {@code domain.Title}: Mr, Mrs, Miss, Ms, Dr, Professor, Drs, Lord,
+ * Sir, Lady); an unrecognised first token yields the business fail code
+ * {@code T}. The frozen z/OS Connect schema ({@code CScustcreRequest.json})
+ * declares <strong>no {@code CommTitle} key</strong>, so this envelope declares
+ * none either: a client supplies the title as a prefix of the name, e.g.
+ * {@code "CommName":"Ms Jane Smith"}.</p>
+ *
+ * <p>A {@code CommTitle} property sent by a client is therefore simply an
+ * <em>unknown</em> field, not a recognised input &mdash; it is ignored, and the
+ * title is still taken from {@code CommName} (so a request that places the title
+ * only in {@code CommTitle} and not in {@code CommName} fails with code
+ * {@code T}). Adding a {@code CommTitle} field here is deliberately avoided: the
+ * preserved consumer deserialises with {@code FAIL_ON_UNKNOWN_PROPERTIES=true}
+ * (see the backward-compatibility note above), so widening the envelope would
+ * break that frozen consumer (AAP&nbsp;&sect;0.7). The title-in-{@code CommName}
+ * convention is the contract.</p>
+ *
  * @see CreateCustomerJson
  * @see CommKey
  * @see JacksonConfig.EnvelopeNamingStrategy
@@ -98,7 +120,14 @@ public class CrecustJson
 	@Valid
 	private CommKey commKey = new CommKey();
 
-	/** Customer name ({@code COMM-NAME PIC X(60)}; first token is the title). */
+	/**
+	 * Customer name ({@code COMM-NAME PIC X(60)}). The <strong>first
+	 * whitespace-delimited token is the title</strong> (validated against
+	 * {@code domain.Title}; an unrecognised title yields business fail code
+	 * {@code T}), and the remainder is the given/family name &mdash; e.g.
+	 * {@code "Ms Jane Smith"}. There is no separate {@code CommTitle} wire field;
+	 * see the class-level "Title handling" note (QA Issue&nbsp;9).
+	 */
 	@JsonProperty("CommName")
 	@Size(max = 60)
 	private String commName;

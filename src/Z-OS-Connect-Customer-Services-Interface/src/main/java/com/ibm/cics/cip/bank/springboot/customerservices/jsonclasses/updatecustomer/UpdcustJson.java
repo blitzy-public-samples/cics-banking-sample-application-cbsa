@@ -55,13 +55,15 @@ public class UpdcustJson
 		if (!commAddressIn.equals(" "))
 			commAddress = String.format("%-160s", commAddressIn);
 
-		// These convert strings to ints - they use ternary operators to prevent
-		// a NumberFormatException on an empty String, as 0 would be okay by
-		// default.
-		commDateOfBirth = commDateOfBirthIn.equals("") ? 0
-				: Integer.parseInt(commDateOfBirthIn);
-		commCreditScoreReviewDate = commCreditScoreReviewDateIn.equals("") ? 0
-				: Integer.parseInt(commCreditScoreReviewDateIn);
+		// Convert the date strings to the numeric YYYYMMDD form the commarea
+		// carries. parseDateToInt() strips any punctuation (so both the z/OS
+		// numeric shape "20260620" and ISO / locale shapes such as "2026-06-20"
+		// or "2026/06/20" are accepted) and falls back to 0 for blank, null, or
+		// otherwise unparseable input, so a populated review date can never
+		// raise a NumberFormatException that escapes the controller as an
+		// HTTP 500 (QA Issue 3).
+		commDateOfBirth = parseDateToInt(commDateOfBirthIn);
+		commCreditScoreReviewDate = parseDateToInt(commCreditScoreReviewDateIn);
 
 		// Doesn't need conversion as it isn't ever not an int
 		commCreditScore = commCreditScoreIn;
@@ -71,6 +73,51 @@ public class UpdcustJson
 	public UpdcustJson()
 	{
 
+	}
+
+
+	/**
+	 * Convert a date supplied as a String into the numeric {@code YYYYMMDD}
+	 * integer the commarea carries for {@code CommDob} / {@code CommCsReviewDate}.
+	 *
+	 * <p>The Customer Services form supplies these dates as Strings. The date of
+	 * birth is already reduced to digits by the form, but the credit-score review
+	 * date is taken verbatim from the input control and therefore arrives with
+	 * separators (for example the ISO shape {@code 2026-06-20} produced by an
+	 * HTML date picker). A naive {@link Integer#parseInt(String)} on such a value
+	 * throws {@link NumberFormatException}, which previously escaped the
+	 * controller as an HTTP 500 (QA Issue 3).</p>
+	 *
+	 * <p>This helper is intentionally defensive: it returns 0 for {@code null},
+	 * blank, or non-numeric input, strips every non-digit character so that
+	 * punctuated dates parse cleanly, and treats an out-of-range value (one that
+	 * would overflow {@code int}) as 0 rather than propagating an exception.</p>
+	 *
+	 * @param value the raw date String from the request form; may be null or blank
+	 * @return the digits of {@code value} parsed as an int, or 0 when the value
+	 *         is null, blank, or cannot be represented as an int
+	 */
+	private static int parseDateToInt(String value)
+	{
+		if (value == null)
+		{
+			return 0;
+		}
+		String digits = value.replaceAll("\\D", "");
+		if (digits.isEmpty())
+		{
+			return 0;
+		}
+		try
+		{
+			return Integer.parseInt(digits);
+		}
+		catch (NumberFormatException e)
+		{
+			// Too many digits to fit an int (or otherwise unparseable) - fall
+			// back to 0 rather than failing the whole update request.
+			return 0;
+		}
 	}
 
 

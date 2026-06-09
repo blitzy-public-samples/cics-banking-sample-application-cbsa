@@ -7,9 +7,11 @@ import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.HttpMediaTypeNotAcceptableException;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -143,6 +145,17 @@ public class GlobalExceptionHandler
 	 * routing internal.
 	 */
 	private static final String NOT_FOUND_MESSAGE = "The requested resource was not found.";
+
+	/**
+	 * User-safe message returned when a persistence-layer data-integrity
+	 * constraint rejects the request &mdash; for example a monetary value whose
+	 * magnitude exceeds the column precision ({@code NUMERIC(12,2)}), a
+	 * {@code NOT NULL} column left unset, or a {@code CHECK}/unique constraint
+	 * violation (HTTP&nbsp;400). Deliberately generic so it never echoes the SQL
+	 * statement, constraint name, column, table, or any database/Hibernate
+	 * internal (CWE-209 safe).
+	 */
+	private static final String DATA_INTEGRITY_MESSAGE = "The request could not be completed because a submitted value is invalid or out of the permitted range.";
 
 	/** Separator used when aggregating multiple validation messages into one. */
 	private static final String MESSAGE_DELIMITER = "; ";
@@ -370,6 +383,83 @@ public class GlobalExceptionHandler
 		ErrorResponse body = new ErrorResponse(false, NO_FAIL_CODE,
 				NOT_FOUND_MESSAGE);
 		return ResponseEntity.status(HttpStatus.NOT_FOUND).body(body);
+	}
+
+	/**
+	 * Translates a persistence-layer {@link DataIntegrityViolationException} into
+	 * an HTTP&nbsp;400 (Bad Request) response.
+	 *
+	 * <p>Some invalid inputs pass Bean Validation yet are still rejected by the
+	 * database when the work is flushed &mdash; most notably a monetary value
+	 * whose <em>computed result</em> overflows the column precision
+	 * ({@code NUMERIC(12,2)}; QA Issue&nbsp;6, an extreme payment amount), or a
+	 * {@code NOT NULL} column left unset by a request that omitted a
+	 * contract-required field (QA Issue&nbsp;7, the defence-in-depth backstop
+	 * behind the DTO {@code @NotNull} guards). Without this dedicated handler
+	 * such failures would reach the {@link #handleUnexpected(Exception)
+	 * catch-all} and be mislabelled as HTTP&nbsp;500 with a full Hibernate/SQL
+	 * stack trace logged as though it were a server fault.</p>
+	 *
+	 * <p>A data-integrity violation driven by request content is a client input
+	 * error, so HTTP&nbsp;400 is correct; no COBOL business fail code applies, so
+	 * the fail code is left empty (never invented). The response body is the
+	 * generic {@link #DATA_INTEGRITY_MESSAGE} and never exposes the SQL,
+	 * constraint name, column, table, or any database internal (CWE-209 safe).
+	 * The root cause is logged server-side at {@code WARN} (a concise
+	 * most-specific-cause message, <em>not</em> a full {@code ERROR} stack trace)
+	 * so the condition stays traceable without polluting the log with
+	 * server-fault noise for what is really a client mistake.</p>
+	 *
+	 * @param ex the data-integrity exception (intentionally not surfaced to the
+	 *           client)
+	 * @return an HTTP&nbsp;400 response with a generic, safe message
+	 */
+	@ExceptionHandler(DataIntegrityViolationException.class)
+	public ResponseEntity<ErrorResponse> handleDataIntegrityViolation(
+			DataIntegrityViolationException ex)
+	{
+		// HTTP 400 (not 500): a constraint rejection driven by request content is
+		// a client input error. Log the concise root cause at WARN (not a full
+		// ERROR stack) so it stays traceable without server-fault log noise; the
+		// client body stays generic so no SQL/constraint detail leaks (CWE-209).
+		LOG.warn("Data integrity violation translated to HTTP 400: {}",
+				ex.getMostSpecificCause().getMessage());
+		ErrorResponse body = new ErrorResponse(false, NO_FAIL_CODE,
+				DATA_INTEGRITY_MESSAGE);
+		return ResponseEntity.badRequest().body(body);
+	}
+
+	/**
+	 * Translates a content-negotiation failure
+	 * ({@link HttpMediaTypeNotAcceptableException}, HTTP&nbsp;406) into a clean,
+	 * <strong>body-less</strong> response.
+	 *
+	 * <p>This exception is raised when the request's {@code Accept} header cannot
+	 * be satisfied by any representation the endpoint can produce (for example
+	 * {@code Accept: text/plain} against a JSON-only endpoint; QA Issue&nbsp;8).
+	 * The subtlety is that the advice <em>must not</em> return a serialised body
+	 * here: any {@link ErrorResponse} would itself have to be content-negotiated,
+	 * the same unsatisfiable {@code Accept} header would reject it again, and the
+	 * advice would fail recursively (Spring's "Failure in &#64;ExceptionHandler"
+	 * &mdash; exactly the nested-handler noise QA observed). Returning a body-less
+	 * HTTP&nbsp;406 via {@link ResponseEntity#build()} sidesteps content
+	 * negotiation entirely and resolves cleanly.</p>
+	 *
+	 * <p>The condition is logged once at {@code WARN} (a client header mistake,
+	 * not a server fault) and no body is emitted, so nothing is leaked.</p>
+	 *
+	 * @param ex the not-acceptable exception (intentionally not surfaced)
+	 * @return a body-less HTTP&nbsp;406 response
+	 */
+	@ExceptionHandler(HttpMediaTypeNotAcceptableException.class)
+	public ResponseEntity<Void> handleMediaTypeNotAcceptable(
+			HttpMediaTypeNotAcceptableException ex)
+	{
+		// Body-less by design: emitting any body would be re-negotiated against
+		// the same unsatisfiable Accept header and fail the handler recursively.
+		LOG.warn("Request Accept header not satisfiable, returning HTTP 406: {}",
+				ex.getMessage());
+		return ResponseEntity.status(HttpStatus.NOT_ACCEPTABLE).build();
 	}
 
 	/**

@@ -14,6 +14,7 @@ import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 /**
@@ -91,6 +92,26 @@ import jakarta.validation.constraints.Size;
  * it performs no zero-padding, no date formatting, no {@code BigDecimal} scale
  * normalisation and applies no defaults. Those responsibilities belong to the
  * service/mapper that populates it.</p>
+ *
+ * <h2>Required request inputs (F-019 / QA Issue&nbsp;7)</h2>
+ * <p>The four attributes {@code UPDACC} actually changes &mdash;
+ * {@link #commAccno}, {@link #commAccountType}, {@link #commInterestRate} and
+ * {@link #commOverdraft} &mdash; are annotated {@link NotNull}. A request that
+ * omits any of them is rejected up front with HTTP&nbsp;400 by Bean Validation
+ * (the request never reaches business logic), so a missing value can never
+ * reach a {@code NOT NULL} database column and surface as an opaque
+ * HTTP&nbsp;500. This closes the QA&nbsp;Issue&nbsp;7 defect, where a body using
+ * the CREACC-style spellings {@code CommIntRt}/{@code CommOverdrLim} left
+ * {@code commInterestRate}/{@code commOverdraft} null and tripped the
+ * {@code overdraft_limit} not-null constraint.</p>
+ *
+ * <p>These wire names are pinned by the frozen z/OS Connect {@code updacc}
+ * contract; non-contract spellings are intentionally <em>not</em> accepted as
+ * aliases, because doing so would silently widen the frozen contract
+ * (AAP&nbsp;&sect;0.7). A present-but-unrecognised account type still satisfies
+ * {@code @NotNull} and is rejected downstream as the business fail code
+ * {@code A} (an HTTP&nbsp;200 envelope), so the missing-input case (HTTP&nbsp;400)
+ * and the invalid-value case (business fail) remain distinct.</p>
  */
 @JsonNaming(JacksonConfig.EnvelopeNamingStrategy.class)
 public class UpdaccJson
@@ -115,19 +136,42 @@ public class UpdaccJson
 	 * Account number, {@code 9(8)}; serialised as a JSON integer to match the
 	 * frozen {@code updacc} schema ({@code CommAccno: integer}, F-019). The
 	 * eight-digit value always fits an {@link Integer}.
+	 *
+	 * <p>{@link NotNull} required-input guard (QA Issue&nbsp;7): the account
+	 * number identifies the row to update, so a request that omits it is a client
+	 * error rejected with HTTP&nbsp;400 rather than allowed to fail downstream.</p>
 	 */
 	@JsonProperty("CommAccno")
+	@NotNull
 	@Min(0)
 	@Max(99999999)
 	private Integer commAccno;
 
-	/** Account type, {@code X(8)}; plain {@code String} (e.g. {@code CURRENT}), never an enum. */
+	/**
+	 * Account type, {@code X(8)}; plain {@code String} (e.g. {@code CURRENT}),
+	 * never an enum.
+	 *
+	 * <p>{@link NotNull} required-input guard (QA Issue&nbsp;7): an omitted
+	 * account type is a malformed request (HTTP&nbsp;400). A <em>present</em> but
+	 * unrecognised value satisfies {@code @NotNull} and is instead rejected
+	 * downstream as the business fail code {@code A}, keeping the missing-input
+	 * and invalid-value outcomes distinct.</p>
+	 */
 	@JsonProperty("CommAccType")
+	@NotNull
 	@Size(max = 8)
 	private String commAccountType;
 
-	/** Interest rate, {@code 9(4)V99}; {@link BigDecimal} at scale 2. */
+	/**
+	 * Interest rate, {@code 9(4)V99}; {@link BigDecimal} at scale 2.
+	 *
+	 * <p>{@link NotNull} required-input guard (QA Issue&nbsp;7): {@code UPDACC}
+	 * writes this value to a non-null column, so an omitted (or mis-spelled, e.g.
+	 * {@code CommIntRt}) rate is rejected with HTTP&nbsp;400 before it can reach
+	 * the database.</p>
+	 */
 	@JsonProperty("CommIntRate")
+	@NotNull
 	@Digits(integer = 4, fraction = 2)
 	@DecimalMin("0")
 	@DecimalMax("9999.99")
@@ -143,8 +187,18 @@ public class UpdaccJson
 	@Max(99999999)
 	private Integer commOpened;
 
-	/** Overdraft limit, {@code 9(8)}; whole pounds as an {@link Integer} (not money). */
+	/**
+	 * Overdraft limit, {@code 9(8)}; whole pounds as an {@link Integer} (not
+	 * money).
+	 *
+	 * <p>{@link NotNull} required-input guard (QA Issue&nbsp;7): this was the
+	 * exact field whose null value tripped the {@code overdraft_limit} not-null
+	 * constraint and produced an HTTP&nbsp;500 when a request used the
+	 * CREACC-style spelling {@code CommOverdrLim}. It is now rejected with
+	 * HTTP&nbsp;400 up front.</p>
+	 */
 	@JsonProperty("CommOverdraft")
+	@NotNull
 	@Min(0)
 	@Max(99999999)
 	private Integer commOverdraft;

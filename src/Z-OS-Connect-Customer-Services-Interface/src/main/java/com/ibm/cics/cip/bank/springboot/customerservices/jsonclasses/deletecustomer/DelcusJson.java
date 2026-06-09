@@ -31,8 +31,12 @@ public class DelcusJson
 	@JsonProperty("CommCsReviewDate")
 	private String commCsReviewDate;
 
+	// QA Issues 4 and 5: customer number is a fixed-width 10-digit COBOL
+	// identifier. int overflows for valid upper-bound values and discards
+	// leading zeroes, so bind into String; bank-core emits CommCustno as a
+	// JSON string for this contract.
 	@JsonProperty("CommCustno")
-	private int commCustno;
+	private String commCustno;
 
 	@JsonProperty("CommDelFailCd")
 	private int commDelFailCode;
@@ -122,13 +126,13 @@ public class DelcusJson
 	}
 
 
-	public int getCommCustno()
+	public String getCommCustno()
 	{
 		return commCustno;
 	}
 
 
-	public void setCommCustno(int commCustnoIn)
+	public void setCommCustno(String commCustnoIn)
 	{
 		commCustno = commCustnoIn;
 	}

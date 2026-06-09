@@ -1119,7 +1119,18 @@ public class CustomerService
 	 * empty string when the name is null or blank &mdash; matching the COBOL
 	 * {@code UNSTRING COMM-NAME DELIMITED BY SPACE}.
 	 *
-	 * @param name the name
+	 * <p><strong>Title-in-name contract (QA Issue&nbsp;9).</strong> The frozen
+	 * {@code crecust}/{@code updcust} contract carries the customer title as the
+	 * <em>first token of {@code CommName}</em>, not as a separate field &mdash;
+	 * there is no {@code CommTitle} wire property (see
+	 * {@code dto.createcustomer.CrecustJson}). This method therefore extracts the
+	 * candidate title from the name, which the callers validate against
+	 * {@code domain.Title} (an unrecognised first token yields business fail code
+	 * {@code 'T'}). A client must supply the title inline, e.g.
+	 * {@code "Ms Jane Smith"}; any {@code CommTitle} sent alongside is an unknown
+	 * field and does not influence this extraction.</p>
+	 *
+	 * @param name the name (title is its first whitespace-delimited token)
 	 * @return the first token, or {@code ""}
 	 */
 	private String firstToken(String name)
