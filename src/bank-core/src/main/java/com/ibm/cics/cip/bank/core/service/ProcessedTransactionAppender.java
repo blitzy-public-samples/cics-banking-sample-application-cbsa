@@ -23,9 +23,13 @@ import com.ibm.cics.cip.bank.core.util.BankFormat;
 /**
  * Appends rows to the append-only {@code processed_transaction} (PROCTRAN)
  * audit log, reproducing the {@code WRITE-PROCTRAN-DB2} sections that the COBOL
- * business programs ({@code CRECUST}, {@code CREACC}, {@code DELCUS},
- * {@code DELACC}, {@code DBCRFUN}, {@code XFRFUN}) execute as part of every
- * financial movement or create/delete.
+ * business programs ({@code CRECUST}, {@code DELCUS}, {@code XFRFUN}) execute as
+ * part of a customer create/delete or a funds transfer. The account
+ * create/delete ({@code CREACC}/{@code DELACC}) and the debit/credit
+ * ({@code DBCRFUN}) movements append their own PROCTRAN rows inline through
+ * {@code AccountService} and {@code PaymentService} respectively; this appender
+ * is therefore the sole writer of the customer-level {@code OCC}/{@code ODC}
+ * audit rows and the transfer {@code TFR} audit row.
  *
  * <p><strong>Atomicity (review finding F-TXN-1).</strong> Every public method
  * here is annotated {@link Transactional @Transactional} with
@@ -74,12 +78,6 @@ public class ProcessedTransactionAppender
 	/** PROCTRAN type code for a branch-channel delete-customer event. */
 	public static final String TYPE_DELETE_CUSTOMER = "ODC";
 
-	/** PROCTRAN type code for a branch-channel create-account event. */
-	public static final String TYPE_CREATE_ACCOUNT = "OCA";
-
-	/** PROCTRAN type code for a branch-channel delete-account event. */
-	public static final String TYPE_DELETE_ACCOUNT = "ODA";
-
 	/** PROCTRAN type code for a bank-to-bank transfer event. */
 	public static final String TYPE_TRANSFER = "TFR";
 
@@ -89,12 +87,6 @@ public class ProcessedTransactionAppender
 	 */
 	private static final String NO_ACCOUNT = "00000000";
 
-	/** Footer flag for a create-account description ({@code PROC-DESC-CREACC-FOOTER}). */
-	private static final String FOOTER_CREATE = "CREATE";
-
-	/** Footer flag for a delete-account description ({@code PROC-DESC-DELACC-FOOTER}). */
-	private static final String FOOTER_DELETE = "DELETE";
-
 	/** Fixed header of a transfer description ({@code PROC-TRAN-DESC-XFR-FLAG}). */
 	private static final String TRANSFER_HEADER = "TRANSFER";
 
@@ -103,9 +95,6 @@ public class ProcessedTransactionAppender
 
 	/** Width of the customer-name field inside a customer description. */
 	private static final int NAME_WIDTH = 14;
-
-	/** Width of the account-type field inside an account description. */
-	private static final int ACCOUNT_TYPE_WIDTH = 8;
 
 	/** Total fixed width of the PROCTRAN description area. */
 	private static final int DESCRIPTION_WIDTH = 40;
@@ -173,59 +162,6 @@ public class ProcessedTransactionAppender
 	}
 
 	/**
-	 * Appends a create-account ({@code OCA}) audit row.
-	 *
-	 * @param sortCode       the six-digit sort code
-	 * @param accountNumber  the new account number
-	 * @param customerNumber the owning customer number
-	 * @param accountType    the account type
-	 * @param lastStatement  the last-statement date
-	 * @param nextStatement  the next-statement date
-	 * @return the persisted audit row
-	 */
-	@Transactional(propagation = Propagation.MANDATORY)
-	public ProcessedTransaction appendAccountCreate(String sortCode,
-			long accountNumber, long customerNumber, String accountType,
-			LocalDate lastStatement, LocalDate nextStatement)
-	{
-		return append(sortCode, BankFormat.accountNumber(accountNumber),
-				TYPE_CREATE_ACCOUNT,
-				accountDescription(customerNumber, accountType, lastStatement,
-						nextStatement, FOOTER_CREATE),
-				BigDecimal.ZERO);
-	}
-
-	/**
-	 * Appends a delete-account ({@code ODA}) audit row.
-	 *
-	 * <p>The amount recorded on a delete-account row is the account's terminal
-	 * <em>actual</em> balance at the moment of closure ({@code DELACC}
-	 * {@code MOVE ACCOUNT-ACT-BAL-STORE TO HV-PROCTRAN-AMOUNT}), preserving the
-	 * closing balance in the audit history.</p>
-	 *
-	 * @param sortCode        the six-digit sort code
-	 * @param accountNumber   the removed account number
-	 * @param customerNumber  the owning customer number
-	 * @param accountType     the account type
-	 * @param lastStatement   the last-statement date
-	 * @param nextStatement   the next-statement date
-	 * @param terminalBalance the account's actual balance at closure
-	 * @return the persisted audit row
-	 */
-	@Transactional(propagation = Propagation.MANDATORY)
-	public ProcessedTransaction appendAccountDelete(String sortCode,
-			long accountNumber, long customerNumber, String accountType,
-			LocalDate lastStatement, LocalDate nextStatement,
-			BigDecimal terminalBalance)
-	{
-		return append(sortCode, BankFormat.accountNumber(accountNumber),
-				TYPE_DELETE_ACCOUNT,
-				accountDescription(customerNumber, accountType, lastStatement,
-						nextStatement, FOOTER_DELETE),
-				terminalBalance);
-	}
-
-	/**
 	 * Appends a transfer ({@code TFR}) audit row keyed on the source account,
 	 * with the target sort code and account encoded in the description.
 	 *
@@ -244,28 +180,6 @@ public class ProcessedTransactionAppender
 		return append(sortCode, BankFormat.accountNumber(sourceAccount),
 				TYPE_TRANSFER,
 				transferDescription(targetSortCode, targetAccount), amount);
-	}
-
-	/**
-	 * Appends a debit/credit ({@code DEB}/{@code CRE}/{@code PDR}/{@code PCR})
-	 * audit row for a payment or teller movement. The caller supplies the
-	 * already-resolved type code and description because the choice depends on
-	 * the facility type and origin (see {@code PaymentService}).
-	 *
-	 * @param sortCode      the account's sort code
-	 * @param accountNumber the debited/credited account number
-	 * @param typeCode      the resolved three-character PROCTRAN type code
-	 * @param description   the description text
-	 * @param amount        the signed amount (negative debit, positive credit)
-	 * @return the persisted audit row
-	 */
-	@Transactional(propagation = Propagation.MANDATORY)
-	public ProcessedTransaction appendPayment(String sortCode,
-			long accountNumber, String typeCode, String description,
-			BigDecimal amount)
-	{
-		return append(sortCode, BankFormat.accountNumber(accountNumber),
-				typeCode, description, amount);
 	}
 
 	/**
@@ -342,30 +256,6 @@ public class ProcessedTransactionAppender
 	}
 
 	/**
-	 * Builds the forty-character create/delete-account description:
-	 * {@code customerNumber(10) + accountType(8) + lastStmt DDMMYYYY(8) +
-	 * nextStmt DDMMYYYY(8) + footer(6)}.
-	 *
-	 * @param customerNumber the owning customer number
-	 * @param accountType    the account type
-	 * @param lastStatement  the last-statement date
-	 * @param nextStatement  the next-statement date
-	 * @param footer         the six-character footer flag
-	 * @return the fixed-width description
-	 */
-	static String accountDescription(long customerNumber, String accountType,
-			LocalDate lastStatement, LocalDate nextStatement, String footer)
-	{
-		StringBuilder description = new StringBuilder();
-		description.append(BankFormat.customerNumber(customerNumber));
-		description.append(rightPad(accountType, ACCOUNT_TYPE_WIDTH));
-		description.append(dateCompact(lastStatement));
-		description.append(dateCompact(nextStatement));
-		description.append(footer);
-		return description.toString();
-	}
-
-	/**
 	 * Builds the forty-character transfer description:
 	 * {@code "TRANSFER" left-justified in 26 + targetSortCode(6) +
 	 * targetAccount(8)}.
@@ -381,19 +271,6 @@ public class ProcessedTransactionAppender
 		description.append(BankFormat.sortCode(targetSortCode));
 		description.append(BankFormat.accountNumber(targetAccount));
 		return description.toString();
-	}
-
-	/**
-	 * Formats a date as the eight-digit {@code DDMMYYYY} field used inside the
-	 * account description area.
-	 *
-	 * @param date the date to format
-	 * @return the {@code DDMMYYYY} string
-	 */
-	private static String dateCompact(LocalDate date)
-	{
-		return String.format("%02d%02d%04d", date.getDayOfMonth(),
-				date.getMonthValue(), date.getYear());
 	}
 
 	/**
