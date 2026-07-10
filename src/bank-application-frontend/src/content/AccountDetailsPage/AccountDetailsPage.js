@@ -24,6 +24,9 @@ const AccountDetailsPage = () => {
   const [userInput, setUserInput] = useState("")
   const [accountMainRow, setMainRow] = useState([]);
   const [showNoResultsModal, setShowNoResultsModal] = useState(false)
+  // Fix (QA F7): track an in-flight lookup so Submit can be disabled and a rapid
+  // double-submit cannot toggle the results table shut or race on setMainRow.
+  const [isLoading, setIsLoading] = useState(false)
 
   const numberInputProps = {
     id: "accountNum",
@@ -43,9 +46,16 @@ const AccountDetailsPage = () => {
 
   function handleClick() {
     let searchQuery = userInput;
+    // Fix (QA F7): ignore re-entrant submits while a lookup is already in flight.
+    if (isLoading) {
+      return;
+    }
     if (userInput.length !== 0){
         getCustomerAccounts(searchQuery)
-        setIsOpened(wasOpened => !wasOpened)
+        // Fix (QA F7): open the results table idempotently. The previous toggle
+        // (wasOpened => !wasOpened) hid the table on a rapid second submit, leaving
+        // 0 rows until a third click recovered it.
+        setIsOpened(true)
       } else {
         displayNoResults()
       }
@@ -70,18 +80,26 @@ const AccountDetailsPage = () => {
   async function getCustomerAccounts(searchQuery) {
     let account;
     let rowBuild = [];
-    // Security (V8 IDOR, CWE-639): rely on server ownership check; do not leak other principals' ids
-    await axios
-      .get(process.env.REACT_APP_ACCOUNT_URL + `/${searchQuery}`)
-      .then(response => {
-        account = response.data;
-      }).catch (function (error) {
-        if (error.response){
-          displayNoResults()
-          console.log(error)
-        }
-      })
+    // Fix (QA F7): mark the lookup in flight so Submit is disabled for its duration.
+    setIsLoading(true)
     try {
+      // Security (V8 IDOR, CWE-639): rely on server ownership check; do not leak other principals' ids
+      await axios
+        .get(process.env.REACT_APP_ACCOUNT_URL + `/${searchQuery}`)
+        .then(response => {
+          account = response.data;
+        }).catch (function (error) {
+          if (error.response){
+            displayNoResults()
+            console.log(error)
+          }
+        })
+      // Fix (QA F6): when the lookup failed, `account` is undefined; stop here instead of
+      // dereferencing it. The previous code fell through and read account.dateOpened, which
+      // threw a TypeError that was only caught-and-logged, adding console noise on every 4xx.
+      if (!account) {
+        return;
+      }
       let row;
       let formattedDateOpened = getDay(account.dateOpened) + "-" + getMonth(account.dateOpened) + "-" + getYear(account.dateOpened)
       let formattedLastStatementDue = getDay(account.lastStatementDate) + "-" + getMonth(account.lastStatementDate) + "-" + getYear(account.lastStatementDate)
@@ -107,6 +125,9 @@ const AccountDetailsPage = () => {
       setMainRow(rowBuild)
     } catch (e) {
       console.log("Error: " + e);
+    } finally {
+      // Fix (QA F7): release the in-flight lock so Submit is usable again.
+      setIsLoading(false)
     }
   }
 
@@ -140,7 +161,8 @@ const AccountDetailsPage = () => {
                       hideSteppers
                     />
                     <div style={{ marginTop: '20px' }}>
-                      <Button type="submit" onClick={handleClick}>
+                      {/* Fix (QA F7): disable Submit while a lookup is in flight to prevent double-submit. */}
+                      <Button type="submit" onClick={handleClick} disabled={isLoading}>
                         Submit
                       </Button>
                     </div>

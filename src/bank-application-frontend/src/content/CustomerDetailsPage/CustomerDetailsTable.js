@@ -165,8 +165,15 @@ const CustomerDetailsTable = ({ customerDetailsRows, accountDetailsRows }) => {
     }
 
 let newDateOfBirth = currentDateOfBirth.substring(6,10) + "-" + currentDateOfBirth.substring(3,5) + "-" + currentDateOfBirth.substring(0,2)
+    // Fix (QA F3): capture the interceptor handle so it can be ejected after this
+    // update completes. Previously updateCustomer() called
+    // axios.interceptors.response.use(...) on every invocation without ever
+    // ejecting it, so each repeated (failed) update left another global response
+    // interceptor registered. All of them fired on the next error, producing a
+    // triangular, ever-growing number of duplicate alerts for a single failure.
+    let interceptorId
     try {
-      axios.interceptors.response.use(function (response) {
+      interceptorId = axios.interceptors.response.use(function (response) {
         // Any status code that lie within the range of 2xx cause this function to trigger
         // Do something with response data
         return response;
@@ -195,6 +202,14 @@ let newDateOfBirth = currentDateOfBirth.substring(6,10) + "-" + currentDateOfBir
         window.location.reload(true)
     } catch (e) {
       console.log("Error updating customer: " + e)
+    } finally {
+      // Fix (QA F3): eject the response interceptor registered above so exactly
+      // one is active per updateCustomer() call and none accumulate across
+      // repeated attempts. (The handle can legitimately be 0, so compare
+      // against undefined rather than using a truthy check.)
+      if (interceptorId !== undefined) {
+        axios.interceptors.response.eject(interceptorId)
+      }
     }
 
   }

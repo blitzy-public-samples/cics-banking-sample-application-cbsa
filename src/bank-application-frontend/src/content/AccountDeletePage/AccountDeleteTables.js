@@ -235,6 +235,12 @@ const AccountDeleteTables = ({ accountQuery }) => {
             //            updateRows(accountNumber)
             responseData = response.data
             console.log(responseData)
+            // Fix (QA F1): show the success UI only when the DELETE actually resolved (2xx).
+            // Previously displayModal()+displaySuccessfulDeleteModal() ran unconditionally
+            // after the await, so a failed DELETE (handled by .catch below) still fell through
+            // and displayed a false "Account deleted successfully" modal alongside the failure one.
+            displayModal()
+            displaySuccessfulDeleteModal()
           }).catch(function (error) {
             if (error.response) {
               console.log(error)
@@ -242,8 +248,6 @@ const AccountDeleteTables = ({ accountQuery }) => {
               displayUnableDeleteModal()
             }
           })
-      displayModal()
-      displaySuccessfulDeleteModal()
 
     } catch (e) {
       console.log(e)

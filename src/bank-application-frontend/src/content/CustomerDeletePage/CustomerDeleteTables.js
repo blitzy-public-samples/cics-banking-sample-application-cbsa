@@ -82,6 +82,11 @@ const CustomerDeleteTables = ({customerRow, accountRow}) => {
   const [accountNumberToDelete, setAccountNumberToDelete] = useState("")
   const [isModalOpened, setModalOpened] = useState(false);
   const [wasUnableDeleteOpened, setUnableDeleteModalOpened] = useState(false);
+  // Fix (QA F5): dedicated state for an account-delete failure modal. Previously a
+  // failed account deletion reused the customer-oriented "Unable to delete the
+  // customer!" modal (which tells the user to "delete all associated accounts"),
+  // producing misleading messaging for what is actually an account deletion failure.
+  const [wasUnableDeleteAccountOpened, setUnableDeleteAccountModalOpened] = useState(false);
   const [isSuccessfulCustomerDeleteModalOpened, setSuccessfulCustomerDeleteModalOpened] = useState(false)
   const [isSuccessfulAccountDeleteModalOpened, setSuccessfulAccountDeleteModalOpened] = useState(false)
 
@@ -166,8 +171,13 @@ const CustomerDeleteTables = ({customerRow, accountRow}) => {
       displaySuccessfulAccountDeleteModal()
     } catch (e) {
       console.log(e)
+      // Fix (QA F5): show the ACCOUNT-specific failure modal on an account
+      // deletion failure. Previously this called displayUnableDeleteModal(),
+      // which opens the customer-oriented "Unable to delete the customer! /
+      // Please delete all associated accounts" modal — wrong messaging for a
+      // failed account delete.
       displayAccountModal()
-      displayUnableDeleteModal()
+      displayUnableDeleteAccountModal()
     }
   }
 
@@ -179,6 +189,11 @@ const CustomerDeleteTables = ({customerRow, accountRow}) => {
 
   function displayUnableDeleteModal() {
     setUnableDeleteModalOpened(wasUnableDeleteOpened => !wasUnableDeleteOpened);
+  }
+
+  // Fix (QA F5): toggle for the account-specific delete-failure modal.
+  function displayUnableDeleteAccountModal() {
+    setUnableDeleteAccountModalOpened(wasUnableDeleteAccountOpened => !wasUnableDeleteAccountOpened);
   }
 
   return (
@@ -295,6 +310,19 @@ const CustomerDeleteTables = ({customerRow, accountRow}) => {
                               onRequestClose={() => {displaySuccessfulAccountDeleteModal(); window.location.reload()}}
                               passiveModal
                             />
+                            {/* Fix (QA F5): account-specific delete-failure modal
+                                (replaces the misleading customer-oriented modal). */}
+                            <Modal
+                              modalHeading="Unable to delete the account!"
+                              open={wasUnableDeleteAccountOpened}
+                              onRequestClose={displayUnableDeleteAccountModal}
+                              danger
+                              passiveModal>
+                              <ModalBody hasForm>
+                                The account could not be deleted. Please try again
+                                later.
+                              </ModalBody>
+                            </Modal>
                           </TableRow>
                         ))}
                       </TableBody>

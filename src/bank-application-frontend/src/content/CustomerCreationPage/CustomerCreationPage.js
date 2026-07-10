@@ -93,6 +93,12 @@ const CustomerCreationPage = () => {
    */
   async function createCustomer() {
     if ((line1) === "" || (city) === "" || (title) === "" || (customerFullName) === "" || !(checkDOB())) {
+      // Fix (QA F2): buttonPress() has already opened the "Creating customer..." loading
+      // modal (it only invokes createCustomer when checkDOB() is true). Close that loader
+      // here before showing the validation-failure modal; otherwise the loader stays stuck
+      // open behind the failure modal until the user reloads the page. The success/error
+      // branches below already close it via displayLoadingModal(); this branch omitted it.
+      displayLoadingModal()
       displayFailureModal()
     }
     else {
