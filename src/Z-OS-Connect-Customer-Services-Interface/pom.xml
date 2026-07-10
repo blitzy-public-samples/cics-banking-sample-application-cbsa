@@ -166,6 +166,17 @@
 			<scope>test</scope>
 		</dependency>
 
+		<!-- Security fix (V2 verification, F-001 RBAC TELLER provisioning): Spring Boot test starter
+		     (JUnit 5, MockMvc, AssertJ) for the role-based access-control tests that prove
+		     unauthenticated=401, authenticated non-TELLER=403, and authenticated TELLER=success on the
+		     guarded state-changing endpoints. test scope only; not shipped in the WAR.
+		     Version governed by the Spring Boot 3.5.11 parent BOM. -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+
 		<dependency>
 			<groupId>org.springframework</groupId>
 			<artifactId>spring-web</artifactId>

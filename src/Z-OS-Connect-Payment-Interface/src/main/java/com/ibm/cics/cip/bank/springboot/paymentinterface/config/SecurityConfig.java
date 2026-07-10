@@ -6,12 +6,21 @@ package com.ibm.cics.cip.bank.springboot.paymentinterface.config;
 import java.util.Arrays;
 import java.util.List;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.core.userdetails.User;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.crypto.factory.PasswordEncoderFactories;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.web.cors.CorsConfiguration;
@@ -43,6 +52,23 @@ public class SecurityConfig
 	// (cbsa.security.cors.allowed-origins in application.properties). NEVER '*'.
 	@Value("${cbsa.security.cors.allowed-origins}")
 	private String allowedOrigins;
+
+
+	// Security fix (F-001 / V2 CWE-306 Missing Authentication, CWE-862 Missing Authorization -
+	// OWASP A01 Broken Access Control / A07 Identification & Authentication Failures; V7 CWE-798
+	// Hardcoded Credentials - OWASP A05 Security Misconfiguration): externalized TELLER role
+	// credentials. @PreAuthorize("hasRole('TELLER')") on the money-movement handlers requires a
+	// principal that holds ROLE_TELLER; without a role source EVERY authenticated caller is denied
+	// with 403 (finding F-001). Username and password are read from configuration (env-backed via
+	// application.properties) so NO secret is committed to source control. NEVER '*'-style defaults.
+	@Value("${cbsa.security.teller.username:teller}")
+	private String tellerUsername;
+
+	@Value("${cbsa.security.teller.password:}")
+	private String tellerPassword;
+
+	private static final Logger LOG = LoggerFactory
+			.getLogger(SecurityConfig.class);
 
 
 	@Bean
@@ -85,6 +111,42 @@ public class SecurityConfig
 				new UrlBasedCorsConfigurationSource();
 		source.registerCorsConfiguration("/**", config);
 		return source;
+	}
+
+
+	@Bean
+	PasswordEncoder passwordEncoder()
+	{
+		// Security fix (V7 CWE-798 Hardcoded Credentials - OWASP A05 Security Misconfiguration):
+		// hash the externalized TELLER credential with the Spring Security delegating encoder
+		// (bcrypt by default) - never store or compare a plain-text password.
+		return PasswordEncoderFactories.createDelegatingPasswordEncoder();
+	}
+
+
+	@Bean
+	UserDetailsService userDetailsService(PasswordEncoder passwordEncoder)
+	{
+		// Security fix (F-001 / V2 CWE-862 Missing Authorization - OWASP A01 Broken Access Control):
+		// provision the TELLER authority source so @PreAuthorize("hasRole('TELLER')") admits an
+		// authorized teller (authority ROLE_TELLER) and denies non-teller principals (403), keeping
+		// behavior identical for authorized users. Deny-by-default: when no TELLER password is
+		// externally provisioned, register NO user - mirroring the Liberty externalized
+		// ${zosconnect.registry.*} pattern; the deployer MUST supply CBSA_TELLER_PASSWORD.
+		// NEVER hardcode a credential here (V7 CWE-798).
+		if (tellerPassword == null || tellerPassword.isBlank())
+		{
+			LOG.warn(
+					"No TELLER credential provisioned (set CBSA_TELLER_PASSWORD); no in-memory user "
+							+ "registered - authenticated access is denied by default until a teller "
+							+ "credential is supplied.");
+			return new InMemoryUserDetailsManager();
+		}
+		UserDetails teller = User.withUsername(tellerUsername)
+				.password(passwordEncoder.encode(tellerPassword))
+				.roles("TELLER")
+				.build();
+		return new InMemoryUserDetailsManager(teller);
 	}
 
 }
