@@ -10,6 +10,10 @@ looks something like this:
 
 [http://*your-allocated-host-name*:*your-port-number*/webui-1.0/banking/*resource*](http://your-allocated-host-name:your-port-number/webui-1.0/banking/*resource*)
 
+**Authentication and authorization:** The RESTful interface now requires authentication. Every request to a /webui-1.0/banking/ resource is authenticated on a deny-by-default, least-privilege basis. A request that is not authenticated, because it supplies no credentials or invalid credentials, is rejected with an HTTP 401 (Unauthorized) response. A request from an authenticated caller that does not hold the required role, or a state-changing PUT, POST or DELETE request that fails CSRF validation, is rejected with an HTTP 403 (Forbidden) response.
+
+<!-- Security note (V2 Missing Authentication/Authorization): documents the newly required authentication and the 401/403 responses. -->
+
 #### Company Name
 
 [http://*your-allocated-host-name*:*your-port-number*/webui-1.0/banking/companyName](http://your-allocated-host-name:your-port-number/webui-1.0/banking/companyName)

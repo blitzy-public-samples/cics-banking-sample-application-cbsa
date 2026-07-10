@@ -16,6 +16,7 @@ here are a few examples:
 - [Downloading](#downloading)
 - [Installing](#installing)
 - [Usage](#usage)
+- [Security](#security)
 - [Contributors](#contributors)
 
 ## About
@@ -89,6 +90,33 @@ Various user guides are provided:
   4. For the Payment interface please refer to the [CBSA Payment Interface User Guide.](https://github.com/cicsdev/cics-banking-sample-application-cbsa/tree/main/etc/usage/springBoot/doc/CBSA_Payment_Interface_User_Guide.md)
   5. For the RESTful API guide please refer to the [CBSA RESTful Api Guide.](https://github.com/cicsdev/cics-banking-sample-application-cbsa/tree/main/etc/usage/springBoot/doc/CBSA_Restful_API_guide.md)
 
+
+## Security
+Application-layer security is now enforced across the banking interfaces. Authentication is **required** and access is governed by role-based authorization. These controls were added as part of an OWASP-aligned security remediation (addressing Broken Access Control, Identification and Authentication Failures, and Security Misconfiguration).
+
+> Please refer to [SECURITY.md](SECURITY.md) for the full security model, the vulnerability-reporting process, and the complete configuration-variable reference.
+
+**Authentication and authorization (now required)**
+> All state-changing banking endpoints across the Spring Boot Customer Services (`/customerservices-1.0/`) and Payment (`/paymentinterface-1.1/`) interfaces, together with the Liberty z/OS Connect RESTful API, now require authentication with role-based authorization (for example, a Bank Teller role and a payment-channel role).
+> - Unauthenticated requests receive `401 Unauthorized`.
+> - Authenticated requests that lack the required role, or that omit a valid CSRF token, receive `403 Forbidden`.
+>
+> This is the single deliberate behavioral change; the REST contracts (paths, verbs, and request/response schemas) are otherwise unchanged.
+
+**CSRF, CORS, and security headers**
+> - CSRF protection is enabled using the cookie-based token pattern for the single-page application (an `XSRF-TOKEN` cookie that is read back from the `X-XSRF-TOKEN` request header).
+> - CORS is restricted to an explicit origin allowlist (no wildcard origin combined with credentials).
+> - Standard security response headers are applied: `Content-Security-Policy`, `X-Content-Type-Options`, `X-Frame-Options`, and `Strict-Transport-Security` (HSTS).
+
+**Coordinated rollout**
+> Because authentication is now enforced, the Carbon React UI and any other API clients must authenticate and send the CSRF token on state-changing requests. The client and server changes must therefore be deployed together.
+
+### Configuration and Credentials
+Credentials and environment-specific connection settings have been externalized out of source control. **No credentials are committed to this repository**; deployers must supply the following values at deployment time through environment variables, JVM system properties, or Liberty variable configuration:
+
+> - **Liberty keystore password** - previously hardcoded in `etc/install/springBootUI/zosconnectserver/server.xml`, this is now resolved from a Liberty variable / environment (for example, a `${keystore.password}` placeholder sourced from `bootstrap.properties` or the environment). The concrete value is provisioned at deployment.
+> - **Liberty `basicRegistry` credentials** - the registry user and password previously embedded in `server.xml` are now resolved from Liberty variables / environment.
+> - **z/OS Connect connection settings (Spring Boot modules)** - the connection host and port are supplied by the `CBSA_ZOSCONN_HOST` and `CBSA_ZOSCONN_PORT` JVM system properties. The connection scheme (previously hardcoded to `http`) is now externalized via the `CBSA_ZOSCONN_SCHEME` system property (default `http`), enabling HTTPS to be selected by configuration.
 
 ## Contributors
  > Jon Collett - JonCollettIBM

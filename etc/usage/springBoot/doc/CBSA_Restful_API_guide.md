@@ -15,6 +15,19 @@ Please refer to the GitHub repo:
 cicsdev/cics-banking-sample-application-cbsa/doc for architecture
 information.
 
+## Authentication and Authorization:
+
+The CBSA RESTful API now requires authentication. Every request must
+present valid credentials, and access is granted on a deny-by-default,
+least-privilege basis. A request that is not authenticated (because it
+supplies no credentials, or invalid credentials) receives a
+**401 Unauthorized** response. A request from an authenticated caller
+that lacks the required role, or a state-changing (POST, PUT, or DELETE)
+request that fails CSRF validation, receives a **403 Forbidden**
+response.
+
+<!-- Security note (V2 Missing Authentication/Authorization): documents the newly required authentication and the 401/403 responses. -->
+
 ## The PAYMENT interface:
 
 Think of the Payment interface as being similar to a debit or credit

@@ -356,6 +356,7 @@
        PROCEDURE DIVISION USING DFHCOMMAREA.
        PREMIERE SECTION.
        P010.
+           PERFORM VALIDATE-INPUT.
 
       *
       *    You can change the customer's name, but the title must
@@ -475,6 +476,24 @@
            PERFORM GET-ME-OUT-OF-HERE.
 
        P999.
+           EXIT.
+
+
+      *
+      * CWE-89 (SQL Injection) defense-in-depth: validate the
+      * caller-supplied numeric date of birth before any EXEC SQL
+      * data access. Host-variable binding already separates data
+      * from SQL; this rejects malformed values early. The customer
+      * number and sort code are program-assigned, not checked here.
+      *
+       VALIDATE-INPUT SECTION.
+       VLD010.
+           IF COMM-DATE-OF-BIRTH IS NOT NUMERIC
+             MOVE 'N' TO COMM-SUCCESS
+             MOVE 'T' TO COMM-FAIL-CODE
+             GOBACK
+           END-IF.
+       VLD999.
            EXIT.
 
 

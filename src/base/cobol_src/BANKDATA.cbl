@@ -405,6 +405,7 @@
              DISPLAY 'Gap between customers cannot be zero'
              GOBACK
            END-IF
+           PERFORM VALIDATE-INPUT
 
       *
       * Get today's date and store it as an INTEGER
@@ -1175,6 +1176,24 @@
 
 
        IA999.
+           EXIT.
+
+      *
+      * CWE-89 (SQL Injection) defense-in-depth: validate the batch
+      * seed key inputs before any EXEC SQL data access. Host-variable
+      * binding already separates data from SQL; this rejects malformed
+      * key ranges early. Batch-only guardrail (SEC-R4) is preserved.
+      *
+       VALIDATE-INPUT SECTION.
+       VLD010.
+           IF START-KEY IS NOT NUMERIC
+           OR END-KEY IS NOT NUMERIC
+           OR STEP-KEY IS NOT NUMERIC
+              DISPLAY 'BANKDATA: NON-NUMERIC KEY PARAMETER'
+              MOVE 12 TO RETURN-CODE
+              GOBACK
+           END-IF.
+       VLD999.
            EXIT.
 
       *

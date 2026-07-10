@@ -217,6 +217,7 @@
       *
 
 
+           PERFORM VALIDATE-INPUT.
       *
       *           Go and update the ACCOUNT record
       *
@@ -229,6 +230,32 @@
            PERFORM GET-ME-OUT-OF-HERE.
 
        A999.
+           EXIT.
+
+
+      *
+      * CWE-89 (SQL Injection) defense-in-depth: validate the caller
+      * supplied account number and amount before any EXEC SQL data
+      * access. Host-variable binding already keeps data separate from
+      * SQL; this rejects malformed input early. SEC-R1 checks inside
+      * UPDATE-ACCOUNT-DB2 are layered on top and are unaffected.
+      *
+       VALIDATE-INPUT SECTION.
+       VLD010.
+           IF COMM-ACCNO IS NOT NUMERIC
+           OR COMM-ACCNO = ZEROES
+              MOVE 'N' TO COMM-SUCCESS
+              MOVE '1' TO COMM-FAIL-CODE
+              PERFORM GET-ME-OUT-OF-HERE
+           END-IF.
+
+           IF COMM-AMT > 99999999.99
+           OR COMM-AMT < -99999999.99
+              MOVE 'N' TO COMM-SUCCESS
+              MOVE '1' TO COMM-FAIL-CODE
+              PERFORM GET-ME-OUT-OF-HERE
+           END-IF.
+       VLD999.
            EXIT.
 
 

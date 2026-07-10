@@ -246,6 +246,8 @@
        PREMIERE SECTION.
        A010.
 
+           PERFORM VALIDATE-INPUT
+
            MOVE SORTCODE TO REQUIRED-SORT-CODE
                             REQUIRED-SORT-CODE OF CUSTOMER-KY
                             DESIRED-KEY-SORTCODE.
@@ -292,6 +294,24 @@
            PERFORM GET-ME-OUT-OF-HERE.
 
        A999.
+           EXIT.
+
+
+      *
+      * CWE-89 (SQL Injection) defense-in-depth: validate the customer
+      * number before any data access / EXEC SQL. Host-variable binding
+      * already separates data from SQL; this rejects malformed keys
+      * early.
+      *
+       VALIDATE-INPUT SECTION.
+       VLD010.
+           IF COMM-CUSTNO OF DFHCOMMAREA IS NOT NUMERIC
+           OR COMM-CUSTNO OF DFHCOMMAREA = ZEROES
+              MOVE 'N' TO COMM-DEL-SUCCESS
+              MOVE '1' TO COMM-DEL-FAIL-CD
+              PERFORM GET-ME-OUT-OF-HERE
+           END-IF.
+       VLD999.
            EXIT.
 
 
