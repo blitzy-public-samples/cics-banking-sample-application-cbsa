@@ -6,13 +6,31 @@
 -->
 
 <web-app xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://java.sun.com/xml/ns/javaee" xmlns:web="http://java.sun.com/xml/ns/javaee/web-app_2_5.xsd" xsi:schemaLocation="http://java.sun.com/xml/ns/javaee http://java.sun.com/xml/ns/javaee/web-app_3_0.xsd" version="3.0">
+  <!-- Security fix (V6 / CWE-352 CSRF / OWASP A01): XSRF protection re-enabled (was disabled) -->
   <context-param>
     <param-name>disable-xsrf-protection</param-name>
-    <param-value>true</param-value>
+    <param-value>false</param-value>
   </context-param>
   <context-param>
     <param-name>syncId</param-name>
     <param-value>false</param-value>
 </context-param>
     <display-name>webUI</display-name>
+  <!-- Security fix (V2 / CWE-306,CWE-862 Missing Authn/Authz / OWASP A07,A01): container-managed BASIC authentication bound to the Liberty 'zosConnect' basic registry; protects the JAX-RS banking API so unauthenticated calls receive 401 and callers lacking the role receive 403 -->
+  <security-constraint>
+    <web-resource-collection>
+      <web-resource-name>CBSA Banking REST API</web-resource-name>
+      <url-pattern>/banking/*</url-pattern>
+    </web-resource-collection>
+    <auth-constraint>
+      <role-name>zosConnectAccess</role-name>
+    </auth-constraint>
+  </security-constraint>
+  <login-config>
+    <auth-method>BASIC</auth-method>
+    <realm-name>zosConnect</realm-name>
+  </login-config>
+  <security-role>
+    <role-name>zosConnectAccess</role-name>
+  </security-role>
 </web-app>

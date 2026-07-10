@@ -5,6 +5,7 @@
  */
 
 import React, { Component } from 'react';
+import axios from 'axios';
 import './app.scss';
 import { Content, Theme } from '@carbon/react';
 import HomepageHeader from './components/Homepage-Header';
@@ -18,6 +19,27 @@ import AccountDetailsPage from './content/AccountDetailsPage';
 import CustomerDeletePage from './content/CustomerDeletePage';
 import AccountDeletePage from './content/AccountDeletePage'
 import { HashRouter, Route, Switch} from 'react-router-dom';
+
+// Security (V6 CSRF, CWE-352): cookie-to-header CSRF token for the SPA. Matches
+// Spring Security CookieCsrfTokenRepository.withHttpOnlyFalse(): read the
+// XSRF-TOKEN cookie and echo it in the X-XSRF-TOKEN header.
+axios.defaults.xsrfCookieName = 'XSRF-TOKEN';
+axios.defaults.xsrfHeaderName = 'X-XSRF-TOKEN';
+// Security (V2, OWASP A07 authentication): send credentials (session cookie) so
+// authenticated requests carry the login context.
+axios.defaults.withCredentials = true;
+
+// Security (V2, OWASP A07 authentication): on 401 Unauthorized, redirect the
+// user to authenticate; re-reject so component-level .catch handlers still run.
+axios.interceptors.response.use(
+  response => response,
+  error => {
+    if (error.response && error.response.status === 401) {
+      window.location.assign('#/');
+    }
+    return Promise.reject(error);
+  }
+);
 
 
 class App extends Component {
