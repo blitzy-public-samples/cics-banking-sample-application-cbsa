@@ -184,6 +184,7 @@ const AccountDetailsTable = ({accountMainRow}) => {
 let newLastStatementDate = lastStatementDate.substring(6,10) + "-" + lastStatementDate.substring(3,5) + "-" + lastStatementDate.substring(0,2)
 let newNextStatementDate = nextStatementDate.substring(6,10) + "-" + nextStatementDate.substring(3,5) + "-" + nextStatementDate.substring(0,2)
 let newDateOpened        = dateOpened.substring(6,10) + "-" + dateOpened.substring(3,5) + "-" + dateOpened.substring(0,2)
+      // Security (V2 auth, V6 CSRF): request carries credentials + X-XSRF-TOKEN via shared axios config
       await axios
         .put(process.env.REACT_APP_ACCOUNT_URL + `/${useAccountNumber}`, {
           interestRate: useInterestRate,

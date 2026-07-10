@@ -119,6 +119,7 @@ const CustomerDetailsPage = () => {
   async function getCustomerByNum(searchQuery) {
     let responseData;
     let rowBuild = [];
+    // Security (V8 IDOR, CWE-639): rely on server ownership check; do not leak other principals' ids
     await axios
       .get(process.env.REACT_APP_CUSTOMER_URL + `/${searchQuery}`)
       .then(response => {

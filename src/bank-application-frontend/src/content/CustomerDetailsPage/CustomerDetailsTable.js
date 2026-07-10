@@ -180,6 +180,7 @@ let newDateOfBirth = currentDateOfBirth.substring(6,10) + "-" + currentDateOfBir
         }
         return Promise.reject(error);
       });
+      // Security (V2 auth, V6 CSRF): request carries credentials + X-XSRF-TOKEN via shared axios config
       await axios
         .put(process.env.REACT_APP_CUSTOMER_URL + `/${customerNumber}`, {
           customerAddress: useAddress,

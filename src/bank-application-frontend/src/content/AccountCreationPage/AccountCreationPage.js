@@ -83,6 +83,7 @@ const AccountCreationPage = () => {
   async function createAccount() {
     let responseData;
     try {
+      // Security (V2 auth, V6 CSRF): request carries credentials + X-XSRF-TOKEN via shared axios config
       await axios
         .post(process.env.REACT_APP_ACCOUNT_URL, {
           interestRate: enteredInterestRate,

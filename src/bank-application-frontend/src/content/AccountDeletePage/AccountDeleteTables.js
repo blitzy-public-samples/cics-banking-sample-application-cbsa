@@ -100,6 +100,7 @@ const AccountDeleteTables = ({ accountQuery }) => {
     let account;
     if (mainAccountRow.length === 0) {
       let rowBuild = [];
+      // Security (V2 auth, V6 CSRF): request carries credentials + X-XSRF-TOKEN via shared axios config
       await
         axios
           .get(process.env.REACT_APP_ACCOUNT_URL + `/${accountQuery}`)
@@ -225,6 +226,7 @@ const AccountDeleteTables = ({ accountQuery }) => {
     let accountNumber = accountNumberToDelete
     let responseData;
     try {
+      // Security (V2 auth, V6 CSRF): request carries credentials + X-XSRF-TOKEN via shared axios config
       await
         axios
           .delete(process.env.REACT_APP_ACCOUNT_URL + `/${accountNumber}`)

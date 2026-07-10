@@ -129,6 +129,7 @@ const CustomerDeleteTables = ({customerRow, accountRow}) => {
         })
       let numberOfAccounts = howManyAccountsData.numberOfAccounts
       if (parseInt(numberOfAccounts) === 0) {
+        // Security (V2 auth, V6 CSRF): request carries credentials + X-XSRF-TOKEN via shared axios config
         await axios
           .delete(process.env.REACT_APP_CUSTOMER_URL + `/${customerNumber}`)
           .then(response => {
@@ -155,6 +156,7 @@ const CustomerDeleteTables = ({customerRow, accountRow}) => {
     let accountNumber = row.accountNumber
     let responseData;
     try {
+      // Security (V2 auth, V6 CSRF): request carries credentials + X-XSRF-TOKEN via shared axios config
       await axios
         .delete(process.env.REACT_APP_ACCOUNT_URL + `/${accountNumber}`)
         .then(response => {

@@ -99,6 +99,7 @@ const CustomerCreationPage = () => {
       let customerAddress = line1 + ", " + city
       let customerName = title + " " + customerFullName
       let responseData;
+      // Security (V2 auth, V6 CSRF): request carries credentials + X-XSRF-TOKEN via shared axios config
       await axios
         .post(process.env.REACT_APP_CUSTOMER_URL, {
           customerAddress: customerAddress,

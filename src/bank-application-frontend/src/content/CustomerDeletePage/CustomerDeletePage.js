@@ -67,6 +67,7 @@ const CustomerDeletePage = () => {
    async function getCustomerByNum(searchQuery) {
      let responseData;
      let rowBuild = [];
+     // Security (V2 auth, V6 CSRF): request carries credentials + X-XSRF-TOKEN via shared axios config
      await axios
        .get(process.env.REACT_APP_CUSTOMER_URL + `/${searchQuery}`)
        .then(response => {
