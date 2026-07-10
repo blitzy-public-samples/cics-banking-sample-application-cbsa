@@ -122,7 +122,9 @@
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-validation</artifactId>
-			<scope>provided</scope>
+			<!-- Security fix V3 (OWASP A03 Injection; CWE-20 Improper Input Validation):
+			     scope changed provided->compile so Bean Validation runs at runtime, enforcing @Valid at controller boundaries. -->
+			<scope>compile</scope>
 		</dependency>
 
 		<dependency>
@@ -150,6 +152,22 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-web</artifactId>
 			<scope>compile</scope>
+		</dependency>
+
+		<!-- Security fix V2 (OWASP A01 Broken Access Control / A07 Identification & Authentication Failures; CWE-306/CWE-862):
+		     Adds Spring Security so the module can enforce authentication + role-based authorization.
+		     Version intentionally omitted so it is governed by the Spring Boot 3.5.11 parent BOM (Spring Security 6.x). -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-security</artifactId>
+		</dependency>
+
+		<!-- Security fix V2/V3 verification support: Spring Security test utilities (@WithMockUser, MockMvc security).
+		     test scope only; not shipped in the WAR. Version governed by the Spring Boot 3.5.11 parent BOM. -->
+		<dependency>
+			<groupId>org.springframework.security</groupId>
+			<artifactId>spring-security-test</artifactId>
+			<scope>test</scope>
 		</dependency>
 
 		<dependency>

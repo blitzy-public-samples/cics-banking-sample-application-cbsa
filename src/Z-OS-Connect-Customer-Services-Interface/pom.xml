@@ -38,11 +38,12 @@
 			<scope>compile</scope>
 		</dependency>
 
+		<!-- Security fix (V5 CWE-1035/CWE-937 Vulnerable & Outdated Components): removed the explicit jackson-core 2.21.1 pin
+		     so the Spring Boot parent BOM governs jackson-core and jackson-databind together, eliminating version skew. -->
 		<dependency>
 			<groupId>com.fasterxml.jackson.core</groupId>
 			<artifactId>jackson-core</artifactId>
 			<scope>compile</scope>
-			<version>2.21.1</version>
 		</dependency>
 
 		<dependency>
@@ -147,6 +148,22 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-webflux</artifactId>
 			<scope>compile</scope>
+		</dependency>
+
+		<!-- Security fix (V2 CWE-306/CWE-862 Missing Authentication/Authorization; V6 CWE-352 CSRF / CWE-942 CORS / CWE-693 missing headers):
+		     adds Spring Security 6.x to enable authentication, role-based authorization, CSRF, CORS allowlist, and security headers.
+		     Version intentionally omitted so it is governed by the spring-boot-starter-parent 3.5.11 BOM. -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-security</artifactId>
+			<scope>compile</scope>
+		</dependency>
+
+		<!-- Security fix (V2 verification): test-scoped Spring Security test support for authn/authz test slices (@WithMockUser, MockMvc). -->
+		<dependency>
+			<groupId>org.springframework.security</groupId>
+			<artifactId>spring-security-test</artifactId>
+			<scope>test</scope>
 		</dependency>
 
 		<dependency>
