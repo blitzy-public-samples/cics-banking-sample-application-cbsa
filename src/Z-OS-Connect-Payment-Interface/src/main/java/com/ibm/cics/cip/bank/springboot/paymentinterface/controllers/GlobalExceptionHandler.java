@@ -8,13 +8,20 @@ import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
+import org.springframework.web.ErrorResponse;
+import org.springframework.web.HttpMediaTypeNotAcceptableException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
+import org.springframework.web.servlet.NoHandlerFoundException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /*
  * Centralized, application-wide exception handling for the Payment Interface
@@ -56,8 +63,14 @@ import org.springframework.web.method.annotation.HandlerMethodValidationExceptio
  * always selects the most specific @ExceptionHandler, so these win over the broad Exception
  * handler, preserving the V2 authorization contract.
  *
+ * It likewise preserves the native client-error status of Spring MVC's own framework
+ * exceptions (a missing resource stays 404, an unsupported method stays 405, an unsupported
+ * or unacceptable media type stays 415/406) rather than remapping them to 500 - see
+ * handleFrameworkClientError(ErrorResponse).
+ *
  * Scope note: purely additive. No existing REST/MVC path, verb, or response schema
- * changes; the only new response behavior is the standard 400/401/403/500 handling above.
+ * changes; the only new response behavior is the standard 400/401/403/404/405/406/415/500
+ * handling above.
  */
 @ControllerAdvice
 public class GlobalExceptionHandler
@@ -129,6 +142,47 @@ public class GlobalExceptionHandler
 				ex.getClass().getSimpleName());
 		return ResponseEntity.status(HttpStatus.BAD_REQUEST)
 				.body(VALIDATION_ERROR_MSG);
+	}
+
+
+	// Security fix (V4 / QA finding F-1 - remediation-introduced error-hygiene regression;
+	// OWASP A09 Security Logging and Monitoring Failures): Spring MVC's OWN framework
+	// client-error exceptions are HANDLED outcomes carrying a well-defined 4xx client status -
+	// a request for a missing static resource (NoResourceFoundException -> 404) or an unmapped
+	// handler (NoHandlerFoundException -> 404), an unsupported HTTP method
+	// (HttpRequestMethodNotSupportedException -> 405), or an unsupported / unacceptable media
+	// type (HttpMediaTypeNotSupportedException -> 415, HttpMediaTypeNotAcceptableException -> 406).
+	// They are NOT genuinely uncaught server errors. Because ExceptionHandlerExceptionResolver
+	// (which drives @ExceptionHandler methods) is consulted BEFORE Spring's
+	// DefaultHandlerExceptionResolver, the broad @ExceptionHandler(Exception.class) fallback
+	// below would otherwise intercept these framework exceptions first and remap every one to
+	// HTTP 500 - corrupting client-error monitoring/alerting (a 500 pages on-call; a 404 does
+	// not) - while logging benign 404s (scanners, favicon/actuator probes, mistyped URLs) at
+	// ERROR with full framework stack traces that pollute the error log and can mask real
+	// failures. This dedicated, MORE SPECIFIC handler restores each exception's native status.
+	// All of the listed exceptions implement org.springframework.web.ErrorResponse, whose
+	// getStatusCode() yields the correct status, so nothing is hardcoded. Spring always selects
+	// the most specific @ExceptionHandler, so these client-errors resolve here while genuinely
+	// uncaught exceptions still fall through to handleUnexpectedException (HTTP 500) below, and
+	// Spring Security's AccessDeniedException / AuthenticationException remain handled by the
+	// dedicated re-throwing handlers above (401/403 preserved). Mirrors the sibling Customer
+	// Services GlobalExceptionHandler so both Spring Boot modules behave identically.
+	@ExceptionHandler({ NoResourceFoundException.class,
+			NoHandlerFoundException.class,
+			HttpRequestMethodNotSupportedException.class,
+			HttpMediaTypeNotSupportedException.class,
+			HttpMediaTypeNotAcceptableException.class })
+	public ResponseEntity<String> handleFrameworkClientError(ErrorResponse ex)
+	{
+		HttpStatusCode status = ex.getStatusCode();
+		// V4 (CWE-532 log hygiene / OWASP A09): benign, often high-volume client errors -
+		// log at DEBUG with ONLY the exception TYPE and the resolved status. NEVER log the
+		// exception object (no stack trace), its message, or request PII. The client body is
+		// the same generic, sanitized message used elsewhere (no internal detail leaks, V4
+		// CWE-209), while the response carries the correct client status (404/405/415/406).
+		log.debug("Client request error ({}) -> HTTP {}",
+				ex.getClass().getSimpleName(), status.value());
+		return ResponseEntity.status(status).body(GENERIC_ERROR_MSG);
 	}
 
 

@@ -3,7 +3,9 @@
 /*                                                                        */
 package com.ibm.cics.cip.bank.springboot.paymentinterface.jsonclasses.paymentinterface;
 
+import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 
 public class TransferForm
@@ -24,7 +26,18 @@ public class TransferForm
 	@NotNull
 	private boolean debit = true;
 
+	// amount
+	// Security fix (V3 CWE-20 Improper Input Validation - OWASP A03; defense-in-depth):
+	// @NotNull alone accepted zero and negative amounts, which passed the Spring layer and were
+	// forwarded to the downstream money-movement call on /paydbcr. @Positive rejects zero and
+	// negative values at the controller boundary (reject-by-default), and @Digits bounds the
+	// value to a sane monetary format (<= 12 integer digits, <= 2 fraction digits), mirroring
+	// the @Positive guard already enforced on ParamsController's /submit amount. The COBOL
+	// program DBCRFUN (SEC-R1: AVAIL_BAL - amount >= 0, reject MORTGAGE/LOAN) remains the
+	// authoritative business-rule guard; this constraint is an additional early-reject layer.
 	@NotNull
+	@Positive
+	@Digits(integer = 12, fraction = 2)
 	private Float amount;
 
 	// Security fix (V3 CWE-20 - QA finding F-QA2): reject a blank organisation (CommApplid)

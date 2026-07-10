@@ -118,9 +118,15 @@ class HttpSecurityControlsTest
 				// CWE-1021 clickjacking protection (Spring Security default).
 				.andExpect(header().string("X-Frame-Options", "DENY"))
 				// CWE-693: the CSP is the only header not added by defaults; it is set
-				// explicitly in SecurityConfig.
+				// explicitly in SecurityConfig. Presentation-only relaxations (style/font/img)
+				// permit the Carbon Design System CDN stylesheet + inline style attributes on
+				// the Thymeleaf admin forms; script-src is NOT relaxed (inherits default-src
+				// 'self'), so the primary XSS control stays strict.
 				.andExpect(header().string("Content-Security-Policy",
-						"default-src 'self'"));
+						"default-src 'self'; "
+								+ "style-src 'self' 'unsafe-inline' https://unpkg.com; "
+								+ "font-src 'self' https://unpkg.com https://1.www.s81c.com data:; "
+								+ "img-src 'self' data:"));
 	}
 
 

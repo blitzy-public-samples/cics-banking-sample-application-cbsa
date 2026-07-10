@@ -238,8 +238,25 @@ const AccountDeleteTables = ({ accountQuery }) => {
             displayModal()
             displaySuccessfulDeleteModal()
           }).catch(function (error) {
+            // Robust delete-failure handling (dest #3 / QA F-3, mirrors the
+            // search-path guard above; CWE-476): a failed DELETE must ALWAYS
+            // surface the generic "unable to delete" modal. A received HTTP error
+            // sets error.response; a backend/connectivity outage sets only
+            // error.request; a request-setup error sets neither. The previous code
+            // guarded on error.response ONLY, so a pure connectivity failure left
+            // the UI silent with no feedback to the operator. All failure shapes
+            // now present the modal. The raw error is NOT logged (QA i1 / AAP V4
+            // CWE-532: keep account PII and HTTP status out of the browser console),
+            // matching the search-path guard.
             if (error.response) {
-              console.log(error)
+              displayModal()
+              displayUnableDeleteModal()
+            } else if (error.request) {
+              // Request sent but no response received -> connectivity failure.
+              displayModal()
+              displayUnableDeleteModal()
+            } else {
+              // Unexpected error while building the request.
               displayModal()
               displayUnableDeleteModal()
             }

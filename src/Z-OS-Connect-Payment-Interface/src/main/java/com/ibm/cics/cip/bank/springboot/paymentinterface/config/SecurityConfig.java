@@ -86,8 +86,37 @@ public class SecurityConfig
 				// V6 (CWE-693 missing headers): CSP is the ONLY header not added by Spring
 				// Security defaults, so declare it explicitly. X-Content-Type-Options: nosniff,
 				// X-Frame-Options: DENY and HSTS remain enabled via defaults - do NOT remove them.
+				//
+				// Threat model for the directive below (QA finding: server-rendered Thymeleaf
+				// admin forms rely on the Carbon Design System stylesheet served from the
+				// unpkg.com CDN plus a handful of inline style="" attributes; a bare
+				// "default-src 'self'" blocked both, leaving the operator UI completely
+				// unstyled). The relaxation is deliberately scoped to PRESENTATION only:
+				//   - default-src 'self'      : deny-by-default fallback for every fetch
+				//                               directive that is not overridden below.
+				//   - script-src is NOT relaxed: it inherits "default-src 'self'", so no
+				//                               inline/eval/cross-origin JavaScript is ever
+				//                               permitted (this is the primary XSS control
+				//                               and MUST stay strict - do NOT add 'unsafe-inline'
+				//                               or a CDN origin to scripts).
+				//   - style-src 'self' 'unsafe-inline' https://unpkg.com : allow the Carbon
+				//                               CDN stylesheet and the few inline style
+				//                               attributes in the Thymeleaf templates. Styles
+				//                               cannot execute code, so 'unsafe-inline' here
+				//                               does not reintroduce script injection.
+				//   - font-src 'self' https://unpkg.com https://1.www.s81c.com data: :
+				//                               Carbon web fonts. The Carbon v10 stylesheet's
+				//                               @font-face rules load the IBM Plex fonts from
+				//                               the IBM CDN (1.www.s81c.com); unpkg + data:
+				//                               cover the remaining font URIs. Without this
+				//                               origin the UI renders with fallback system
+				//                               fonts and every page logs font CSP violations.
+				//   - img-src 'self' data:    : inline data: icons/images.
 				.headers(h -> h.contentSecurityPolicy(
-						csp -> csp.policyDirectives("default-src 'self'")));
+						csp -> csp.policyDirectives("default-src 'self'; "
+								+ "style-src 'self' 'unsafe-inline' https://unpkg.com; "
+								+ "font-src 'self' https://unpkg.com https://1.www.s81c.com data:; "
+								+ "img-src 'self' data:")));
 		return http.build();
 	}
 
