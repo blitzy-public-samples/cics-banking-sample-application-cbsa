@@ -11,8 +11,14 @@ public class AccountEnquiryForm
 
 
 
+	// Security fix (V3 CWE-20 Improper Input Validation - OWASP A03 Injection; QA finding
+	// F-QA2): @NotNull alone accepts an empty string (""), which @Size(max=8) also permits
+	// (length 0), so a blank account number bypassed validation and was forwarded downstream
+	// on both the /enqacct read and the state-changing /delacct delete. @Size(min = 1, ...)
+	// enforces reject-by-default at the controller boundary, mirroring the correct
+	// CustomerEnquiryForm pattern (custNumber = @NotNull @Size(min = 1, max = 10)).
 	@NotNull
-	@Size(max = 8)
+	@Size(min = 1, max = 8)
 	private String acctNumber;
 
 
@@ -22,7 +28,7 @@ public class AccountEnquiryForm
 	}
 
 
-	public AccountEnquiryForm(@NotNull @Size(max = 8) String acctNumber)
+	public AccountEnquiryForm(@NotNull @Size(min = 1, max = 8) String acctNumber)
 	{
 		this.acctNumber = acctNumber;
 	}
