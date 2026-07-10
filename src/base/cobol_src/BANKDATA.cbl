@@ -388,6 +388,12 @@
                          END-KEY
                          STEP-KEY
                          RANDOM-SEED.
+      *
+      * CWE-89 defense-in-depth: validate numeric format of the batch
+      * key inputs immediately after UNSTRING, before the range/zero
+      * guards below compare them numerically (reject-before-use).
+      *
+           PERFORM VALIDATE-INPUT
 
 
       D    DISPLAY 'INPUT PARMS ARE: START-KEY=' START-KEY
@@ -405,7 +411,6 @@
              DISPLAY 'Gap between customers cannot be zero'
              GOBACK
            END-IF
-           PERFORM VALIDATE-INPUT
 
       *
       * Get today's date and store it as an INTEGER
