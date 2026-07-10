@@ -32,9 +32,19 @@ This policy covers the application-layer controls added to:
 
 **Authentication is required on all state-changing endpoints.** Access is governed by role-based authorization following a deny-by-default posture — a request must be both authenticated *and* carry the role required by the operation.
 
-**Spring Boot modules (Customer Services and Payment).** Both modules use Spring Security (`spring-boot-starter-security`, managed by the Spring Boot parent BOM). A `SecurityFilterChain` bean authenticates every request by default, and method-level authorization (`@EnableMethodSecurity` with `@PreAuthorize`) restricts money-movement and administrative operations to the appropriate role — for example a **Bank Teller** role for customer/account maintenance and a **payment-channel** role for the payment endpoints.
+### Implementation status
 
-**Liberty z/OS Connect RESTful API (`webui`).** The Liberty tier uses container-managed authentication: a `security-constraint`/`login-config` in `src/webui/WebContent/WEB-INF/web.xml` is bound to a Liberty user registry, and JAX-RS resource methods are annotated with `@RolesAllowed` so that create, update, and delete operations require an authenticated principal in an authorized role.
+CBSA's security remediation is delivered incrementally, one vulnerability class at a time. The controls described in this section define the **target security model**; each is annotated below with its current status so that a given build's posture is not overstated:
+
+- **In force now:** the Liberty container-managed authentication constraint on `/banking/*`; externalized credentials and the connection scheme; the CORS allowlist properties; and property-level error-response sanitization (`server.error.include-stacktrace=never` and `server.error.include-message=never`).
+- **Authored, activation pending:** the Spring Boot security configuration classes (deny-by-default `SecurityFilterChain`, HTTP Basic, CSRF cookie token, CORS allowlist, and CSP header) — present in the codebase but not yet wired into the running application, which requires including the `config` package in each module's main-class component scan.
+- **Planned:** the per-operation `@PreAuthorize` role restrictions on the Spring Boot controllers; the `@RolesAllowed` annotations and server-side IDOR ownership/entitlement checks on the Liberty JAX-RS resources; and the centralized `@ControllerAdvice` exception handler in each Spring Boot module.
+
+When assessing a deployment's current posture, rely only on the controls listed under **In force now**; the items under **Authored, activation pending** and **Planned** are not yet enforced.
+
+**Spring Boot modules (Customer Services and Payment).** Both modules depend on Spring Security (`spring-boot-starter-security`, managed by the Spring Boot parent BOM) and define a `SecurityFilterChain` bean that authenticates every request under a deny-by-default posture, alongside method security (`@EnableMethodSecurity`) that carries the per-operation role checks. *Planned:* activating this filter chain through the application main-class component scan and applying the `@PreAuthorize` restrictions that limit money-movement and administrative operations to the appropriate role — for example a **Bank Teller** role for customer/account maintenance and a **payment-channel** role for the payment endpoints — is being completed as the controller and main-class files are finalized.
+
+**Liberty z/OS Connect RESTful API (`webui`).** The Liberty tier uses container-managed authentication: a `security-constraint`/`login-config` in `src/webui/WebContent/WEB-INF/web.xml` (BASIC authentication, realm `zosConnect`, role `zosConnectAccess`) requires an authenticated principal for the `/banking/*` API, bound to a Liberty user registry. *Planned:* per-method `@RolesAllowed` authorization on the JAX-RS resources — so that create, update, and delete operations additionally require an authorized role — is being added as those resource files are finalized.
 
 ### Response semantics
 
@@ -48,7 +58,7 @@ This policy covers the application-layer controls added to:
 
 ### Protection against Insecure Direct Object References (IDOR)
 
-Lookups keyed on a client-supplied identifier (for example an account or customer `GET` by id) enforce ownership/entitlement checks wherever the role model restricts cross-principal access. Because CBSA is modelled from the point of view of a **Bank Teller**, that role legitimately has broad access to customer and account records; the entitlement checks are applied where a narrower principal must not read another principal's data.
+*Planned:* lookups keyed on a client-supplied identifier (for example an account or customer `GET` by id) will enforce ownership/entitlement checks wherever the role model restricts cross-principal access. Because CBSA is modelled from the point of view of a **Bank Teller**, that role legitimately has broad access to customer and account records; the entitlement checks will be applied where a narrower principal must not read another principal's data. These server-side checks build on the Liberty JAX-RS authorization above and are being added together with it.
 
 ## HTTP Security Controls
 
@@ -78,7 +88,7 @@ Lookups keyed on a client-supplied identifier (for example an account or custome
 | z/OS Connect scheme (Spring Boot) | `CBSA_ZOSCONN_SCHEME` JVM system property (default `http`) | Newly externalized; set to `https` to select TLS by configuration. |
 | Spring Boot CORS allowlist and error handling | Each module's `src/main/resources/application.properties` | Restrictive CORS origins and sanitized error output. |
 
-> **Error and log hygiene.** Error responses and logs are sanitized: stack traces, database SQLCODEs, internal class names, and personally identifiable information (PII) are not returned to clients or written to logs. A centralized exception handler in each Spring Boot module returns a generic message.
+> **Error and log hygiene.** Error output is sanitized at the framework level: each Spring Boot module sets `server.error.include-stacktrace=never` and `server.error.include-message=never`, so stack traces, database SQLCODEs, internal class names, and personally identifiable information (PII) are not returned to clients. *Planned:* a centralized `@ControllerAdvice` exception handler in each module — standardizing a generic response for uncaught exceptions while preserving `401`/`403`/access-denied semantics — and the corresponding log sanitization are being added.
 
 ## Reporting a Vulnerability
 
@@ -111,12 +121,12 @@ The security additions layer on top of — and must never weaken or bypass — t
 
 | OWASP 2021 category | How it is addressed in CBSA |
 |---------------------|-----------------------------|
-| **A01 Broken Access Control** | Deny-by-default authentication with role-based authorization, CSRF protection, and ownership/entitlement checks that close IDOR. |
-| **A02 Cryptographic Failures / A09 Security Logging & Monitoring Failures** | Sanitized error responses and logs — no stack traces, SQLCODEs, internal details, or PII. |
+| **A01 Broken Access Control** | Deny-by-default authentication and CSRF protection are configured; role-based authorization and IDOR ownership/entitlement checks are planned (see the Implementation status note above). |
+| **A02 Cryptographic Failures / A09 Security Logging & Monitoring Failures** | Error responses are sanitized at the framework property level — no stack traces or exception messages; centralized exception handling and log sanitization are planned. |
 | **A03 Injection** | Parameterized (bind-variable) data access in the Liberty Db2 layer and static host-variable `EXEC SQL` in COBOL, reinforced with input-validation guards. |
 | **A05 Security Misconfiguration** | Restrictive CORS allowlist, security response headers, and externalized credentials and configuration. |
 | **A06 Vulnerable and Outdated Components** | Maven and Yarn dependency audits, with upgrades to patched, compatible versions. |
-| **A07 Identification and Authentication Failures** | Enforced authentication across the Spring Boot and Liberty interfaces. |
+| **A07 Identification and Authentication Failures** | Authentication is enforced on the Liberty interface; the Spring Boot security configuration is in place, with its activation being completed. |
 
 ## References
 
