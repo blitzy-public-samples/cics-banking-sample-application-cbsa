@@ -26,8 +26,15 @@ const CustomerDetailsPage = () => {
    */
   const [isOpened, setTableOpened] = useState(false);
   const [customerDetailsRows, setRows] = useState([]);
-  const [accountDetailsRows, setAccountRows] = useState([]);
+  // Correctness (QA M2): accounts are stored per-customer, keyed by customer
+  // number, so each customer's expander renders only its own accounts instead
+  // of a single shared array that was overwritten by whichever fetch finished last.
+  const [accountsByCustomer, setAccountsByCustomer] = useState({});
   const [noResultsOpened, setNoResultsOpened] = useState(false)
+  // Re-entrancy guard (QA m1): blocks overlapping searches / repeated Submit clicks.
+  const [isLoading, setIsLoading] = useState(false)
+  // Distinct connectivity feedback for true network failures (QA m5).
+  const [networkErrorOpened, setNetworkErrorOpened] = useState(false)
   var [numSearch, setNumSearch] = useState("");
   var [nameSearch, setNameSearch] = useState("")
 
@@ -40,11 +47,29 @@ const CustomerDetailsPage = () => {
     setNameSearch(e.target.value)
   }
 
-  function displayNoResultsModal() {
-    setNoResultsOpened(wasOpened => !wasOpened)
+  // Split open/close handlers (QA M1/m1): error paths idempotently OPEN the
+  // modal while the modal's own onRequestClose CLOSES it. The previous single
+  // toggle could immediately re-close the modal or leave it in the wrong state.
+  function openNoResultsModal() {
+    setNoResultsOpened(true)
+  }
+
+  function closeNoResultsModal() {
+    setNoResultsOpened(false)
+  }
+
+  function closeNetworkErrorModal() {
+    setNetworkErrorOpened(false)
   }
 
   function submitButtonHandler() {
+    // Re-entrancy guard (QA m1): ignore clicks while a search is in flight.
+    // Table visibility is now driven by the search OUTCOME (below) rather than
+    // being toggled unconditionally on every click, which previously flipped
+    // the results table open/closed on repeated searches.
+    if (isLoading) {
+      return;
+    }
     let searchQuery;
     if (numSearch !== "") {
       searchQuery = numSearch
@@ -54,7 +79,6 @@ const CustomerDetailsPage = () => {
       searchQuery = nameSearch
       getCustomersByName(searchQuery)
     }
-    setTableOpened(wasOpened => !wasOpened)
   }
 
   function getYear(date){
@@ -75,6 +99,9 @@ const CustomerDetailsPage = () => {
   async function getCustomersByName(searchQuery) {
     let responseData;
     let rowBuild = [];
+    setIsLoading(true)
+    // Reset per-customer accounts so a fresh search never shows stale data (M2).
+    setAccountsByCustomer({})
     await axios
       .get(process.env.REACT_APP_CUSTOMER_URL + `/name?name=${searchQuery}&limit=10`)
       .then(response => {
@@ -101,14 +128,26 @@ const CustomerDetailsPage = () => {
             getAccountsForCustomers(row.id)
           })
           setRows(rowBuild)
+          // Show the results table only on a successful search (idempotent, QA m1).
+          setTableOpened(true)
         } catch (e) {
           console.log("Error: " + e);
         }
       }).catch(function (error) {
+        // Clear any previously displayed results so stale customer PII and the
+        // Update button never remain visible behind the error modal (QA M1).
+        setRows([])
+        setAccountsByCustomer({})
+        setTableOpened(false)
         if (error.response) {
           console.log(error)
-          displayNoResultsModal()
+          openNoResultsModal()
+        } else if (error.request) {
+          // Request sent but no response received -> genuine network failure (QA m5).
+          setNetworkErrorOpened(true)
         }
+      }).finally(function () {
+        setIsLoading(false)
       })
 
   }
@@ -119,6 +158,9 @@ const CustomerDetailsPage = () => {
   async function getCustomerByNum(searchQuery) {
     let responseData;
     let rowBuild = [];
+    setIsLoading(true)
+    // Reset per-customer accounts so a fresh search never shows stale data (M2).
+    setAccountsByCustomer({})
     // Security (V8 IDOR, CWE-639): rely on server ownership check; do not leak other principals' ids
     await axios
       .get(process.env.REACT_APP_CUSTOMER_URL + `/${searchQuery}`)
@@ -144,20 +186,32 @@ const CustomerDetailsPage = () => {
           rowBuild.push(row);
           getAccountsForCustomers(row.id)
           setRows(rowBuild)
+          // Show the results table only on a successful lookup (idempotent, QA m1).
+          setTableOpened(true)
         } catch (e) {
           console.log("Error: " + e);
         }
       }).catch(function (error) {
+        // Clear any previously displayed results so stale customer PII and the
+        // Update button never remain visible behind the error modal (QA M1).
+        setRows([])
+        setAccountsByCustomer({})
+        setTableOpened(false)
         if (error.response) {
           console.log(error)
-          displayNoResultsModal()
+          openNoResultsModal()
+        } else if (error.request) {
+          // Request sent but no response received -> genuine network failure (QA m5).
+          setNetworkErrorOpened(true)
         }
+      }).finally(function () {
+        setIsLoading(false)
       })
 
   }
 
   /**
-   * Gets the accounts for a given customerID, builds an array from the response and sets accountDetailsRows' state to this array
+   * Gets the accounts for a given customerID, builds an array from the response and stores it under that customerID in the accountsByCustomer map
    */
   async function getAccountsForCustomers(customerID) {
     let accountData;
@@ -181,7 +235,14 @@ const CustomerDetailsPage = () => {
           };
           accountRowBuild.push(row)
         });
-        setAccountRows(accountRowBuild)
+        // Store THIS customer's accounts under its own key (QA M2). A functional
+        // update prevents concurrent per-customer fetches from clobbering one
+        // another; previously a single shared array was overwritten by whichever
+        // request resolved last, so every expander showed the same accounts.
+        setAccountsByCustomer(previous => ({
+          ...previous,
+          [customerID]: accountRowBuild,
+        }))
       }).catch(function (error) {
         if (error.response) {
           console.log(error)
@@ -235,7 +296,7 @@ const CustomerDetailsPage = () => {
                       />
                     </div>
                     <div style={{ marginTop: '20px' }}>
-                      <Button type="submit" onClick={submitButtonHandler}>
+                      <Button type="submit" onClick={submitButtonHandler} disabled={isLoading}>
                         Submit
                       </Button>
                     </div>
@@ -251,7 +312,7 @@ const CustomerDetailsPage = () => {
                 </div>
                 {isOpened && (
                   <Column lg={16}>
-                    <CustomerDetailsTable customerDetailsRows={customerDetailsRows} accountDetailsRows={accountDetailsRows} />
+                    <CustomerDetailsTable customerDetailsRows={customerDetailsRows} accountsByCustomer={accountsByCustomer} />
                   </Column>
                 )}
               </div>
@@ -262,11 +323,24 @@ const CustomerDetailsPage = () => {
       <Modal
         modalHeading="No customers found!"
         open={noResultsOpened}
-        onRequestClose={displayNoResultsModal}
+        onRequestClose={closeNoResultsModal}
         danger
         passiveModal>
         <ModalBody hasForm>
           Please check that the customer number/name is correct
+        </ModalBody>
+      </Modal>
+      {/* Dedicated connectivity-error modal (QA m5): a true network failure
+          (request sent, no HTTP response) now surfaces clear feedback instead
+          of the previous silent no-op. */}
+      <Modal
+        modalHeading="Connection error"
+        open={networkErrorOpened}
+        onRequestClose={closeNetworkErrorModal}
+        danger
+        passiveModal>
+        <ModalBody hasForm>
+          Unable to reach the server. Please check your connection and try again.
         </ModalBody>
       </Modal>
     </Grid>

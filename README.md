@@ -97,7 +97,7 @@ Application-layer security is now enforced across the banking interfaces. Authen
 > Please refer to [SECURITY.md](SECURITY.md) for the full security model, the vulnerability-reporting process, and the complete configuration-variable reference.
 
 **Authentication and authorization (now required)**
-> All state-changing banking endpoints across the Spring Boot Customer Services (`/customerservices-1.0/`) and Payment (`/paymentinterface-1.1/`) interfaces, together with the Liberty z/OS Connect RESTful API, now require authentication with role-based authorization (for example, a Bank Teller role and a payment-channel role).
+> All state-changing banking endpoints across the Spring Boot Customer Services (`/customerservices-1.0/`) and Payment (`/paymentinterface-1.1/`) interfaces, together with the Liberty z/OS Connect RESTful API, now require authentication with role-based authorization (currently a single Bank Teller role, `ROLE_TELLER`).
 > - Unauthenticated requests receive `401 Unauthorized`.
 > - Authenticated requests that lack the required role, or that omit a valid CSRF token, receive `403 Forbidden`.
 >

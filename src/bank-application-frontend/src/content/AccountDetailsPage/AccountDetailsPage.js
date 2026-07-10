@@ -24,6 +24,10 @@ const AccountDetailsPage = () => {
   const [userInput, setUserInput] = useState("")
   const [accountMainRow, setMainRow] = useState([]);
   const [showNoResultsModal, setShowNoResultsModal] = useState(false)
+  // Fix (QA m5): dedicated connectivity-error modal state so a genuine network
+  // failure (request sent but no HTTP response received) surfaces clear feedback
+  // instead of the previous silent no-op.
+  const [showNetworkErrorModal, setShowNetworkErrorModal] = useState(false)
   // Fix (QA F7): track an in-flight lookup so Submit can be disabled and a rapid
   // double-submit cannot toggle the results table shut or race on setMainRow.
   const [isLoading, setIsLoading] = useState(false)
@@ -34,14 +38,31 @@ const AccountDetailsPage = () => {
     min: 0,
     defaultValue: "",
     invalidText: 'Please provide a valid number',
+    // Fix (QA F-D): allow the initial empty value without flagging the field as
+    // invalid. Without allowEmpty, Carbon's NumberInput treats the empty default
+    // as an invalid number and renders the red invalid state on mount, before the
+    // user has interacted with the control.
+    allowEmpty: true,
   };
 
   function handleChange(value) {
     setUserInput(value)
   }
 
-  function displayNoResults() {
-    setShowNoResultsModal(wasOpened => !wasOpened)
+  // Split open/close handlers (QA m2): the empty-input and error paths idempotently
+  // OPEN the no-results modal while the modal's own onRequestClose CLOSES it. The
+  // previous single toggle (wasOpened => !wasOpened) re-closed the modal on a repeated
+  // empty/failed submit, so the user saw no feedback on the second attempt.
+  function openNoResultsModal() {
+    setShowNoResultsModal(true)
+  }
+
+  function closeNoResultsModal() {
+    setShowNoResultsModal(false)
+  }
+
+  function closeNetworkErrorModal() {
+    setShowNetworkErrorModal(false)
   }
 
   function handleClick() {
@@ -57,7 +78,7 @@ const AccountDetailsPage = () => {
         // 0 rows until a third click recovered it.
         setIsOpened(true)
       } else {
-        displayNoResults()
+        openNoResultsModal()
       }
   }
 
@@ -90,8 +111,14 @@ const AccountDetailsPage = () => {
           account = response.data;
         }).catch (function (error) {
           if (error.response){
-            displayNoResults()
+            // Server responded with an error status (e.g. 404): treat as "not found".
             console.log(error)
+            openNoResultsModal()
+          } else if (error.request) {
+            // Fix (QA m5): the request was sent but no response was received -> a
+            // genuine network failure. Previously this was a silent no-op with no
+            // user feedback; now surface a dedicated connectivity-error modal.
+            setShowNetworkErrorModal(true)
           }
         })
       // Fix (QA F6): when the lookup failed, `account` is undefined; stop here instead of
@@ -168,10 +195,13 @@ const AccountDetailsPage = () => {
                     </div>
                   </div>
                   <div className="right-part">
+                    {/* Fix (QA F-E): the src template literal previously contained a
+                        literal newline before the closing backtick, so the rendered
+                        URL carried a trailing %0A and produced a malformed image
+                        request. The URL is now a single line. */}
                     <img
                       className="bee"
-                      src={`${process.env.PUBLIC_URL}/Financial-Services-Cloud-leadspace.jpg
-`}
+                      src={`${process.env.PUBLIC_URL}/Financial-Services-Cloud-leadspace.jpg`}
                       alt="bee"
                     />
                   </div>
@@ -189,11 +219,24 @@ const AccountDetailsPage = () => {
       <Modal
         modalHeading="No accounts found!"
         open={showNoResultsModal}
-        onRequestClose={displayNoResults}
+        onRequestClose={closeNoResultsModal}
         danger
         passiveModal>
         <ModalBody hasForm>
           Please check that the account number is correct
+        </ModalBody>
+      </Modal>
+      {/* Dedicated connectivity-error modal (QA m5): a true network failure
+          (request sent, no HTTP response) now surfaces clear feedback instead
+          of the previous silent no-op. */}
+      <Modal
+        modalHeading="Connection error"
+        open={showNetworkErrorModal}
+        onRequestClose={closeNetworkErrorModal}
+        danger
+        passiveModal>
+        <ModalBody hasForm>
+          Unable to reach the server. Please check your connection and try again.
         </ModalBody>
       </Modal>
     </Grid>
