@@ -24,6 +24,8 @@ import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+// Security fix (V2 / CWE-306,CWE-862 / OWASP A07,A01): require authenticated caller in role zosConnectAccess
+import jakarta.annotation.security.RolesAllowed;
 
 import com.ibm.cics.cip.bankliberty.datainterfaces.PROCTRAN;
 import com.ibm.cics.cip.bankliberty.web.db2.ProcessedTransaction;
@@ -93,6 +95,8 @@ public class ProcessedTransactionResource
 
 	@GET
 	@Produces(MediaType.APPLICATION_JSON)
+	// Security fix (V2 / CWE-306,CWE-862 / OWASP A07,A01): require authenticated caller in role zosConnectAccess
+	@RolesAllowed("zosConnectAccess")
 	public Response getProcessedTransactionExternal(
 			@QueryParam(LIMIT) Integer limit,
 			@QueryParam(OFFSET) Integer offset)
@@ -257,6 +261,8 @@ public class ProcessedTransactionResource
 	@POST
 	@Produces("application/json")
 	@Path("/debitCreditAccount")
+	// Security fix (V2 / CWE-306,CWE-862 / OWASP A07,A01): require authenticated caller in role zosConnectAccess
+	@RolesAllowed("zosConnectAccess")
 	public Response writeExternal(
 			ProcessedTransactionDebitCreditJSON proctranDbCr)
 	{
@@ -307,6 +313,8 @@ public class ProcessedTransactionResource
 	@Produces("application/json")
 	@Consumes(MediaType.APPLICATION_JSON)
 	@Path("/transferLocal")
+	// Security fix (V2 / CWE-306,CWE-862 / OWASP A07,A01): require authenticated caller in role zosConnectAccess
+	@RolesAllowed("zosConnectAccess")
 	public Response writeTransferLocalExternal(
 			ProcessedTransactionTransferLocalJSON proctranLocal)
 	{
@@ -340,6 +348,11 @@ public class ProcessedTransactionResource
 	@Produces("application/json")
 	@Consumes(MediaType.APPLICATION_JSON)
 	@Path("/deleteCustomer")
+	// SEC-R3 PRESERVED: PROCTRAN is insert-only at the data-access layer. This endpoint (and writeDeleteAccountExternal)
+	// records a soft-delete by INSERTing a PROCTRAN marker record; there is no physical-delete path. The @RolesAllowed
+	// authorization below layers on top of and does NOT bypass or weaken the insert-only/soft-delete rule.
+	// Security fix (V2 / CWE-306,CWE-862 / OWASP A07,A01): require authenticated caller in role zosConnectAccess
+	@RolesAllowed("zosConnectAccess")
 	public Response writeDeleteCustomerExternal(
 			ProcessedTransactionDeleteCustomerJSON myDeletedCustomer)
 	{
@@ -376,6 +389,8 @@ public class ProcessedTransactionResource
 	@Produces("application/json")
 	@Consumes(MediaType.APPLICATION_JSON)
 	@Path("/createCustomer")
+	// Security fix (V2 / CWE-306,CWE-862 / OWASP A07,A01): require authenticated caller in role zosConnectAccess
+	@RolesAllowed("zosConnectAccess")
 	public Response writeCreateCustomerExternal(
 			ProcessedTransactionCreateCustomerJSON myCreatedCustomer)
 	{
@@ -413,6 +428,8 @@ public class ProcessedTransactionResource
 	@Produces("application/json")
 	@Consumes(MediaType.APPLICATION_JSON)
 	@Path("/deleteAccount")
+	// Security fix (V2 / CWE-306,CWE-862 / OWASP A07,A01): require authenticated caller in role zosConnectAccess
+	@RolesAllowed("zosConnectAccess")
 	public Response writeDeleteAccountExternal(
 			ProcessedTransactionAccountJSON myDeletedAccount)
 	{
@@ -451,6 +468,8 @@ public class ProcessedTransactionResource
 	@Consumes(MediaType.APPLICATION_JSON)
 	@Path("/createAccount")
 
+	// Security fix (V2 / CWE-306,CWE-862 / OWASP A07,A01): require authenticated caller in role zosConnectAccess
+	@RolesAllowed("zosConnectAccess")
 	public Response writeCreateAccountExternal(
 			ProcessedTransactionAccountJSON myCreatedAccount)
 	{

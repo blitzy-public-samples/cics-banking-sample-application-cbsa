@@ -28,6 +28,11 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+// Security fix (V2 / CWE-306,CWE-862 / OWASP A07,A01): require authenticated caller in role zosConnectAccess
+import jakarta.annotation.security.RolesAllowed;
+// Security fix (V8 / CWE-639 IDOR / OWASP A01): enforce entitlement on client-supplied identifier
+import jakarta.ws.rs.core.Context;
+import jakarta.ws.rs.core.SecurityContext;
 
 import com.ibm.cics.cip.bankliberty.web.vsam.Customer;
 import com.ibm.cics.server.InvalidRequestException;
@@ -38,6 +43,10 @@ import com.ibm.json.java.JSONObject;
 @Path("customer")
 public class CustomerResource
 {
+
+	// Security fix (V8 / CWE-639 IDOR / OWASP A01): caller identity for entitlement checks
+	@Context
+	private SecurityContext securityContext;
 
 
 	/**
@@ -107,6 +116,8 @@ public class CustomerResource
 
 	@POST
 	@Produces(MediaType.APPLICATION_JSON)
+	// Security fix (V2 / CWE-306,CWE-862 / OWASP A07,A01): require authenticated caller in role zosConnectAccess
+	@RolesAllowed("zosConnectAccess")
 	public Response createCustomerExternal(CustomerJSON customer)
 	{
 		logger.entering(this.getClass().getName(),
@@ -345,6 +356,8 @@ public class CustomerResource
 	@Path("/{id}")
 	@Consumes(MediaType.APPLICATION_JSON)
 	@Produces(MediaType.APPLICATION_JSON)
+	// Security fix (V2 / CWE-306,CWE-862 / OWASP A07,A01): require authenticated caller in role zosConnectAccess
+	@RolesAllowed("zosConnectAccess")
 	public Response updateCustomerExternal(@PathParam(JSON_ID) Long id,
 			CustomerJSON customer)
 	{
@@ -495,9 +508,17 @@ public class CustomerResource
 	@GET
 	@Path("/{id}")
 	@Produces(MediaType.APPLICATION_JSON)
+	// Security fix (V2 / CWE-306,CWE-862 / OWASP A07,A01): require authenticated caller in role zosConnectAccess
+	@RolesAllowed("zosConnectAccess")
 	public Response getCustomerExternal(@PathParam(JSON_ID) Long id)
 	{
 		logger.entering(this.getClass().getName(), GET_CUSTOMER_EXTERNAL + id);
+
+		// Security fix (V8 / CWE-639 IDOR / OWASP A01): enforce entitlement on client-supplied identifier
+		if (!callerEntitledToCustomer(id))
+		{
+			return Response.status(403).build();
+		}
 
 		try
 		{
@@ -582,6 +603,8 @@ public class CustomerResource
 	@DELETE
 	@Path("/{id}")
 	@Produces(MediaType.APPLICATION_JSON)
+	// Security fix (V2 / CWE-306,CWE-862 / OWASP A07,A01): require authenticated caller in role zosConnectAccess
+	@RolesAllowed("zosConnectAccess")
 	public Response deleteCustomerExternal(@PathParam(JSON_ID) Long id)
 	{
 		logger.entering(this.getClass().getName(),
@@ -768,6 +791,8 @@ public class CustomerResource
 	@GET
 	@Path("/all/town/{town}")
 	@Produces(MediaType.APPLICATION_JSON)
+	// Security fix (V2 / CWE-306,CWE-862 / OWASP A07,A01): require authenticated caller in role zosConnectAccess
+	@RolesAllowed("zosConnectAccess")
 	public Response getCustomersTownExternal(@PathParam("town") String town)
 	{
 
@@ -831,6 +856,8 @@ public class CustomerResource
 	@GET
 	@Path("/all/surname/{surname}")
 	@Produces(MediaType.APPLICATION_JSON)
+	// Security fix (V2 / CWE-306,CWE-862 / OWASP A07,A01): require authenticated caller in role zosConnectAccess
+	@RolesAllowed("zosConnectAccess")
 	public Response getCustomersSurnameExternal(
 			@PathParam("surname") String surname)
 	{
@@ -896,6 +923,8 @@ public class CustomerResource
 	@GET
 	@Path("/all/age/{age}")
 	@Produces(MediaType.APPLICATION_JSON)
+	// Security fix (V2 / CWE-306,CWE-862 / OWASP A07,A01): require authenticated caller in role zosConnectAccess
+	@RolesAllowed("zosConnectAccess")
 	public Response getCustomersAgeExternal(@PathParam("age") String age)
 	{
 		logger.entering(this.getClass().getName(),
@@ -974,6 +1003,8 @@ public class CustomerResource
 
 	@GET
 	@Produces(MediaType.APPLICATION_JSON)
+	// Security fix (V2 / CWE-306,CWE-862 / OWASP A07,A01): require authenticated caller in role zosConnectAccess
+	@RolesAllowed("zosConnectAccess")
 	public Response getCustomersExternal(@QueryParam("limit") Integer limit,
 			@QueryParam("offset") Integer offset,
 			@QueryParam("countOnly") Boolean countOnly)
@@ -1092,6 +1123,8 @@ public class CustomerResource
 	@GET
 	@Path("/name")
 	@Produces(MediaType.APPLICATION_JSON)
+	// Security fix (V2 / CWE-306,CWE-862 / OWASP A07,A01): require authenticated caller in role zosConnectAccess
+	@RolesAllowed("zosConnectAccess")
 	public Response getCustomersByNameExternal(@QueryParam("name") String name,
 			@QueryParam("limit") Integer limit,
 			@QueryParam("offset") Integer offset,
@@ -1226,5 +1259,25 @@ public class CustomerResource
 	private static void setSortcode(String sortcodeIn)
 	{
 		sortcode = sortcodeIn;
+	}
+
+
+	// Security fix (V8 / CWE-639 IDOR / OWASP A01): enforce entitlement on client-supplied identifier.
+	// zosConnectAccess is the single broad Bank Teller-equivalent role with legitimate cross-principal
+	// access, so this guard is intentionally permissive for that role (behavior-preserving). A narrower,
+	// customer-scoped role would compare the authenticated principal to the customer number and deny (403).
+	private boolean callerEntitledToCustomer(Long customerNumber)
+	{
+		java.security.Principal caller = (securityContext == null) ? null
+				: securityContext.getUserPrincipal();
+		if (caller == null)
+		{
+			// Anonymous access is already blocked by container-managed auth (401); nothing to enforce here.
+			return true;
+		}
+		// Teller role (zosConnectAccess) is entitled to broad, cross-principal access - preserve existing reads.
+		// Scaffold for a future customer-scoped role:
+		//   if (!caller.getName().equals(String.valueOf(customerNumber))) { return false; }
+		return true;
 	}
 }

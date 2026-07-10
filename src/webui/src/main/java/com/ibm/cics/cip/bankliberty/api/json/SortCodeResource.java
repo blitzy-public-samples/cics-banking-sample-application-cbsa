@@ -20,6 +20,8 @@ import jakarta.ws.rs.Path;
 
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.Response;
+// Security fix (V2 / CWE-306,CWE-862 / OWASP A07,A01): require authenticated caller in role zosConnectAccess
+import jakarta.annotation.security.RolesAllowed;
 
 import com.ibm.cics.cip.bankliberty.datainterfaces.GetSortCode;
 import com.ibm.cics.server.InvalidProgramIdException;
@@ -53,6 +55,8 @@ public class SortCodeResource
 
 	@GET
 	@Produces("application/json")
+	// Security fix (V2 / CWE-306,CWE-862 / OWASP A07,A01): require authenticated caller in role zosConnectAccess
+	@RolesAllowed("zosConnectAccess")
 	public Response getSortCode()
 	{
 
