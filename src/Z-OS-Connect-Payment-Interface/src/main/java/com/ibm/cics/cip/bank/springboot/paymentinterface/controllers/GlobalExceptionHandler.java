@@ -1,10 +1,7 @@
 /*                                                                        */
-/* Copyright IBM Corp. 2025                                               */
+/* Copyright IBM Corp. 2023                                               */
 /*                                                                        */
 package com.ibm.cics.cip.bank.springboot.paymentinterface.controllers;
-
-import java.util.LinkedHashMap;
-import java.util.Map;
 
 import jakarta.validation.ConstraintViolationException;
 
@@ -12,87 +9,147 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
 
 /*
- * Centralized exception handling for the Payment Interface module.
+ * Centralized, application-wide exception handling for the Payment Interface
+ * Spring Boot module. This module mixes a Thymeleaf @Controller (WebController)
+ * and a @RestController (ParamsController), so this advice returns a ResponseEntity
+ * body (never a view name) that works for both without needing an error template.
  *
- * Security fix (V3 CWE-20 Improper Input Validation - OWASP A03 Injection):
- *   ParamsController is annotated @Validated at class level, which activates Spring's
- *   method-validation interceptor. When a @RequestParam constraint on /submit
- *   (@NotBlank / @Size / @Positive) is violated, that interceptor raises
- *   jakarta.validation.ConstraintViolationException. Spring MVC's
- *   DefaultHandlerExceptionResolver does NOT map ConstraintViolationException to a 400
- *   (it only maps MethodArgumentNotValidException / MissingServletRequestParameterException /
- *   MethodArgumentTypeMismatchException), so without this advice the violation propagated to a
- *   misleading HTTP 500. This handler maps constraint violations (and @Valid body-binding
- *   failures) to a reject-by-default HTTP 400 BEFORE any downstream money-movement WebClient
- *   call, restoring the intended API contract (QA finding F-QA1).
+ * Auto-detected by component scanning: PaymentInterface.java declares
+ * @SpringBootApplication(scanBasePackages = { ...controllers, ...config }), which
+ * already includes this controllers package, so no scan change is required.
  *
- * Security fix (V4 CWE-209 Sensitive Data Exposure / CWE-532 Insertion of Sensitive
- *   Information into Log File - OWASP A09 Security Logging Failures / A02):
- *   The response body is a fixed, generic payload; the exception message, the offending
- *   input value, the exception class name and the stack trace are NEVER returned to the
- *   client. Only the exception TYPE name is logged server-side for diagnostics - the
- *   rejected value and any PII are never logged.
+ * Security fix (V4 Sensitive Data Exposure - CWE-209 Error Message Containing
+ * Sensitive Information / CWE-532 Insertion of Sensitive Information into Log File;
+ * OWASP A09 Security Logging & Monitoring Failures, A02): the broad
+ * handleUnexpectedException(...) fallback catches any exception that escapes a
+ * controller's own try/catch - most notably a JsonProcessingException raised by
+ * ObjectMapper.writeValueAsString(...), which executes BEFORE the try block in both
+ * controllers - and returns a single, generic, sanitized message. No stack trace,
+ * exception message, internal class name, Db2 SQLCODE, or PII is ever returned to the
+ * client; the full detail is written only to the trusted server-side log.
  *
- * Deliberately NARROW scope: this advice handles ONLY input-validation exceptions. It does
- * NOT declare a catch-all @ExceptionHandler(Exception.class). Spring Security's
- * AccessDeniedException (wrong role -> 403) and the authentication entry point
- * (unauthenticated -> 401) therefore continue to be handled by the security filter chain and
- * are NEVER swallowed here, preserving the V2 (OWASP A01 Broken Access Control / A07
- * Identification & Authentication Failures; CWE-306/CWE-862) authorization contract.
+ * Security fix (V3 Improper Input Validation - CWE-20; OWASP A03): ParamsController is
+ * @Validated at class level, so a violated @RequestParam constraint on /submit
+ * (@NotBlank / @Size / @Positive) surfaces as a ConstraintViolationException (or, on
+ * the Spring MVC native method-validation path, a HandlerMethodValidationException),
+ * while a @Valid bind without an adjacent BindingResult surfaces as a
+ * MethodArgumentNotValidException. Spring MVC does not map ConstraintViolationException
+ * / HandlerMethodValidationException to 400 by default, so handleValidation(...) maps
+ * every method-validation failure shape to a reject-by-default HTTP 400 with a generic
+ * body BEFORE any downstream money-movement WebClient call, restoring the API contract.
+ *
+ * Security fix (V2 Missing Authentication/Authorization - CWE-306 / CWE-862; OWASP A01
+ * Broken Access Control, A07): the broad Exception fallback must NEVER swallow Spring
+ * Security's access-control outcome. handleAccessDenied(...) and handleAuthentication(...)
+ * are dedicated, MORE SPECIFIC handlers that simply re-throw, so the exception propagates
+ * to Spring Security's ExceptionTranslationFilter, which renders 403 (authenticated, wrong
+ * role - e.g. AuthorizationDeniedException from @PreAuthorize("hasRole('TELLER')"), a
+ * subclass of AccessDeniedException) or invokes the AuthenticationEntryPoint (401). Spring
+ * always selects the most specific @ExceptionHandler, so these win over the broad Exception
+ * handler, preserving the V2 authorization contract.
+ *
+ * Scope note: purely additive. No existing REST/MVC path, verb, or response schema
+ * changes; the only new response behavior is the standard 400/401/403/500 handling above.
  */
 @ControllerAdvice
 public class GlobalExceptionHandler
 {
 
 
+	// SLF4J logger records the FULL exception server-side ONLY (a trusted diagnostic
+	// surface distinct from the client response) - never in the HTTP response body.
 	private static final Logger log = LoggerFactory
 			.getLogger(GlobalExceptionHandler.class);
 
-	// Fixed, generic client message - never echoes the offending input (V4 CWE-209).
-	private static final String VALIDATION_ERROR_MSG = "Invalid request parameters.";
+	// Generic, sanitized message returned for any otherwise-uncaught exception. Reuses the
+	// Payment WebController generic wording so the client vocabulary stays consistent
+	// module-wide; it reveals nothing about the internal failure (V4 CWE-209).
+	private static final String GENERIC_ERROR_MSG = "There was an error processing the request; Please try again later or check logs for more info.";
+
+	// Generic, sanitized message returned for rejected input - never echoes the offending
+	// value or field name (V3 CWE-20 / V4 CWE-209).
+	private static final String VALIDATION_ERROR_MSG = "Invalid request; please check your input and try again.";
 
 
-	// Method-level @Validated request-param constraints (ParamsController /submit) throw
-	// ConstraintViolationException, which Spring MVC does not map to 400 by default. Map it
-	// here so malformed input is rejected with a generic HTTP 400 (V3, QA finding F-QA1).
-	@ExceptionHandler(ConstraintViolationException.class)
-	public ResponseEntity<Map<String, Object>> handleConstraintViolation(
-			ConstraintViolationException ex)
+	// Security fix (V2 - Missing Authentication/Authorization; OWASP A01 Broken Access
+	// Control / A07): NEVER swallow Spring Security's authorization exception. The broad
+	// @ExceptionHandler(Exception.class) below would otherwise catch AccessDeniedException
+	// (and its subclass AuthorizationDeniedException, raised by @PreAuthorize("hasRole('TELLER')")
+	// on /submit and /paydbcr) and convert a proper 403 into a 500. This dedicated, MORE
+	// SPECIFIC handler simply re-throws, so ExceptionHandlerExceptionResolver leaves it
+	// unresolved and the exception propagates to Spring Security's ExceptionTranslationFilter,
+	// which renders 403 (authenticated, wrong role). Spring always selects the most specific
+	// handler, so this wins over the broad Exception fallback for AccessDeniedException and
+	// its subclasses.
+	@ExceptionHandler(AccessDeniedException.class)
+	public void handleAccessDenied(AccessDeniedException ex)
+			throws AccessDeniedException
 	{
-		// Log only the exception TYPE (never the message or the offending value) to avoid
-		// leaking submitted input or PII into the logs (V4 CWE-532).
+		throw ex;
+	}
+
+
+	// Security fix (V2 - defense-in-depth for the 401 path): likewise never swallow an
+	// AuthenticationException. Re-throwing lets ExceptionTranslationFilter invoke the
+	// configured AuthenticationEntryPoint (401) instead of the broad handler turning it into
+	// a 500, keeping the authentication challenge intact. As with handleAccessDenied, this
+	// more specific handler is selected ahead of the broad Exception fallback.
+	@ExceptionHandler(AuthenticationException.class)
+	public void handleAuthentication(AuthenticationException ex)
+			throws AuthenticationException
+	{
+		throw ex;
+	}
+
+
+	// Security fix (V3 CWE-20 Improper Input Validation - OWASP A03; V4 CWE-209 Sensitive
+	// Data Exposure): map every method-validation failure shape to a reject-by-default HTTP
+	// 400 with a generic body. ParamsController's @Validated @RequestParam constraints throw
+	// ConstraintViolationException (or HandlerMethodValidationException on the Spring MVC
+	// native method-validation path); a @Valid bind without an adjacent BindingResult throws
+	// MethodArgumentNotValidException. Spring MVC does not map ConstraintViolationException /
+	// HandlerMethodValidationException to 400 by default, so without this they would surface
+	// as a misleading 500. The 400 is returned BEFORE any downstream money-movement call.
+	@ExceptionHandler({ HandlerMethodValidationException.class,
+			ConstraintViolationException.class,
+			MethodArgumentNotValidException.class })
+	public ResponseEntity<String> handleValidation(Exception ex)
+	{
+		// Log only the exception TYPE (never the message or the offending value) so submitted
+		// input and any PII stay out of the log (V4 CWE-532).
 		log.info("Rejected request: input validation failure ({})",
 				ex.getClass().getSimpleName());
-		return badRequest();
+		return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+				.body(VALIDATION_ERROR_MSG);
 	}
 
 
-	// @Valid on a bound object without an immediately-following BindingResult throws
-	// MethodArgumentNotValidException; return the same generic 400 body so the whole module
-	// answers validation failures consistently (V3/V4). Defensive: the existing controllers
-	// pair @Valid with a BindingResult, so this is future-proofing, not a behavior change.
-	@ExceptionHandler(MethodArgumentNotValidException.class)
-	public ResponseEntity<Map<String, Object>> handleMethodArgumentNotValid(
-			MethodArgumentNotValidException ex)
+	// Security fix (V4 - CWE-209 Sensitive Data Exposure; OWASP A09 Security Logging &
+	// Monitoring Failures, A02): catch ANY otherwise-uncaught exception and return a generic,
+	// sanitized 500. The full detail (type, message, stack trace) is logged server-side ONLY;
+	// no stack trace, SQLCODE, internal class name, or PII is ever sent to the client. A
+	// ResponseEntity<String> is returned (not a view name) so the body is written directly for
+	// both the @Controller (WebController) and @RestController (ParamsController) without an
+	// error template. Spring Security's AccessDeniedException / AuthenticationException are
+	// intercepted by the dedicated re-throwing handlers above and never reach this fallback,
+	// so the V2 401/403 contract is preserved.
+	@ExceptionHandler(Exception.class)
+	public ResponseEntity<String> handleUnexpectedException(Exception ex)
 	{
-		log.info("Rejected request: input validation failure ({})",
-				ex.getClass().getSimpleName());
-		return badRequest();
+		// Log a static context string plus the exception object (server-side, trusted surface);
+		// do NOT log request PII (account/customer numbers, amounts) - keeps the log free of
+		// sensitive identifiers (OWASP A09, V4 CWE-532).
+		log.error("Unhandled exception while processing request", ex);
+		return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+				.body(GENERIC_ERROR_MSG);
 	}
 
-
-	// Build a generic HTTP 400 body. No exception detail is included (V4 CWE-209).
-	private static ResponseEntity<Map<String, Object>> badRequest()
-	{
-		Map<String, Object> body = new LinkedHashMap<>();
-		body.put("status", HttpStatus.BAD_REQUEST.value());
-		body.put("error", HttpStatus.BAD_REQUEST.getReasonPhrase());
-		body.put("message", VALIDATION_ERROR_MSG);
-		return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
-	}
 }
