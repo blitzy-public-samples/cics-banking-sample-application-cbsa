@@ -12,6 +12,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.springframework.http.MediaType;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.validation.BindingResult;
@@ -85,6 +86,10 @@ public class WebController implements WebMvcConfigurer
 	private static final String CONNECTION_ERROR = "Connection Error";
 
 	private static final String ERROR_MSG = "There was an error processing the request; Please try again later or check logs for more info.";
+
+	// Security fix (V4 CWE-209 Sensitive Data Exposure / OWASP A09,A02): generic client-facing
+	// message shown instead of raw exception detail for not-found / invalid-input domain errors.
+	private static final String NOT_FOUND_MSG = "The requested item could not be found or the request was invalid; please check your input and try again.";
 
 	private static final String RESULTS = "results";
 
@@ -191,7 +196,8 @@ public class WebController implements WebMvcConfigurer
 			{
 				log.info(e.toString());
 				model.addAttribute(LARGE_TEXT, REQUEST_ERROR);
-				model.addAttribute(SMALL_TEXT, e.getMessage());
+				// Security fix (V4 CWE-209 Sensitive Data Exposure / OWASP A09,A02): return a generic message instead of exception detail to the UI
+				model.addAttribute(SMALL_TEXT, NOT_FOUND_MSG);
 			}
 			catch (WebClientRequestException e)
 			{
@@ -266,7 +272,8 @@ public class WebController implements WebMvcConfigurer
 			{
 				log.info(e.toString());
 				model.addAttribute(LARGE_TEXT, REQUEST_ERROR);
-				model.addAttribute(SMALL_TEXT, e.getMessage());
+				// Security fix (V4 CWE-209 Sensitive Data Exposure / OWASP A09,A02): return a generic message instead of exception detail to the UI
+				model.addAttribute(SMALL_TEXT, NOT_FOUND_MSG);
 			}
 			catch (WebClientRequestException e)
 			{
@@ -337,7 +344,8 @@ public class WebController implements WebMvcConfigurer
 			{
 				log.info(e.toString());
 				model.addAttribute(LARGE_TEXT, REQUEST_ERROR);
-				model.addAttribute(SMALL_TEXT, e.getMessage());
+				// Security fix (V4 CWE-209 Sensitive Data Exposure / OWASP A09,A02): return a generic message instead of exception detail to the UI
+				model.addAttribute(SMALL_TEXT, NOT_FOUND_MSG);
 			}
 			catch (WebClientRequestException e)
 			{
@@ -378,6 +386,8 @@ public class WebController implements WebMvcConfigurer
 	}
 
 
+	// Security fix (V2 CWE-862 Missing Authorization / OWASP A01,A07): restrict this state-changing operation to the TELLER role.
+	@PreAuthorize("hasRole('TELLER')")
 	@PostMapping("/createacc")
 	public String processCreateAcc(@Valid CreateAccountForm createAccForm,
 			BindingResult bindingResult, Model model)
@@ -429,7 +439,8 @@ public class WebController implements WebMvcConfigurer
 		{
 			log.info(e.toString());
 			model.addAttribute(LARGE_TEXT, "Account Error");
-			model.addAttribute(SMALL_TEXT, e.getMessage());
+			// Security fix (V4 CWE-209 Sensitive Data Exposure / OWASP A09,A02): return a generic message instead of exception detail to the UI
+			model.addAttribute(SMALL_TEXT, NOT_FOUND_MSG);
 		}
 		catch (WebClientRequestException e)
 		{
@@ -487,6 +498,8 @@ public class WebController implements WebMvcConfigurer
 	}
 
 
+	// Security fix (V2 CWE-862 Missing Authorization / OWASP A01,A07): restrict this state-changing operation to the TELLER role.
+	@PreAuthorize("hasRole('TELLER')")
 	@PostMapping("/createcust")
 	public String processCreateCust(@Valid CreateCustomerForm createCustForm,
 			BindingResult bindingResult, Model model)
@@ -539,7 +552,8 @@ public class WebController implements WebMvcConfigurer
 		{
 			log.info(e.toString());
 			model.addAttribute(LARGE_TEXT, "Create Error");
-			model.addAttribute(SMALL_TEXT, e.getMessage());
+			// Security fix (V4 CWE-209 Sensitive Data Exposure / OWASP A09,A02): return a generic message instead of exception detail to the UI
+			model.addAttribute(SMALL_TEXT, NOT_FOUND_MSG);
 		}
 		catch (WebClientRequestException e)
 		{
@@ -590,6 +604,8 @@ public class WebController implements WebMvcConfigurer
 	}
 
 
+	// Security fix (V2 CWE-862 Missing Authorization / OWASP A01,A07): restrict this state-changing operation to the TELLER role.
+	@PreAuthorize("hasRole('TELLER')")
 	@PostMapping("/updateacc")
 	public String processCreateAcc(@Valid UpdateAccountForm updateAccountForm,
 			BindingResult bindingResult, Model model)
@@ -646,7 +662,8 @@ public class WebController implements WebMvcConfigurer
 		{
 			log.info(e.toString());
 			model.addAttribute(LARGE_TEXT, "Update Error");
-			model.addAttribute(SMALL_TEXT, e.getMessage());
+			// Security fix (V4 CWE-209 Sensitive Data Exposure / OWASP A09,A02): return a generic message instead of exception detail to the UI
+			model.addAttribute(SMALL_TEXT, NOT_FOUND_MSG);
 		}
 		catch (WebClientRequestException e)
 		{
@@ -691,6 +708,8 @@ public class WebController implements WebMvcConfigurer
 	}
 
 
+	// Security fix (V2 CWE-862 Missing Authorization / OWASP A01,A07): restrict this state-changing operation to the TELLER role.
+	@PreAuthorize("hasRole('TELLER')")
 	@PostMapping("/updatecust")
 	public String processUpdateCust(
 			@Valid UpdateCustomerForm updateCustomerForm,
@@ -744,7 +763,8 @@ public class WebController implements WebMvcConfigurer
 		{
 			log.info(e.toString());
 			model.addAttribute(LARGE_TEXT, "Update Error");
-			model.addAttribute(SMALL_TEXT, e.getMessage());
+			// Security fix (V4 CWE-209 Sensitive Data Exposure / OWASP A09,A02): return a generic message instead of exception detail to the UI
+			model.addAttribute(SMALL_TEXT, NOT_FOUND_MSG);
 		}
 		catch (WebClientRequestException e)
 		{
@@ -794,6 +814,8 @@ public class WebController implements WebMvcConfigurer
 	}
 
 
+	// Security fix (V2 CWE-862 Missing Authorization / OWASP A01,A07): restrict this state-changing operation to the TELLER role.
+	@PreAuthorize("hasRole('TELLER')")
 	@PostMapping("/delacct")
 	public String deleteAcct(@Valid AccountEnquiryForm accountEnquiryForm,
 			BindingResult bindingResult, Model model)
@@ -820,7 +842,8 @@ public class WebController implements WebMvcConfigurer
 			{
 				log.info(e.toString());
 				model.addAttribute(LARGE_TEXT, REQUEST_ERROR);
-				model.addAttribute(SMALL_TEXT, e.getMessage());
+				// Security fix (V4 CWE-209 Sensitive Data Exposure / OWASP A09,A02): return a generic message instead of exception detail to the UI
+				model.addAttribute(SMALL_TEXT, NOT_FOUND_MSG);
 			}
 			catch (WebClientRequestException e)
 			{
@@ -859,6 +882,8 @@ public class WebController implements WebMvcConfigurer
 	}
 
 
+	// Security fix (V2 CWE-862 Missing Authorization / OWASP A01,A07): restrict this state-changing operation to the TELLER role.
+	@PreAuthorize("hasRole('TELLER')")
 	@PostMapping("/delcust")
 	public String deleteCust(@Valid CustomerEnquiryForm customerEnquiryForm,
 			BindingResult bindingResult, Model model)
@@ -892,7 +917,8 @@ public class WebController implements WebMvcConfigurer
 			{
 				log.info(e.toString());
 				model.addAttribute(LARGE_TEXT, REQUEST_ERROR);
-				model.addAttribute(SMALL_TEXT, e.getMessage());
+				// Security fix (V4 CWE-209 Sensitive Data Exposure / OWASP A09,A02): return a generic message instead of exception detail to the UI
+				model.addAttribute(SMALL_TEXT, NOT_FOUND_MSG);
 			}
 			catch (WebClientRequestException e)
 			{

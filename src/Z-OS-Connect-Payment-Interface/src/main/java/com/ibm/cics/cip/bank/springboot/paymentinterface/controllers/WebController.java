@@ -9,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.springframework.http.MediaType;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.validation.BindingResult;
@@ -55,7 +56,10 @@ public class WebController implements WebMvcConfigurer
 	}
 
 
+	// Security fix (V2 CWE-306 Missing Authentication / CWE-862 Missing Authorization - OWASP A01,A07):
+	// restrict this money-movement operation to the TELLER role.
 	@PostMapping("/paydbcr")
+	@PreAuthorize("hasRole('TELLER')")
 	public String checkPersonInfo(@Valid TransferForm transferForm,
 			BindingResult bindingResult, Model model)
 			throws JsonProcessingException
