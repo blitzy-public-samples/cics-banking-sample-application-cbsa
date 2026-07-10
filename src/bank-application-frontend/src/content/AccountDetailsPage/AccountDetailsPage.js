@@ -70,6 +70,7 @@ const AccountDetailsPage = () => {
   async function getCustomerAccounts(searchQuery) {
     let account;
     let rowBuild = [];
+    // Security (V8 IDOR, CWE-639): rely on server ownership check; do not leak other principals' ids
     await axios
       .get(process.env.REACT_APP_ACCOUNT_URL + `/${searchQuery}`)
       .then(response => {
