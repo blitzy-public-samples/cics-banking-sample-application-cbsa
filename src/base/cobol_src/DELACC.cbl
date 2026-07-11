@@ -206,6 +206,8 @@
 
            MOVE SORTCODE TO REQUIRED-SORT-CODE OF ACCOUNT-KEY-RID.
 
+           PERFORM VALIDATE-INPUT.
+
       *
       *          Get the account record
       *
@@ -227,6 +229,24 @@
            PERFORM GET-ME-OUT-OF-HERE.
 
        A999.
+           EXIT.
+
+
+      *
+      * CWE-89 (SQL Injection) defense-in-depth: validate the account
+      * number before any EXEC SQL data access. Host-variable binding
+      * already separates data from SQL; this rejects malformed keys
+      * early.
+      *
+       VALIDATE-INPUT SECTION.
+       VLD010.
+           IF DELACC-ACCNO IS NOT NUMERIC
+           OR DELACC-ACCNO = ZEROES
+              MOVE 'N' TO DELACC-DEL-SUCCESS
+              MOVE '1' TO DELACC-DEL-FAIL-CD
+              PERFORM GET-ME-OUT-OF-HERE
+           END-IF.
+       VLD999.
            EXIT.
 
 

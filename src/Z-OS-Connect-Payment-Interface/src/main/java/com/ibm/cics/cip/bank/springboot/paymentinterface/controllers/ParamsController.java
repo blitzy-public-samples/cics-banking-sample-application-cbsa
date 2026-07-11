@@ -9,9 +9,15 @@ import com.ibm.cics.cip.bank.springboot.paymentinterface.ConnectionInfo;
 import com.ibm.cics.cip.bank.springboot.paymentinterface.jsonclasses.paymentinterface.PaymentInterfaceJson;
 import com.ibm.cics.cip.bank.springboot.paymentinterface.jsonclasses.paymentinterface.TransferForm;
 
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Size;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -19,6 +25,9 @@ import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClient.ResponseSpec;
 
+// Security fix (V3 CWE-20 Improper Input Validation - OWASP A03 Injection): reject
+// malformed request input at the controller boundary; violations short-circuit with 400.
+@Validated
 @RestController
 public class ParamsController
 {
@@ -33,10 +42,14 @@ public class ParamsController
 	// WebController.java
 	// Instead of a form object, parameters required in the url
 	@PostMapping("/submit")
+	// Security fix (V2 CWE-306 Missing Authentication / CWE-862 Missing Authorization -
+	// OWASP A01 Broken Access Control, A07 Identification & Authentication Failures):
+	// restrict this money-movement operation to the TELLER role.
+	@PreAuthorize("hasRole('TELLER')")
 	public PaymentInterfaceJson submit(
-			@RequestParam(name = "acctnum", required = true) String acctNumber,
-			@RequestParam(name = "amount", required = true) float amount,
-			@RequestParam(name = "organisation", required = true) String organisation)
+			@RequestParam(name = "acctnum", required = true) @NotBlank @Size(max = 8) String acctNumber,
+			@RequestParam(name = "amount", required = true) @Positive float amount,
+			@RequestParam(name = "organisation", required = true) @NotBlank @Size(max = 16) String organisation)
 			throws JsonProcessingException
 	{
 		log.info("AcctNumber: {}, Amount {}, Organisation {}", acctNumber,

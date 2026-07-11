@@ -212,6 +212,7 @@
            END-EXEC.
 
            MOVE SORTCODE TO REQUIRED-SORT-CODE OF ACCOUNT-KY.
+           PERFORM VALIDATE-INPUT
       *
       *          Get the ACCOUNT row from DB2
       *
@@ -247,6 +248,27 @@
            PERFORM GET-ME-OUT-OF-HERE.
 
        A999.
+           EXIT.
+
+
+      *
+      * CWE-89 (SQL Injection) defense-in-depth: validate the account
+      * number before any EXEC SQL data access. Host-variable binding
+      * already separates data from SQL; this rejects malformed keys
+      * early. 99999999 is the legitimate "read last account" sentinel
+      * and is explicitly allowed.
+      *
+       VALIDATE-INPUT SECTION.
+       VLD010.
+           IF INQACC-ACCNO = 99999999
+              GO TO VLD999
+           END-IF.
+           IF INQACC-ACCNO IS NOT NUMERIC
+           OR INQACC-ACCNO = ZEROES
+              MOVE 'N' TO INQACC-SUCCESS
+              PERFORM GET-ME-OUT-OF-HERE
+           END-IF.
+       VLD999.
            EXIT.
 
 

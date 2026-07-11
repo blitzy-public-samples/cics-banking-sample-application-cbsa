@@ -43,32 +43,23 @@ const AccountCreationPage = () => {
   const [isFailureModalOpened, setIsFailureModalOpened] = useState(false);
   const [isFailureNetworkModalOpened, setIsFailureNetworkModalOpened] = useState(false);
   const [isLoadingModalOpened, setIsLoadingModalOpened] = useState(false);
+  // Re-entrancy guard (QA M4): true while a create request is in flight. Used to
+  // (a) disable the Submit button and (b) reject repeat submits, so a rapid
+  // double-click issues exactly ONE POST instead of two and the success modal
+  // cannot be toggled back closed by a second invocation.
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  // Synchronous companion to isSubmitting (QA M4): a ref is updated immediately
+  // (not on the next render like state), so a second click fired in the SAME
+  // React tick - before the state re-render disables the button - is still
+  // rejected. This guarantees exactly ONE POST under a true rapid double-click.
+  const isSubmittingRef = React.useRef(false);
   const [enteredInterestRate, setEnteredInterestRate] = useState('');
   const [enteredCustomerID, setEnteredCustomerID] = useState('');
   const [enteredAccountType, setEnteredAccountType] = useState(items[3]);
   const [enteredOverdraftLimit, setEnteredOverdraftLimit] = useState('');
 
-  function displayModal() {
-    setModalOpened(wasOpened => !wasOpened);
-  };
-
-  function displayLoadingModal(){
-    setIsLoadingModalOpened(wasOpened => !wasOpened)
-  }
-
-  function displayFailedModal() {
-    setIsFailureModalOpened(wasOpened => !wasOpened);
-  }
-
-  function displayFailedNetworkModal() {
-    setIsFailureNetworkModalOpened(wasOpened => !wasOpened);
-  }
-
   const enteredCustomerIDChangeHandler = event => {
     setEnteredCustomerID(event.target.value);
-  };
-  const enteredAccountTypeChangeHandler = event => {
-    setEnteredAccountType(event.target.value);
   };
   const enteredOverdraftLimitChangeHandler = event => {
     setEnteredOverdraftLimit(event.target.value);
@@ -83,6 +74,7 @@ const AccountCreationPage = () => {
   async function createAccount() {
     let responseData;
     try {
+      // Security (V2 auth, V6 CSRF): request carries credentials + X-XSRF-TOKEN via shared axios config
       await axios
         .post(process.env.REACT_APP_ACCOUNT_URL, {
           interestRate: enteredInterestRate,
@@ -94,28 +86,45 @@ const AccountCreationPage = () => {
         }).then((response) => {
           responseData = response.data
           setSuccessText(responseData.id)
-          displayLoadingModal()
-          displayModal()
+          // Idempotent setters (QA M4): explicitly close the loading modal and
+          // open the success modal. Using setState(true/false) rather than a
+          // toggle guarantees the success modal ends OPEN even if invoked more
+          // than once, so it can never be toggled back closed.
+          setIsLoadingModalOpened(false)
+          setModalOpened(true)
         }).catch(function (error) {
           if (error.response) {
-            displayLoadingModal()
-            displayFailedModal()
+            setIsLoadingModalOpened(false)
+            setIsFailureModalOpened(true)
             console.log(error)
           } else if (error.request){
-              displayLoadingModal()
-              displayFailedNetworkModal()
+              setIsLoadingModalOpened(false)
+              setIsFailureNetworkModalOpened(true)
               console.log(error)
             }
         })
     } catch (e) {
       console.log("Error in creation: " + e)
-      displayLoadingModal()
-      displayFailedModal()
+      setIsLoadingModalOpened(false)
+      setIsFailureModalOpened(true)
+    } finally {
+      // Release the re-entrancy guard (QA M4) once the request settles, so the
+      // user may submit again after a completed success or failure.
+      isSubmittingRef.current = false
+      setIsSubmitting(false)
     }
   }
 
   async function submitButtonHandler() {
-    displayLoadingModal()
+    // Re-entrancy guard (QA M4): ignore rapid repeat clicks while a create is
+    // already in flight so only ONE POST is issued and the resulting success
+    // modal cannot be toggled shut by a second invocation.
+    if (isSubmittingRef.current) {
+      return
+    }
+    isSubmittingRef.current = true
+    setIsSubmitting(true)
+    setIsLoadingModalOpened(true)
     createAccount()
   }
 
@@ -165,9 +174,11 @@ const AccountCreationPage = () => {
               </div>
 
               <div style={{ width: 500 }}>
+                {/* Fix (QA F-B): Carbon TextInput ignores `label`; use `labelText` so
+                    the field exposes an accessible name for assistive technology. */}
                 <TextInput
                   id="carbon-number"
-                  label="Overdraft Limit:"
+                  labelText="Overdraft Limit:"
                   helperText="Please set the overdraft limit"
                   invalidText="Number is not valid"
                   value={enteredOverdraftLimit}
@@ -176,16 +187,17 @@ const AccountCreationPage = () => {
                 />
               </div>
               <div style={{ width: 500 }}>
+              {/* Fix (QA F-B): Carbon TextInput ignores `label`; use `labelText`. */}
               <TextInput
                 id="interestRate"
-                label="Interest rate:"
+                labelText="Interest rate:"
                 invalidText="Number is not valid"
                 helperText="Please enter the interest rate"
                 value={enteredInterestRate}
                 onChange={enteredInterestRateChangeHandler}
               />
               </div>
-              <Button className="displayModal" onClick={submitButtonHandler}>
+              <Button className="displayModal" onClick={submitButtonHandler} disabled={isSubmitting}>
                 Submit
               </Button>
             </Stack>
@@ -194,7 +206,7 @@ const AccountCreationPage = () => {
             passiveModal
             size="sm"
             open={isModalOpened}
-            onRequestClose={displayModal}
+            onRequestClose={() => setModalOpened(false)}
             preventCloseOnClickOutside>
             <h5>Customer account created successfully</h5>
             <br />
@@ -217,7 +229,7 @@ const AccountCreationPage = () => {
             size="sm"
             open={isLoadingModalOpened}
             preventCloseOnClickOutside
-            onRequestClose={displayLoadingModal}>
+            onRequestClose={() => setIsLoadingModalOpened(false)}>
             <h4> Creating account...</h4>
           </Modal>
           <Modal
@@ -225,14 +237,14 @@ const AccountCreationPage = () => {
             size="sm"
             open={isFailureNetworkModalOpened}
             preventCloseOnClickOutside
-            onRequestClose={displayFailedNetworkModal}>
+            onRequestClose={() => setIsFailureNetworkModalOpened(false)}>
             <h4> Account failed to create due to a network error</h4>
           </Modal>
           <Modal
             passiveModal
             size="sm"
             open={isFailureModalOpened}
-            onRequestClose={displayFailedModal}
+            onRequestClose={() => setIsFailureModalOpened(false)}
             preventCloseOnClickOutside>
             <h5>Customer account failed to create</h5>
             <br />

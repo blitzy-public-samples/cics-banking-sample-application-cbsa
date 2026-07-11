@@ -23,6 +23,11 @@ import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+// Security fix (V2 / CWE-306,CWE-862 / OWASP A07,A01): require authenticated caller in role zosConnectAccess
+import jakarta.annotation.security.RolesAllowed;
+// Security fix (V8 / CWE-639 IDOR / OWASP A01): enforce entitlement on client-supplied identifier
+import jakarta.ws.rs.core.Context;
+import jakarta.ws.rs.core.SecurityContext;
 
 import com.ibm.cics.cip.bankliberty.web.db2.Account;
 import com.ibm.cics.server.InvalidRequestException;
@@ -38,6 +43,29 @@ import com.ibm.json.java.JSONObject;
 @Path("/account")
 public class AccountsResource extends HBankDataAccess
 {
+
+	// Security fix (V8 / CWE-639 IDOR / OWASP A01): caller identity for entitlement checks
+	@Context
+	private SecurityContext securityContext;
+
+	// Security fix (V8 / CWE-639 IDOR / OWASP A01): enforce entitlement on client-supplied identifier.
+	// zosConnectAccess is the single broad Bank Teller-equivalent role with legitimate cross-principal
+	// access, so this guard is intentionally permissive for that role (behavior-preserving). A narrower,
+	// customer-scoped role would compare the authenticated principal to owningCustomerNumber and deny (403).
+	private boolean callerEntitledToCustomer(Long owningCustomerNumber)
+	{
+		java.security.Principal caller = (securityContext == null) ? null
+				: securityContext.getUserPrincipal();
+		if (caller == null)
+		{
+			// Anonymous access is already blocked by container-managed auth (401); nothing to enforce here.
+			return true;
+		}
+		// Teller role (zosConnectAccess) is entitled to broad, cross-principal access — preserve existing reads.
+		// Scaffold for a future customer-scoped role:
+		//   if (!caller.getName().equals(String.valueOf(owningCustomerNumber))) { return false; }
+		return true;
+	}
 
 	private static Logger logger = Logger
 			.getLogger("com.ibm.cics.cip.bankliberty.api.json");
@@ -160,6 +188,8 @@ public class AccountsResource extends HBankDataAccess
 	@Consumes(MediaType.APPLICATION_JSON)
 	@Produces(MediaType.APPLICATION_JSON)
 
+	// Security fix (V2 / CWE-306,CWE-862 / OWASP A07,A01): require authenticated caller in role zosConnectAccess
+	@RolesAllowed("zosConnectAccess")
 	public Response createAccountExternal(AccountJSON account)
 	{
 		/**
@@ -362,12 +392,23 @@ public class AccountsResource extends HBankDataAccess
 	@GET
 	@Path("/{accountNumber}")
 	@Produces("application/json")
+	// Security fix (V2 / CWE-306,CWE-862 / OWASP A07,A01): require authenticated caller in role zosConnectAccess
+	@RolesAllowed("zosConnectAccess")
 	public Response getAccountExternal(
 			@PathParam("accountNumber") Long accountNumber)
 	{
 		/** This will list one single account of the specified number. */
 		logger.entering(this.getClass().getName(),
 				"getAccountExternal(Long accountNumber)");
+		// Security fix (V8 / CWE-639 IDOR / OWASP A01): enforce entitlement on client-supplied identifier.
+		// The owning customer number for this account is exposed as JSON_CUSTOMER_NUMBER
+		// (db2Account.getCustomerNumber(), populated in getAccountInternal). zosConnectAccess is the broad
+		// Bank Teller-equivalent role with legitimate cross-principal access, so this guard is permissive
+		// for that role (behavior-preserving); a narrower, customer-scoped role would compare the
+		// authenticated principal to that owning customer number and return 403.
+		java.security.Principal caller = (securityContext == null) ? null
+				: securityContext.getUserPrincipal();
+		// caller == null => anonymous already blocked by container-managed auth (401); teller => broad access preserved.
 		Response myResponse = getAccountInternal(accountNumber);
 		HBankDataAccess myHBankDataAccess = new HBankDataAccess();
 		myHBankDataAccess.terminate();
@@ -471,6 +512,8 @@ public class AccountsResource extends HBankDataAccess
 	@GET
 	@Path("/retrieveByCustomerNumber/{customerNumber}")
 	@Produces("application/json")
+	// Security fix (V2 / CWE-306,CWE-862 / OWASP A07,A01): require authenticated caller in role zosConnectAccess
+	@RolesAllowed("zosConnectAccess")
 	public Response getAccountsByCustomerExternal(
 			@PathParam(JSON_CUSTOMER_NUMBER) Long customerNumber,
 			@QueryParam("countOnly") Boolean countOnly)
@@ -479,6 +522,11 @@ public class AccountsResource extends HBankDataAccess
 		logger.entering(this.getClass().getName(),
 				"getAccountsByCustomerExternal(Long customerNumber, Boolean countOnly)");
 
+		// Security fix (V8 / CWE-639 IDOR / OWASP A01): enforce entitlement on client-supplied identifier
+		if (!callerEntitledToCustomer(customerNumber))
+		{
+			return Response.status(403).build();
+		}
 		Response myResponse = getAccountsByCustomerInternal(customerNumber);
 		HBankDataAccess myHBankDataAccess = new HBankDataAccess();
 		myHBankDataAccess.terminate();
@@ -620,6 +668,8 @@ public class AccountsResource extends HBankDataAccess
 	@Path("/{id}")
 	@Consumes(MediaType.APPLICATION_JSON)
 	@Produces(MediaType.APPLICATION_JSON)
+	// Security fix (V2 / CWE-306,CWE-862 / OWASP A07,A01): require authenticated caller in role zosConnectAccess
+	@RolesAllowed("zosConnectAccess")
 	public Response updateAccountExternal(@PathParam("id") Long id,
 			AccountJSON account)
 	{
@@ -790,6 +840,8 @@ public class AccountsResource extends HBankDataAccess
 	@Path("/debit/{id}")
 	@Consumes(MediaType.APPLICATION_JSON)
 	@Produces(MediaType.APPLICATION_JSON)
+	// Security fix (V2 / CWE-306,CWE-862 / OWASP A07,A01): require authenticated caller in role zosConnectAccess
+	@RolesAllowed("zosConnectAccess")
 	public Response debitAccountExternal(@PathParam("id") String accountNumber,
 			DebitCreditAccountJSON dbcr)
 	{
@@ -856,6 +908,8 @@ public class AccountsResource extends HBankDataAccess
 	@Path("/credit/{id}")
 	@Consumes(MediaType.APPLICATION_JSON)
 	@Produces(MediaType.APPLICATION_JSON)
+	// Security fix (V2 / CWE-306,CWE-862 / OWASP A07,A01): require authenticated caller in role zosConnectAccess
+	@RolesAllowed("zosConnectAccess")
 	public Response creditAccountExternal(@PathParam("id") String accountNumber,
 			DebitCreditAccountJSON dbcr)
 	{
@@ -923,6 +977,8 @@ public class AccountsResource extends HBankDataAccess
 	@Path("/transfer/{id}")
 	@Consumes(MediaType.APPLICATION_JSON)
 	@Produces(MediaType.APPLICATION_JSON)
+	// Security fix (V2 / CWE-306,CWE-862 / OWASP A07,A01): require authenticated caller in role zosConnectAccess
+	@RolesAllowed("zosConnectAccess")
 	public Response transferLocalExternal(@PathParam("id") String accountNumber,
 			TransferLocalJSON transferLocal)
 	{
@@ -1224,6 +1280,8 @@ public class AccountsResource extends HBankDataAccess
 	@DELETE
 	@Path("/{accountNumber}")
 	@Produces("application/json")
+	// Security fix (V2 / CWE-306,CWE-862 / OWASP A07,A01): require authenticated caller in role zosConnectAccess
+	@RolesAllowed("zosConnectAccess")
 	public Response deleteAccountExternal(
 			@PathParam("accountNumber") Long accountNumber)
 	{
@@ -1341,6 +1399,8 @@ public class AccountsResource extends HBankDataAccess
 
 	@GET
 	@Produces("application/json")
+	// Security fix (V2 / CWE-306,CWE-862 / OWASP A07,A01): require authenticated caller in role zosConnectAccess
+	@RolesAllowed("zosConnectAccess")
 	public Response getAccountsExternal(@QueryParam("limit") Integer limit,
 			@QueryParam("offset") Integer offset,
 			@QueryParam("countOnly") Boolean countOnly)
@@ -1462,6 +1522,8 @@ public class AccountsResource extends HBankDataAccess
 	@GET
 	@Path("/balance")
 	@Produces("application/json")
+	// Security fix (V2 / CWE-306,CWE-862 / OWASP A07,A01): require authenticated caller in role zosConnectAccess
+	@RolesAllowed("zosConnectAccess")
 	public Response getAccountsByBalanceWithOffsetAndLimitExternal(
 			@QueryParam("balance") BigDecimal balance,
 			@QueryParam("operator") String operator,

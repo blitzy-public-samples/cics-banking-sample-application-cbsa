@@ -11,8 +11,17 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
-@SpringBootApplication(scanBasePackages =
-{ "com.ibm.cics.cip.bank.springboot.customerservices.controllers" })
+// Security fix - enables V2 Missing Authentication/Authorization
+// (OWASP A01 Broken Access Control / A07 Identification & Authentication Failures;
+// CWE-306 Missing Authentication, CWE-862 Missing Authorization) and
+// V6 Missing HTTP Security Controls (OWASP A05 Security Misconfiguration;
+// CWE-352 CSRF, CWE-942 Permissive CORS, CWE-693 Missing Security Headers):
+// include the config package in component scanning so SecurityConfig
+// (SecurityFilterChain, CORS, CSRF, security headers) is registered. Without this,
+// the security beans never load and the entire remediation is silently inert.
+@SpringBootApplication(scanBasePackages = {
+    "com.ibm.cics.cip.bank.springboot.customerservices.controllers",
+    "com.ibm.cics.cip.bank.springboot.customerservices.config" })
 public class CustomerServices
 {
 

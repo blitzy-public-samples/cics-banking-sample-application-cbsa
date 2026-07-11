@@ -75,7 +75,7 @@ const account_headers = [
   "Last Statement Due",
 ];
 
-const CustomerDetailsTable = ({ customerDetailsRows, accountDetailsRows }) => {
+const CustomerDetailsTable = ({ customerDetailsRows, accountsByCustomer }) => {
 
   /**
   * Is the updateCustomer popup being used
@@ -165,8 +165,15 @@ const CustomerDetailsTable = ({ customerDetailsRows, accountDetailsRows }) => {
     }
 
 let newDateOfBirth = currentDateOfBirth.substring(6,10) + "-" + currentDateOfBirth.substring(3,5) + "-" + currentDateOfBirth.substring(0,2)
+    // Fix (QA F3): capture the interceptor handle so it can be ejected after this
+    // update completes. Previously updateCustomer() called
+    // axios.interceptors.response.use(...) on every invocation without ever
+    // ejecting it, so each repeated (failed) update left another global response
+    // interceptor registered. All of them fired on the next error, producing a
+    // triangular, ever-growing number of duplicate alerts for a single failure.
+    let interceptorId
     try {
-      axios.interceptors.response.use(function (response) {
+      interceptorId = axios.interceptors.response.use(function (response) {
         // Any status code that lie within the range of 2xx cause this function to trigger
         // Do something with response data
         return response;
@@ -180,6 +187,7 @@ let newDateOfBirth = currentDateOfBirth.substring(6,10) + "-" + currentDateOfBir
         }
         return Promise.reject(error);
       });
+      // Security (V2 auth, V6 CSRF): request carries credentials + X-XSRF-TOKEN via shared axios config
       await axios
         .put(process.env.REACT_APP_CUSTOMER_URL + `/${customerNumber}`, {
           customerAddress: useAddress,
@@ -194,6 +202,14 @@ let newDateOfBirth = currentDateOfBirth.substring(6,10) + "-" + currentDateOfBir
         window.location.reload(true)
     } catch (e) {
       console.log("Error updating customer: " + e)
+    } finally {
+      // Fix (QA F3): eject the response interceptor registered above so exactly
+      // one is active per updateCustomer() call and none accumulate across
+      // repeated attempts. (The handle can legitimately be 0, so compare
+      // against undefined rather than using a truthy check.)
+      if (interceptorId !== undefined) {
+        axios.interceptors.response.eject(interceptorId)
+      }
     }
 
   }
@@ -204,6 +220,14 @@ let newDateOfBirth = currentDateOfBirth.substring(6,10) + "-" + currentDateOfBir
    * - maps the data using the accountNumber as the sorting key
    */
   function getExpandedRows(row) {
+    // Correctness fix (QA finding M2): render ONLY the accounts that belong to
+    // THIS customer row. Carbon's DataTable strips arbitrary custom row props
+    // but preserves row.id (set to the customer number during row build), so we
+    // look the accounts up in a per-customer map keyed by row.id. Previously a
+    // single shared array was rendered for every expander, causing one
+    // customer's twistie to display another customer's accounts.
+    const customerAccounts =
+      (accountsByCustomer && accountsByCustomer[row.id]) || [];
     return (
       <TableExpandedRow colSpan={headers.length + 2}>
         <p className="account-details">Accounts belonging to this customer</p>
@@ -218,13 +242,13 @@ let newDateOfBirth = currentDateOfBirth.substring(6,10) + "-" + currentDateOfBir
             </TableRow>
           </TableHead>
           <TableBody>
-            {(accountDetailsRows).map(row => (
-              <TableRow key={row.accountNumber}>
-                {Object.keys(row)
+            {customerAccounts.map(account => (
+              <TableRow key={account.accountNumber}>
+                {Object.keys(account)
                   .filter(key => key !== "id")
                   .map(key => {
                     return (
-                      <TableCell key={key}>{row[key]}</TableCell>
+                      <TableCell key={key}>{account[key]}</TableCell>
                     );
                   })}
 
@@ -262,7 +286,7 @@ let newDateOfBirth = currentDateOfBirth.substring(6,10) + "-" + currentDateOfBir
             </TableHead>
             <TableBody>
               {rows.map(row => (
-                <React.Fragment key={row.customerNumber}>
+                <React.Fragment key={row.id}>
                   <TableExpandRow {...getRowProps({ row })}>
                     {row.cells.map(cell => (
                       <TableCell key={cell.id}>{cell.value}</TableCell>
@@ -279,17 +303,24 @@ let newDateOfBirth = currentDateOfBirth.substring(6,10) + "-" + currentDateOfBir
                       open={isUpdateCustomerModalOpened}
                       onRequestClose={() => {displayUpdateCustomerModal(); window.location.reload(true)}}
                     >
+                      {/* Fix (QA F-P): unique, row-scoped id (the modal renders once per
+                          customer row, so a static id would collide across rows and both
+                          text inputs previously shared id="text-input-1"). A unique id also
+                          restores the label/field association for assistive technology. */}
                       <TextInput
                         data-modal-primary-focus
-                        id="text-input-1"
+                        id={`customer-name-input-${row.id}`}
                         labelText="Customer Name"
                         defaultValue={currentCustomerName}
                         onChange={enteredNameChangeHandler}
                         style={{ marginBottom: "1rem" }}
                       />
 
+                      {/* Fix (QA F-P): add a unique, row-scoped id so this read-only
+                          NumberInput has a proper label association for assistive tech. */}
                       <NumberInput
                         className="customerNumber"
+                        id={`customer-number-input-${row.id}`}
                         iconDescription="Customer Number (cannot be changed)"
                         label="Customer Number (cannot be changed)"
                         min={0}
@@ -301,6 +332,7 @@ let newDateOfBirth = currentDateOfBirth.substring(6,10) + "-" + currentDateOfBir
 
                       <NumberInput
                         className="sortcode-update"
+                        id={`sort-code-input-${row.id}`}
 			                  iconDescription="Sort Code (cannot be changed)"
                         label="Sort Code (cannot be changed)"
                         min={0}
@@ -310,9 +342,11 @@ let newDateOfBirth = currentDateOfBirth.substring(6,10) + "-" + currentDateOfBir
                       />
 
                       <div style={{ width: 350 }}>
+                        {/* Fix (QA F-P): unique, row-scoped id (previously duplicated the
+                            Customer Name input's id="text-input-1"). */}
                         <TextInput
                           data-modal-primary-focus
-                          id="text-input-1"
+                          id={`customer-address-input-${row.id}`}
                           labelText="Customer Address"
                           defaultValue={currentCustomerAddress}
                           onChange={enteredAddressChangeHandler}

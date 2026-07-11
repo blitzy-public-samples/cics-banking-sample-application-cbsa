@@ -3,7 +3,9 @@
 /*                                                                        */
 package com.ibm.cics.cip.bank.springboot.paymentinterface.jsonclasses.paymentinterface;
 
+import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 
 public class TransferForm
@@ -12,18 +14,36 @@ public class TransferForm
 
 
 	// accno
+	// Security fix (V3 CWE-20 Improper Input Validation - OWASP A03 Injection; QA finding
+	// F-QA2): @NotNull alone accepts an empty string (""), which @Size(max=8) also permits
+	// (length 0), so a blank account number bypassed validation and was forwarded to the
+	// downstream money-movement call. @Size(min = 1, ...) enforces reject-by-default at the
+	// controller boundary, mirroring the correct CustomerEnquiryForm pattern.
 	@NotNull
-	@Size(max = 8)
+	@Size(min = 1, max = 8)
 	private String acctNumber;
 
 	@NotNull
 	private boolean debit = true;
 
+	// amount
+	// Security fix (V3 CWE-20 Improper Input Validation - OWASP A03; defense-in-depth):
+	// @NotNull alone accepted zero and negative amounts, which passed the Spring layer and were
+	// forwarded to the downstream money-movement call on /paydbcr. @Positive rejects zero and
+	// negative values at the controller boundary (reject-by-default), and @Digits bounds the
+	// value to a sane monetary format (<= 12 integer digits, <= 2 fraction digits), mirroring
+	// the @Positive guard already enforced on ParamsController's /submit amount. The COBOL
+	// program DBCRFUN (SEC-R1: AVAIL_BAL - amount >= 0, reject MORTGAGE/LOAN) remains the
+	// authoritative business-rule guard; this constraint is an additional early-reject layer.
 	@NotNull
+	@Positive
+	@Digits(integer = 12, fraction = 2)
 	private Float amount;
 
+	// Security fix (V3 CWE-20 - QA finding F-QA2): reject a blank organisation (CommApplid)
+	// at the boundary; @Size(min = 1, ...) closes the empty-string gap left by @NotNull.
 	@NotNull
-	@Size(max = 16)
+	@Size(min = 1, max = 16)
 	private String organisation;
 
 
@@ -33,8 +53,9 @@ public class TransferForm
 	}
 
 
-	public TransferForm(@NotNull @Size(max = 8) String acctNumber,
-			@NotNull Float amount, @NotNull @Size(max = 16) String organisation)
+	public TransferForm(@NotNull @Size(min = 1, max = 8) String acctNumber,
+			@NotNull Float amount,
+			@NotNull @Size(min = 1, max = 16) String organisation)
 	{
 		this.acctNumber = acctNumber;
 		this.amount = amount;

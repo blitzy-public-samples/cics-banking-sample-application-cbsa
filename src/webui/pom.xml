@@ -35,6 +35,13 @@
 			<version>3.1.1</version>
 			<scope>provided</scope>
 		</dependency>
+		<!-- Security enabler (V2 / CWE-306,CWE-862 Missing Authentication/Authorization / OWASP A01,A07): jakarta.annotation-api supplies jakarta.annotation.security.RolesAllowed for container-managed authorization on the JAX-RS resources; 'provided' scope because the Liberty runtime supplies the implementation at deploy time -->
+		<dependency>
+			<groupId>jakarta.annotation</groupId>
+			<artifactId>jakarta.annotation-api</artifactId>
+			<version>3.0.0</version>
+			<scope>provided</scope>
+		</dependency>
 
 
 		<dependency>

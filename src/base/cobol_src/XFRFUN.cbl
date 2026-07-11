@@ -293,6 +293,7 @@
            END-IF.
 
       *
+           PERFORM VALIDATE-INPUT
            PERFORM UPDATE-ACCOUNT-DB2
 
       *
@@ -302,6 +303,34 @@
            PERFORM GET-ME-OUT-OF-HERE.
 
        A999.
+           EXIT.
+
+
+      *
+      * CWE-89 (SQL Injection) defense-in-depth: validate the transfer
+      * account numbers, sort codes and amount before any EXEC SQL.
+      * Host-variable binding already separates data from SQL; this
+      * rejects malformed input early and does not alter SEC-R1.
+      *
+       VALIDATE-INPUT SECTION.
+       VLD010.
+           IF COMM-FACCNO IS NOT NUMERIC
+           OR COMM-FACCNO = ZEROES
+           OR COMM-TACCNO IS NOT NUMERIC
+           OR COMM-TACCNO = ZEROES
+           OR COMM-FSCODE IS NOT NUMERIC
+           OR COMM-TSCODE IS NOT NUMERIC
+             MOVE 'N' TO COMM-SUCCESS
+             MOVE '1' TO COMM-FAIL-CODE
+             PERFORM GET-ME-OUT-OF-HERE
+           END-IF.
+
+           IF COMM-AMT > 99999999.99
+             MOVE 'N' TO COMM-SUCCESS
+             MOVE '1' TO COMM-FAIL-CODE
+             PERFORM GET-ME-OUT-OF-HERE
+           END-IF.
+       VLD999.
            EXIT.
 
 

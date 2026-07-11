@@ -13,17 +13,20 @@
         <feature>zosconnect:zosConnectCommands-1.0</feature>
     </featureManager>
 
-    <keyStore id="defaultKeyStore" password="Liberty"/>
+    <!-- Security fix (V7/CWE-798): keystore password externalized to a server ${...} variable resolved from environment/server variables at startup; no credential literal in source control -->
+    <keyStore id="defaultKeyStore" password="${keystore.password}"/>
 
     <webAppSecurity allowFailOverToBasicAuth="true" />
 
+    <!-- Security fix (V7/CWE-798): basicRegistry credentials externalized to server ${...} variables resolved at startup; no username/password literals in source control -->
     <basicRegistry id="basic1" realm="zosConnect">
-     <user name="ibmuser" password="SYS1" />
+     <user name="${zosconnect.registry.user}" password="${zosconnect.registry.password}" />
     </basicRegistry>
 
+    <!-- Security fix (V7/CWE-798): role mapping references the externalized registry user via a server ${...} variable; keeps the same zosConnectAccess mapping with no username literal -->
     <authorization-roles id="zos.connect.access.roles">
      <security-role name="zosConnectAccess">
-      <user name="ibmuser"/>
+      <user name="${zosconnect.registry.user}"/>
      </security-role>
     </authorization-roles>
 
@@ -34,9 +37,10 @@
                   httpsPort="30702" />
 
     <!-- add cors to allow cross origin access, e.g. when using swagger UI to fetch swagger doc from zOS Connect Enterprise Edition  -->
+    <!-- Security fix (V6/CWE-942): restrictive CORS allowlist (externalized to a server ${...} variable) replaces the wildcard "*" origin, eliminating the wildcard-with-credentials misconfiguration -->
     <cors id="defaultCORSConfig"
           domain="/"
-          allowedOrigins="*"
+          allowedOrigins="${cors.allowed.origins}"
           allowedMethods="GET, POST, PUT, DELETE, OPTIONS"
           allowedHeaders="Origin, Content-Type, Authorization"
           allowCredentials="true"

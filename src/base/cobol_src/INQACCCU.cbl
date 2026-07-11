@@ -207,6 +207,7 @@
       *    customer information.
       *
 
+           PERFORM VALIDATE-INPUT
            PERFORM CUSTOMER-CHECK.
 
       *
@@ -227,6 +228,24 @@
            PERFORM GET-ME-OUT-OF-HERE.
 
        A999.
+           EXIT.
+
+
+      *
+      * CWE-89 (SQL Injection) defense-in-depth: validate the customer
+      * number before the customer check and any EXEC SQL data access.
+      * Host-variable binding already separates data from SQL; this
+      * rejects malformed keys early.
+      *
+       VALIDATE-INPUT SECTION.
+       VLD010.
+           IF CUSTOMER-NUMBER IN DFHCOMMAREA IS NOT NUMERIC
+           OR CUSTOMER-NUMBER IN DFHCOMMAREA = ZEROES
+              MOVE 'N' TO COMM-SUCCESS IN DFHCOMMAREA
+              MOVE '1' TO COMM-FAIL-CODE IN DFHCOMMAREA
+              PERFORM GET-ME-OUT-OF-HERE
+           END-IF.
+       VLD999.
            EXIT.
 
 

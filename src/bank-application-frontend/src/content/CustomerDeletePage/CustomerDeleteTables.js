@@ -82,6 +82,11 @@ const CustomerDeleteTables = ({customerRow, accountRow}) => {
   const [accountNumberToDelete, setAccountNumberToDelete] = useState("")
   const [isModalOpened, setModalOpened] = useState(false);
   const [wasUnableDeleteOpened, setUnableDeleteModalOpened] = useState(false);
+  // Fix (QA F5): dedicated state for an account-delete failure modal. Previously a
+  // failed account deletion reused the customer-oriented "Unable to delete the
+  // customer!" modal (which tells the user to "delete all associated accounts"),
+  // producing misleading messaging for what is actually an account deletion failure.
+  const [wasUnableDeleteAccountOpened, setUnableDeleteAccountModalOpened] = useState(false);
   const [isSuccessfulCustomerDeleteModalOpened, setSuccessfulCustomerDeleteModalOpened] = useState(false)
   const [isSuccessfulAccountDeleteModalOpened, setSuccessfulAccountDeleteModalOpened] = useState(false)
 
@@ -119,7 +124,6 @@ const CustomerDeleteTables = ({customerRow, accountRow}) => {
    */
   async function deleteCustomer(row) {
     let customerNumber = row.cells[0].value
-    let responseData;
     let howManyAccountsData;
     try {
       await axios
@@ -129,10 +133,10 @@ const CustomerDeleteTables = ({customerRow, accountRow}) => {
         })
       let numberOfAccounts = howManyAccountsData.numberOfAccounts
       if (parseInt(numberOfAccounts) === 0) {
+        // Security (V2 auth, V6 CSRF): request carries credentials + X-XSRF-TOKEN via shared axios config
         await axios
           .delete(process.env.REACT_APP_CUSTOMER_URL + `/${customerNumber}`)
-          .then(response => {
-            responseData = response.data
+          .then(() => {
             displayModal()
             displaySuccessfulCustomerDeleteModal()
           })
@@ -149,23 +153,34 @@ const CustomerDeleteTables = ({customerRow, accountRow}) => {
   }
 
   /**
-   * Deletes the account from a given row
+   * Deletes the account currently selected for deletion.
    */
-  async function deleteAccount(row) {
-    let accountNumber = row.accountNumber
-    let responseData;
+  async function deleteAccount() {
+    // Fix (QA F-Q): delete the account chosen via onDeleteAccountClick (stored in
+    // the accountNumberToDelete state) instead of a row captured by a map closure.
+    // The three account modals were previously rendered once per account row, all
+    // bound to the same shared open state, so triggering one opened every copy
+    // stacked and the top-most (last) modal's onRequestSubmit closed over the LAST
+    // account's row — deleting the wrong account. The modals are now hoisted out of
+    // the map (see render) and this function reads the selected account from state.
+    let accountNumber = accountNumberToDelete
     try {
+      // Security (V2 auth, V6 CSRF): request carries credentials + X-XSRF-TOKEN via shared axios config
       await axios
         .delete(process.env.REACT_APP_ACCOUNT_URL + `/${accountNumber}`)
-        .then(response => {
-          responseData = response.data
+        .then(() => {
         })
       displayAccountModal()
       displaySuccessfulAccountDeleteModal()
     } catch (e) {
       console.log(e)
+      // Fix (QA F5): show the ACCOUNT-specific failure modal on an account
+      // deletion failure. Previously this called displayUnableDeleteModal(),
+      // which opens the customer-oriented "Unable to delete the customer! /
+      // Please delete all associated accounts" modal — wrong messaging for a
+      // failed account delete.
       displayAccountModal()
-      displayUnableDeleteModal()
+      displayUnableDeleteAccountModal()
     }
   }
 
@@ -179,6 +194,11 @@ const CustomerDeleteTables = ({customerRow, accountRow}) => {
     setUnableDeleteModalOpened(wasUnableDeleteOpened => !wasUnableDeleteOpened);
   }
 
+  // Fix (QA F5): toggle for the account-specific delete-failure modal.
+  function displayUnableDeleteAccountModal() {
+    setUnableDeleteAccountModalOpened(wasUnableDeleteAccountOpened => !wasUnableDeleteAccountOpened);
+  }
+
   return (
     <DataTable
       rows={customerRow}
@@ -190,6 +210,7 @@ const CustomerDeleteTables = ({customerRow, accountRow}) => {
         getRowProps,
         getTableProps,
       }) => (
+        <>
         <TableContainer title="" description="">
           <Table {...getTableProps()}>
             <TableHead>
@@ -269,30 +290,17 @@ const CustomerDeleteTables = ({customerRow, accountRow}) => {
                                   <TableCell key={key}>{row[key]}</TableCell>
                                 );
                               })}
+                            {/* Fix (QA F-Q): only the per-row trigger button lives inside
+                                the map now. The confirm/success/failure account modals are
+                                rendered once, outside the map (see below), bound to the
+                                accountNumberToDelete state, so a customer with multiple
+                                accounts no longer stacks N modals and deletes the wrong one. */}
                             <Button
                               kind="danger"
                               className="displayModal"
                               onClick={() => onDeleteAccountClick(row)}>
                               Delete
                             </Button>
-                            <Modal
-                              modalHeading="Are you sure you want to delete account"
-                              open={isModalAccountOpened}
-                              onRequestClose={displayAccountModal}
-                              onRequestSubmit={() => deleteAccount(row)}
-                              danger
-                              primaryButtonText="Delete"
-                              secondaryButtonText="Cancel">
-                              <ModalBody>
-                                Are you sure you want to delete account {accountNumberToDelete}? This action cannot be undone
-                              </ModalBody>
-                            </Modal>
-                            <Modal
-                              modalHeading="Account deleted successfully"
-                              open={isSuccessfulAccountDeleteModalOpened}
-                              onRequestClose={() => {displaySuccessfulAccountDeleteModal(); window.location.reload()}}
-                              passiveModal
-                            />
                           </TableRow>
                         ))}
                       </TableBody>
@@ -303,6 +311,42 @@ const CustomerDeleteTables = ({customerRow, accountRow}) => {
             </TableBody>
           </Table>
         </TableContainer>
+        {/* Fix (QA F-Q): single set of account-action modals bound to the selected
+            account state (accountNumberToDelete). Hoisting them out of accountRow.map()
+            guarantees exactly one instance of each, so triggering a delete no longer
+            opens N stacked modals and deleteAccount() acts on the correct account. */}
+        <Modal
+          modalHeading="Are you sure you want to delete account"
+          open={isModalAccountOpened}
+          onRequestClose={displayAccountModal}
+          onRequestSubmit={deleteAccount}
+          danger
+          primaryButtonText="Delete"
+          secondaryButtonText="Cancel">
+          <ModalBody>
+            Are you sure you want to delete account {accountNumberToDelete}? This action cannot be undone
+          </ModalBody>
+        </Modal>
+        <Modal
+          modalHeading="Account deleted successfully"
+          open={isSuccessfulAccountDeleteModalOpened}
+          onRequestClose={() => {displaySuccessfulAccountDeleteModal(); window.location.reload()}}
+          passiveModal
+        />
+        {/* Fix (QA F5): account-specific delete-failure modal
+            (replaces the misleading customer-oriented modal). */}
+        <Modal
+          modalHeading="Unable to delete the account!"
+          open={wasUnableDeleteAccountOpened}
+          onRequestClose={displayUnableDeleteAccountModal}
+          danger
+          passiveModal>
+          <ModalBody hasForm>
+            The account could not be deleted. Please try again
+            later.
+          </ModalBody>
+        </Modal>
+        </>
       )}
     />
   );

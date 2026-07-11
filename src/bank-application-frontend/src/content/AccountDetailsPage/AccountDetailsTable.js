@@ -11,6 +11,7 @@ import {
   DataTable,
   Button,
   Modal,
+  ModalBody,
   Dropdown,
   ModalFooter,
   TextInput,
@@ -73,21 +74,6 @@ const headers = [
   },
 ];
 
-/**
- * Account headers in table
- */
-const account_headers = [
-  'Account Number',
-  'Sort Code',
-  'Account Type',
-  'Interest Rate',
-  'Overdraft Limit',
-  'Available Balance',
-  'Actual Balance',
-  'Account Opened',
-  'Last Statement Due',
-  'Next Statement Due',
-];
 
 const AccountDetailsTable = ({accountMainRow}) => {
   /**
@@ -103,7 +89,7 @@ const AccountDetailsTable = ({accountMainRow}) => {
   const [nextStatementDate, setNextStatementDate] = useState("")
   const [dateOpened, setDateOpened] = useState("")
   const [currentAvailableBalance, setCurrentAvailableBalance] = useState("")
-  const [currentAccountCustomerNumber, setAccountCustomerNumber] = useState("")
+  const [currentAccountCustomerNumber] = useState("")
 
   /**
    * States that are edited by the user
@@ -127,9 +113,6 @@ const AccountDetailsTable = ({accountMainRow}) => {
     setOverdraftLimit(event.target.value);
   };
 
-  const enteredAccountTypeChangeHandler = event => {
-    setAccountType(event.target.value);
-  };
 
   /**
    * Ensure no states have not been reset between account update
@@ -162,7 +145,10 @@ const AccountDetailsTable = ({accountMainRow}) => {
    *
    */
   async function updateAccount() {
-    let responseData;
+    // Fix (QA F-H): track whether the PUT actually succeeded so the page is only
+    // reloaded on success (and a failure surfaces a modal instead of silently
+    // reloading).
+    let success = false;
     let useInterestRate = enteredInterestRate;
     let useOverdraft = enteredOverdraftLimit;
     let useAccountType = enteredAccountType;
@@ -184,6 +170,7 @@ const AccountDetailsTable = ({accountMainRow}) => {
 let newLastStatementDate = lastStatementDate.substring(6,10) + "-" + lastStatementDate.substring(3,5) + "-" + lastStatementDate.substring(0,2)
 let newNextStatementDate = nextStatementDate.substring(6,10) + "-" + nextStatementDate.substring(3,5) + "-" + nextStatementDate.substring(0,2)
 let newDateOpened        = dateOpened.substring(6,10) + "-" + dateOpened.substring(3,5) + "-" + dateOpened.substring(0,2)
+      // Security (V2 auth, V6 CSRF): request carries credentials + X-XSRF-TOKEN via shared axios config
       await axios
         .put(process.env.REACT_APP_ACCOUNT_URL + `/${useAccountNumber}`, {
           interestRate: useInterestRate,
@@ -197,8 +184,9 @@ let newDateOpened        = dateOpened.substring(6,10) + "-" + dateOpened.substri
           customerNumber: currentAccountCustomerNumber,
           sortCode: accountSortCode,
           availableBalance: currentAvailableBalance
-        }).then((response) => {
-          responseData = response.data
+        }).then(() => {
+          // Fix (QA F-H): record success only when the PUT resolves.
+          success = true
         }).catch(function (error) {
           if (error.response) {
             console.log(error)
@@ -207,8 +195,18 @@ let newDateOpened        = dateOpened.substring(6,10) + "-" + dateOpened.substri
     } catch (e) {
       console.log("Error updating account: " + e)
     }
-    setUpdateAccountModalOpened(wasUpdateAccountOpened => !wasUpdateAccountOpened)
-    window.location.reload(true)
+    // Fix (QA F-H): only close the update modal and reload the page (to display the
+    // refreshed account) when the update actually succeeded. Previously the modal
+    // was closed and window.location.reload(true) ran unconditionally, so a failed
+    // update (e.g. 400/500/network) silently reloaded and the user received no
+    // feedback. On failure we now show a generic error modal and do not reload.
+    if (success) {
+      setUpdateAccountModalOpened(false)
+      window.location.reload(true)
+    } else {
+      setUpdateAccountModalOpened(false)
+      setUpdateFailureModalOpened(true)
+    }
   }
 
   const [isUpdateAccountModalOpened, setUpdateAccountModalOpened] = useState(
@@ -219,6 +217,14 @@ let newDateOpened        = dateOpened.substring(6,10) + "-" + dateOpened.substri
     setUpdateAccountModalOpened(
       wasUpdateAccountOpened => !wasUpdateAccountOpened
     );
+  }
+
+  // Fix (QA F-H): state + close handler backing the generic update-failure modal
+  // that is shown when an account update fails (see updateAccount()).
+  const [isUpdateFailureModalOpened, setUpdateFailureModalOpened] = useState(false)
+
+  function closeUpdateFailureModal() {
+    setUpdateFailureModalOpened(false)
   }
 
   return (
@@ -313,6 +319,19 @@ let newDateOpened        = dateOpened.substring(6,10) + "-" + dateOpened.substri
                           Submit
                         </Button>
                       </ModalFooter>
+                    </Modal>
+                    {/* Fix (QA F-H): generic update-failure modal shown when the PUT
+                        fails, so the user receives feedback instead of a silent page
+                        reload. It intentionally carries no server/status detail
+                        (information-exposure hygiene). */}
+                    <Modal
+                      modalHeading="Update Account"
+                      open={isUpdateFailureModalOpened}
+                      onRequestClose={closeUpdateFailureModal}
+                      passiveModal>
+                      <ModalBody>
+                        Unable to update the account. Please try again later.
+                      </ModalBody>
                     </Modal>
                   </TableRow>
                 </React.Fragment>

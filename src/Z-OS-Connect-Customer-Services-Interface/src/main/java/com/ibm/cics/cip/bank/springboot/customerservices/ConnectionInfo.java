@@ -30,7 +30,10 @@ public class ConnectionInfo
 
 
 public static String getAddressAndPort() {
-        return scheme + "://" + getAddress() + ":" + getPort();
+        // Security fix (V7 CWE-798 Hardcoded Credentials/Configuration - OWASP A05): call getScheme()
+        // so the externalized scheme (CBSA_ZOSCONN_SCHEME system property) is honored instead of the
+        // raw hardcoded field.
+        return getScheme() + "://" + getAddress() + ":" + getPort();
     }
 
     public static int getPort() {
@@ -57,6 +60,11 @@ public static String getAddressAndPort() {
 
 	public static String getScheme()
 	{
+		// Security fix (V7 CWE-798 Hardcoded Credentials/Configuration - OWASP A05 Security
+		// Misconfiguration): resolve the connection scheme from a system property (default "http")
+		// instead of a hardcoded literal, mirroring the externalized host/port and enabling HTTPS
+		// purely by configuration.
+		scheme = System.getProperty("CBSA_ZOSCONN_SCHEME", "http");
 		return scheme;
 	}
 

@@ -5,7 +5,7 @@
  */
 
 import React from 'react';
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import axios from 'axios';
 import {
   DataTable,
@@ -89,6 +89,12 @@ const account_headers = [
 const AccountDeleteTables = ({ accountQuery }) => {
   const [mainAccountRow, setMainRows] = useState([]);
   const [otherAccountRows, setOtherAccountRows] = useState([]);
+  // Fix (QA F-K/F-J): run the account lookup at most once per mount. The lookup
+  // is invoked directly in the render body, so opening the Carbon error modal
+  // (a state update) on a failed lookup would otherwise re-render and re-trigger
+  // the fetch, looping. Each new search mounts this component fresh, so the ref
+  // resets appropriately.
+  const hasFetched = useRef(false);
   getAccountByNum(accountQuery)
 
   /**
@@ -97,9 +103,15 @@ const AccountDeleteTables = ({ accountQuery }) => {
    * async
    */
   async function getAccountByNum(accountQuery) {
+    // Fix (QA F-K/F-J): single-fetch guard (see hasFetched declaration above).
+    if (hasFetched.current) {
+      return;
+    }
+    hasFetched.current = true;
     let account;
     if (mainAccountRow.length === 0) {
       let rowBuild = [];
+      // Security (V2 auth, V6 CSRF): request carries credentials + X-XSRF-TOKEN via shared axios config
       await
         axios
           .get(process.env.REACT_APP_ACCOUNT_URL + `/${accountQuery}`)
@@ -108,18 +120,37 @@ const AccountDeleteTables = ({ accountQuery }) => {
               account = response.data;
             })
           .catch(function (error) {
-            if(error.response.status === 404)
-            {
-              alert("Could not find account " + accountQuery);
+            // Robust error handling (QA M3/F-K, CWE-476): a RECEIVED HTTP error sets
+            // BOTH error.response and error.request, so error.response is checked
+            // FIRST. A backend outage yields an error with NO response object (only
+            // error.request); the old unguarded error.response.status threw an uncaught
+            // "cannot read properties of undefined (reading 'status')" in that case.
+            // Fix (QA F-J): present a generic Carbon modal instead of a native alert()
+            // and never expose the raw HTTP status / error detail to the user (QA m3).
+            if (error.response) {
+              if (error.response.status === 404) {
+                setSearchErrorMessage("Could not find account " + accountQuery + ".");
+              } else {
+                setSearchErrorMessage("Unable to retrieve account " + accountQuery + ". Please try again later.");
+              }
+            } else if (error.request) {
+              // Request was sent but no response received -> connectivity failure.
+              setSearchErrorMessage("Unable to reach the server. Please check your connection and try again.");
+            } else {
+              // Unexpected error while building the request: generic message only (QA m3).
+              setSearchErrorMessage("Unable to retrieve account " + accountQuery + ". Please try again later.");
             }
-            else
-            {
-              alert("Error retrieving account number" + accountQuery + ", " + error.response.status + " " + error.message);
-            }
+            displaySearchErrorModal();
           }
 
           );
       try {
+        // Guard (QA m4): if the lookup above failed, `account` is undefined.
+        // Return early instead of dereferencing it (which threw a TypeError that
+        // was silently swallowed by this catch and left the UI in a broken state).
+        if (!account) {
+          return;
+        }
         let row;
         row = {
           id: account.id,
@@ -141,39 +172,6 @@ const AccountDeleteTables = ({ accountQuery }) => {
       } catch (e) {
         console.log("Error: " + e);
       }
-    }
-  }
-
-  async function updateRows(accountQuery) {
-    let account;
-    let rowBuild = [];
-    await
-      axios
-        .get(process.env.REACT_APP_ACCOUNT_URL + `/${accountQuery}`)
-        .then(response => {
-          account = response.data;
-        });
-    try {
-      let row;
-      row = {
-        id: account.id,
-        customerNumber: account.customerNumber,
-        accountNumber: account.id,
-        sortCode: account.sortCode,
-        accountType: account.accountType,
-        interestRate: account.interestRate,
-        overdraft: account.overdraft,
-        availableBalance: account.availableBalance,
-        actualBalance: account.actualBalance,
-        accountOpened: account.dateOpened,
-        lastStatementDate: account.lastStatementDate,
-        nextStatementDate: account.nextStatementDate
-      };
-      rowBuild.push(account);
-      getOtherAccounts(row.customerNumber, accountQuery)
-      setMainRows(rowBuild)
-    } catch (e) {
-      console.log("Error: " + e);
     }
   }
 
@@ -223,25 +221,46 @@ const AccountDeleteTables = ({ accountQuery }) => {
    */
   async function deleteAccount() {
     let accountNumber = accountNumberToDelete
-    let responseData;
     try {
+      // Security (V2 auth, V6 CSRF): request carries credentials + X-XSRF-TOKEN via shared axios config
       await
         axios
           .delete(process.env.REACT_APP_ACCOUNT_URL + `/${accountNumber}`)
-          .then(response => {
+          .then(() => {
             // The account has just been deleted, so why go to get it? We never display it but go straight to a different screen
             //            updateRows(accountNumber)
-            responseData = response.data
-            console.log(responseData)
+            // Log hygiene (QA i1, AAP V4 CWE-532): do NOT dump the full DELETE
+            // response body (which can contain account PII) to the browser console.
+            // Fix (QA F1): show the success UI only when the DELETE actually resolved (2xx).
+            // Previously displayModal()+displaySuccessfulDeleteModal() ran unconditionally
+            // after the await, so a failed DELETE (handled by .catch below) still fell through
+            // and displayed a false "Account deleted successfully" modal alongside the failure one.
+            displayModal()
+            displaySuccessfulDeleteModal()
           }).catch(function (error) {
+            // Robust delete-failure handling (dest #3 / QA F-3, mirrors the
+            // search-path guard above; CWE-476): a failed DELETE must ALWAYS
+            // surface the generic "unable to delete" modal. A received HTTP error
+            // sets error.response; a backend/connectivity outage sets only
+            // error.request; a request-setup error sets neither. The previous code
+            // guarded on error.response ONLY, so a pure connectivity failure left
+            // the UI silent with no feedback to the operator. All failure shapes
+            // now present the modal. The raw error is NOT logged (QA i1 / AAP V4
+            // CWE-532: keep account PII and HTTP status out of the browser console),
+            // matching the search-path guard.
             if (error.response) {
-              console.log(error)
+              displayModal()
+              displayUnableDeleteModal()
+            } else if (error.request) {
+              // Request sent but no response received -> connectivity failure.
+              displayModal()
+              displayUnableDeleteModal()
+            } else {
+              // Unexpected error while building the request.
               displayModal()
               displayUnableDeleteModal()
             }
           })
-      displayModal()
-      displaySuccessfulDeleteModal()
 
     } catch (e) {
       console.log(e)
@@ -257,6 +276,12 @@ const AccountDeleteTables = ({ accountQuery }) => {
   const [wasSuccessfulDeleteModalOpened, setSuccessfulDeleteModalOpened] = useState(false)
 
   const [accountNumberToDelete, setAccountNumberToDelete] = useState("")
+
+  // Fix (QA F-J): state backing the generic account-lookup error modal that
+  // replaces the previous native alert() calls on the search error path.
+  const [wasSearchErrorModalOpened, setSearchErrorModalOpened] = useState(false)
+
+  const [searchErrorMessage, setSearchErrorMessage] = useState("")
 
   function displayModalMainAccount(row) {
     setAccountNumberToDelete(row.cells[1].value)
@@ -277,6 +302,17 @@ const AccountDeleteTables = ({ accountQuery }) => {
 
   function displaySuccessfulDeleteModal() {
     setSuccessfulDeleteModalOpened(wasSuccessfulDeleteModalOpened => !wasSuccessfulDeleteModalOpened)
+  }
+
+  // Fix (QA F-J): open/close the generic search-error modal idempotently
+  // (explicit true/false rather than a toggle) so repeated failed lookups
+  // cannot accidentally close an already-open modal.
+  function displaySearchErrorModal() {
+    setSearchErrorModalOpened(true)
+  }
+
+  function closeSearchErrorModal() {
+    setSearchErrorModalOpened(false)
   }
 
   function refreshPage() {
@@ -400,6 +436,16 @@ const AccountDeleteTables = ({ accountQuery }) => {
         open={wasSuccessfulDeleteModalOpened}
         onRequestClose={() => { displaySuccessfulDeleteModal(); refreshPage(); } }
         passiveModal />
+      {/* Fix (QA F-J): generic account-lookup error modal replacing native alert(). */}
+      <Modal
+        modalHeading="Account lookup"
+        open={wasSearchErrorModalOpened}
+        onRequestClose={closeSearchErrorModal}
+        passiveModal>
+        <ModalBody>
+          {searchErrorMessage}
+        </ModalBody>
+      </Modal>
       </>
   );
 };

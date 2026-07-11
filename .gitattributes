@@ -19,3 +19,10 @@
 *.aar binary
 *.sar binary
 *.png binary
+# QA F4: raster image formats must be treated as binary. Without this, the
+# '* text eol=crlf' rule above CRLF-smudges them on checkout (injecting CR
+# bytes into the JPEG stream), corrupting the working-tree image so the
+# browser renders a broken placeholder. Marking them binary stops the smudge.
+*.jpg binary
+*.jpeg binary
+*.gif binary

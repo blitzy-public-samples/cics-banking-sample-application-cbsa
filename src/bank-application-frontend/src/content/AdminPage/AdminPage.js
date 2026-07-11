@@ -5,7 +5,6 @@
  */
 
 import React from 'react';
-import { useState } from 'react';
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -18,29 +17,10 @@ import {
   HeaderName,
   Grid,
   Column,
-  TextInput,
-  NumberInput,
-  Modal,
-  Form,
 } from '@carbon/react';
 import { Link } from 'react-router-dom';
 
 const AdminPage = () => {
-  const [isModalOpened, setModalOpened] = useState(false);
-  const [isSuccessModalOpened, setSuccessModalOpened] = useState(false);
-
-  function displayModal() {
-    setModalOpened(wasOpened => !wasOpened);
-  }
-
-  function displaySuccessModal() {
-    setSuccessModalOpened(wasOpened => !wasOpened);
-    setModalOpened(wasOpened => !wasOpened);
-  }
-
-  function deleteModal() {
-    setSuccessModalOpened(wasOpened => !wasOpened);
-  }
 
 
 

@@ -160,6 +160,7 @@
 
            MOVE SORTCODE TO COMM-SCODE.
            MOVE SORTCODE TO DESIRED-SORT-CODE.
+           PERFORM VALIDATE-INPUT
 
       *
       *           Update the account information
@@ -174,6 +175,23 @@
            PERFORM GET-ME-OUT-OF-HERE.
 
        A999.
+           EXIT.
+
+
+      *
+      * CWE-89 (SQL Injection) defense-in-depth: validate the account
+      * number before any EXEC SQL data access. Host-variable binding
+      * already separates data from SQL; this rejects malformed keys
+      * early. The SEC-R2 field allowlist below is unaffected.
+      *
+       VALIDATE-INPUT SECTION.
+       VLD010.
+           IF COMM-ACCNO IS NOT NUMERIC
+           OR COMM-ACCNO = ZEROES
+              MOVE 'N' TO COMM-SUCCESS
+              PERFORM GET-ME-OUT-OF-HERE
+           END-IF.
+       VLD999.
            EXIT.
 
 
