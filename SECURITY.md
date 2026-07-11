@@ -12,6 +12,7 @@ These controls were introduced as a minimal, non-invasive security remediation t
 - [Security Model: Authentication and Authorization](#security-model-authentication-and-authorization)
 - [HTTP Security Controls](#http-security-controls)
 - [Configuration and Credentials](#configuration-and-credentials)
+- [Dependency Security Posture](#dependency-security-posture)
 - [Reporting a Vulnerability](#reporting-a-vulnerability)
 - [Preserved Application Business Rules](#preserved-application-business-rules)
 - [Reversibility and Rollback](#reversibility-and-rollback)
@@ -92,6 +93,16 @@ Lookups keyed on a client-supplied identifier (for example an account or custome
 | Spring Boot TELLER password | `CBSA_TELLER_PASSWORD` environment variable (property `cbsa.security.teller.password`) | Password for the teller principal; no default and never committed. When unset, no teller is registered and access stays denied by default. |
 
 > **Error and log hygiene.** Error output is sanitized at the framework level: each Spring Boot module sets `server.error.include-stacktrace=never` and `server.error.include-message=never`, so stack traces, database SQLCODEs, internal class names, and personally identifiable information (PII) are not returned to clients. A centralized `@ControllerAdvice` exception handler in each module standardizes a generic response for genuinely uncaught exceptions (HTTP `500`) while preserving `401`/`403`/access-denied semantics **and** the native client-error status of Spring MVC's own framework exceptions — a request for a missing resource stays `404`, an unsupported method `405`, and an unsupported media type `415`, rather than being remapped to `500`. Exception detail (message, class name, stack trace, and any PII) is kept out of the client response, with full diagnostics confined to the trusted server-side log; benign client errors are logged without a stack trace, so the error log is reserved for genuine failures.
+
+## Dependency Security Posture
+
+Dependency currency (OWASP **A06 Vulnerable and Outdated Components**) is treated as an audit-driven concern, verified with the Maven build and `yarn npm audit`.
+
+- **Runtime / direct dependencies.** The Spring Boot stack (Spring Boot 3.5.x with the parent BOM governing Spring Security, Jackson, Logback, SnakeYAML and Netty) is on current, patched releases. The `jackson-core`/`jackson-databind` versions are aligned to the parent BOM (no explicit pin, no skew), and the front-end pins `axios` consistently across `package.json` and `yarn.lock`. **No direct application dependency carries a known Critical or High CVE in itself.**
+- **Front-end build/dev toolchain (residual, deferred).** `yarn npm audit --all` continues to report Critical/High advisories that originate **exclusively in the transitive dependency graph of the Create React App toolchain** (`react-scripts` 5.0.1) and its development/build utilities — for example `shell-quote` (via `react-dev-utils`), `ws` (via `webpack-dev-server`), `node-forge` (via `selfsigned`), `fast-uri` (via `ajv`), `picomatch` (via `micromatch`/`tinyglobby`), `undici` (via `cheerio`), and `path-to-regexp` (via `react-router`). These packages are **not shipped in the production SPA bundle** (they run only at build/test/dev-server time). The nearest-compatible versions are already pinned in the `resolutions` block (for example `node-forge` `1.3.3` — the latest published release, for which no upstream patch yet exists). Fully clearing these advisories would require ejecting from or migrating off `react-scripts` 5.0.1 — a **framework migration that is deliberately out of scope**. The `resolutions` block is therefore preserved verbatim, since relaxing it risks reintroducing older, more-vulnerable transitive versions.
+- **Liberty build-time utilities.** `rhino:js`, `slf4j-simple`, and `yuicompressor` in the `webui` module are build/packaging-only utilities (not runtime-exposed); they are audited and upgraded only if a scan flags a confirmed vulnerability with a compatible patched release.
+
+These residuals are recorded here as **deferred, separately tracked** hardening (see [Reversibility and Rollback](#reversibility-and-rollback)); they do not affect the security of the deployed application at runtime.
 
 ## Reporting a Vulnerability
 
