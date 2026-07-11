@@ -17,9 +17,11 @@ import org.springframework.web.HttpMediaTypeNotAcceptableException;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
@@ -124,20 +126,42 @@ public class GlobalExceptionHandler
 
 
 	// Security fix (V3 CWE-20 Improper Input Validation - OWASP A03; V4 CWE-209 Sensitive
-	// Data Exposure): map every method-validation failure shape to a reject-by-default HTTP
-	// 400 with a generic body. ParamsController's @Validated @RequestParam constraints throw
-	// ConstraintViolationException (or HandlerMethodValidationException on the Spring MVC
-	// native method-validation path); a @Valid bind without an adjacent BindingResult throws
-	// MethodArgumentNotValidException. Spring MVC does not map ConstraintViolationException /
-	// HandlerMethodValidationException to 400 by default, so without this they would surface
-	// as a misleading 500. The 400 is returned BEFORE any downstream money-movement call.
+	// Data Exposure): map every method-validation AND request-binding failure shape to a
+	// reject-by-default HTTP 400 with a generic body. ParamsController's @Validated @RequestParam
+	// constraints throw ConstraintViolationException (or HandlerMethodValidationException on the
+	// Spring MVC native method-validation path); a @Valid bind without an adjacent BindingResult
+	// throws MethodArgumentNotValidException.
+	//
+	// Security fix (QA finding F1 - V3 CWE-20 / OWASP A03 API contract; V4 CWE-532 / OWASP A09
+	// Security Logging & Monitoring Failures): two REQUEST-BINDING failures on /submit were
+	// previously downgraded to a misleading HTTP 500 - a missing required @RequestParam
+	// (MissingServletRequestParameterException, e.g. an absent "acctnum") and a non-numeric value
+	// bound to a typed param (MethodArgumentTypeMismatchException, e.g. amount="abc"). Both are
+	// benign CLIENT input errors that belong at 400, but because ExceptionHandlerExceptionResolver
+	// runs BEFORE Spring's DefaultHandlerExceptionResolver (which would otherwise map them to their
+	// native 400), and handleFrameworkClientError below enumerates only the 5 framework client
+	// errors it lists (so neither of these two is matched there), they fell through to
+	// handleUnexpectedException(Exception) -> HTTP 500 AND were logged at ERROR with a full stack
+	// trace (benign client input polluting the error signal used for on-call alerting - OWASP A09).
+	// Handling them here restores the correct 400, reuses the same generic sanitized body, and logs
+	// at INFO (not ERROR).
+	//
+	// Spring MVC does not map ConstraintViolationException / HandlerMethodValidationException to
+	// 400 by default, so without this they would surface as a misleading 500. The 400 is returned
+	// BEFORE any downstream money-movement call. Explicitly listing each type here is an exact-type
+	// match, so these win over the broad @ExceptionHandler(Exception.class) fallback and never
+	// collide with handleFrameworkClientError's disjoint explicit list.
 	@ExceptionHandler({ HandlerMethodValidationException.class,
 			ConstraintViolationException.class,
-			MethodArgumentNotValidException.class })
+			MethodArgumentNotValidException.class,
+			MissingServletRequestParameterException.class,
+			MethodArgumentTypeMismatchException.class })
 	public ResponseEntity<String> handleValidation(Exception ex)
 	{
 		// Log only the exception TYPE (never the message or the offending value) so submitted
-		// input and any PII stay out of the log (V4 CWE-532).
+		// input and any PII stay out of the log (V4 CWE-532). INFO level (not ERROR): these are
+		// benign client-input rejections, not server faults, so they must not pollute the ERROR
+		// signal used for on-call alerting (OWASP A09).
 		log.info("Rejected request: input validation failure ({})",
 				ex.getClass().getSimpleName());
 		return ResponseEntity.status(HttpStatus.BAD_REQUEST)

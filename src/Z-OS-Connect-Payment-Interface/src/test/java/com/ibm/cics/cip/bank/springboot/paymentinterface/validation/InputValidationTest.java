@@ -26,6 +26,16 @@ import org.springframework.test.web.servlet.MockMvc;
  *   the previous misleading HTTP 500 - by the new GlobalExceptionHandler
  *   (@ControllerAdvice mapping ConstraintViolationException -> 400).
  *
+ * F1 (QA - V3 CWE-20 / OWASP A03 API contract; V4 CWE-532 / OWASP A09 Security Logging &
+ *   Monitoring Failures): a REQUEST-BINDING failure on /submit - a missing required @RequestParam
+ *   (MissingServletRequestParameterException, e.g. an absent "acctnum") or a non-numeric value
+ *   bound to a typed param (MethodArgumentTypeMismatchException, e.g. amount="abc") - must ALSO be
+ *   rejected with HTTP 400, NOT the previous misleading HTTP 500 (which additionally logged benign
+ *   client input at ERROR with a stack trace). handleValidation now maps both binding-failure
+ *   types to 400. These two tests drive the REAL POST /submit through the full dispatcher +
+ *   security + validation stack, so they prove the dispatcher ROUTES both exceptions to the 400
+ *   handler (the crux of F1), not merely that the handler method returns 400 in isolation.
+ *
  * F-QA2 (MINOR - V3 CWE-20 / OWASP A03; reject-by-default): an empty required identifier on
  *   the /paydbcr TransferForm (acctNumber, organisation) must be rejected at the controller
  *   boundary (a field binding error) rather than forwarded to the downstream money-movement
@@ -116,6 +126,36 @@ class InputValidationTest
 		mvc.perform(post("/submit").with(csrf()).param("acctnum", "12345678")
 				.param("amount", "10")
 				.param("organisation", "ABCDEFGHIJKLMNOPQ"))
+				.andExpect(status().isBadRequest());
+	}
+
+
+	// ---- F1 (QA): /submit REQUEST-BINDING failures -> HTTP 400 (was a misleading 500) ----
+
+	@Test
+	@WithMockUser(username = "teller", roles = "TELLER")
+	void submitMissingAccountNumberReturns400() throws Exception
+	{
+		// QA F1: omitting the REQUIRED @RequestParam "acctnum" makes Spring MVC throw
+		// MissingServletRequestParameterException at bind time (before constraint validation).
+		// Before the fix this fell through to the broad @ExceptionHandler(Exception.class) and
+		// became HTTP 500 (and was logged at ERROR). It must now be a reject-by-default 400 -
+		// a benign client input error - returned before any downstream money-movement call.
+		mvc.perform(post("/submit").with(csrf()).param("amount", "10")
+				.param("organisation", "ACME"))
+				.andExpect(status().isBadRequest());
+	}
+
+
+	@Test
+	@WithMockUser(username = "teller", roles = "TELLER")
+	void submitNonNumericAmountReturns400() throws Exception
+	{
+		// QA F1: a non-numeric value ("abc") bound to the typed "amount" param makes Spring MVC
+		// throw MethodArgumentTypeMismatchException. Before the fix this became HTTP 500; it must
+		// now be a reject-by-default 400.
+		mvc.perform(post("/submit").with(csrf()).param("acctnum", "12345678")
+				.param("amount", "abc").param("organisation", "ACME"))
 				.andExpect(status().isBadRequest());
 	}
 

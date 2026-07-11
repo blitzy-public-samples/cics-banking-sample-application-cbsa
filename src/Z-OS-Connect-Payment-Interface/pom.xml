@@ -7,7 +7,10 @@
 	<parent>
 		<groupId>org.springframework.boot</groupId>
 		<artifactId>spring-boot-starter-parent</artifactId>
-		<version>3.5.11</version>
+		<!-- Security fix (V5 CWE-1035/CWE-937; QA finding F4): upgraded 3.5.11 -> 3.5.12 so the
+		     managed Spring Security is 6.5.9 (was 6.5.8), remediating CVE-2026-22732 (CRITICAL -
+		     HTTP security response headers may not be written under lazy header writing). -->
+		<version>3.5.12</version>
 		<relativePath /> <!-- lookup parent from repository -->
 	</parent>
 
@@ -36,10 +39,11 @@
 			<scope>compile</scope>
 		</dependency>
 
+		<!-- Security fix (V5 CWE-1035/CWE-937 Vulnerable & Outdated Components): removed the explicit jackson-core 2.21.1 pin
+		     so the Spring Boot parent BOM governs jackson-core and jackson-databind together, eliminating version skew. -->
 		<dependency>
 			<groupId>com.fasterxml.jackson.core</groupId>
 			<artifactId>jackson-core</artifactId>
-			<version>2.21.1</version>
 			<scope>compile</scope>
 		</dependency>
 
@@ -156,14 +160,14 @@
 
 		<!-- Security fix V2 (OWASP A01 Broken Access Control / A07 Identification & Authentication Failures; CWE-306/CWE-862):
 		     Adds Spring Security so the module can enforce authentication + role-based authorization.
-		     Version intentionally omitted so it is governed by the Spring Boot 3.5.11 parent BOM (Spring Security 6.x). -->
+		     Version intentionally omitted so it is governed by the Spring Boot 3.5.12 parent BOM (Spring Security 6.x). -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-security</artifactId>
 		</dependency>
 
 		<!-- Security fix V2/V3 verification support: Spring Security test utilities (@WithMockUser, MockMvc security).
-		     test scope only; not shipped in the WAR. Version governed by the Spring Boot 3.5.11 parent BOM. -->
+		     test scope only; not shipped in the WAR. Version governed by the Spring Boot 3.5.12 parent BOM. -->
 		<dependency>
 			<groupId>org.springframework.security</groupId>
 			<artifactId>spring-security-test</artifactId>
@@ -174,7 +178,7 @@
 		     (JUnit 5, MockMvc, AssertJ) for the role-based access-control tests that prove
 		     unauthenticated=401, authenticated non-TELLER=403, and authenticated TELLER=success on the
 		     guarded money-movement endpoints. test scope only; not shipped in the WAR.
-		     Version governed by the Spring Boot 3.5.11 parent BOM. -->
+		     Version governed by the Spring Boot 3.5.12 parent BOM. -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-test</artifactId>
