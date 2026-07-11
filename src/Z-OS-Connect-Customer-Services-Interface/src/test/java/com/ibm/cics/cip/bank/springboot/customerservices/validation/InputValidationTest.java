@@ -140,4 +140,45 @@ class InputValidationTest
 				.andExpect(model().attributeHasNoErrors("createAccountForm"));
 	}
 
+
+	/*
+	 * QA finding R7 (MINOR - V3 CWE-20 Improper Input Validation / OWASP A03;
+	 * reject-by-default defense-in-depth): a grossly excessive interest rate on
+	 * CreateAccountForm must now also be rejected at the /createacc boundary. Before
+	 * this fix the interestRate field carried only a lower bound (@PositiveOrZero),
+	 * so an absurd rate passed the Spring tier and was caught only downstream in the
+	 * Liberty account layer. The added @DecimalMax(value = "10000.00", inclusive =
+	 * false) rejects it at the controller boundary before any downstream call.
+	 */
+	@Test
+	@WithMockUser(username = "teller", roles = "TELLER")
+	void createaccExcessiveInterestRateIsRejectedAtBoundary() throws Exception
+	{
+		mvc.perform(post("/createacc").with(csrf())
+				.param("custNumber", "12345678").param("accountType", "ISA")
+				.param("overdraftLimit", "0").param("interestRate", "10000.0"))
+				.andExpect(model().attributeHasFieldErrors("createAccountForm",
+						"interestRate"));
+	}
+
+
+	/*
+	 * QA finding R7 (no over-constraint / AAP zero-functional-change): the added
+	 * interest-rate upper bound must NOT reject the legitimate maximum. 9999.99 is
+	 * the top of the accepted domain (the Liberty account layer rejects only
+	 * > 9999.99), and because interestRate is a primitive float without an exact
+	 * representation of 9999.99, the bound is deliberately "< 10000.00" so the
+	 * legitimate maximum still binds cleanly. This proves authorised, valid account
+	 * creation continues to behave identically for the teller.
+	 */
+	@Test
+	@WithMockUser(username = "teller", roles = "TELLER")
+	void createaccBoundaryMaxInterestRateHasNoFieldErrors() throws Exception
+	{
+		mvc.perform(post("/createacc").with(csrf())
+				.param("custNumber", "12345678").param("accountType", "ISA")
+				.param("overdraftLimit", "0").param("interestRate", "9999.99"))
+				.andExpect(model().attributeHasNoErrors("createAccountForm"));
+	}
+
 }

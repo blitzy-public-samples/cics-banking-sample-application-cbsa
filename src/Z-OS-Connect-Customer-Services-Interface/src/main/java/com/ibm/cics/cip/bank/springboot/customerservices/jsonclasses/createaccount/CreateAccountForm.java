@@ -26,12 +26,28 @@ public class CreateAccountForm
 	@PositiveOrZero
 	private int overdraftLimit;
 
-	// SECURITY (V3, CWE-20 Missing Input Validation): reject negative interest
-	// rates at the Spring boundary. The Db2 ACCOUNT_INTEREST_RATE column is a
-	// non-negative DECIMAL(4,2); @PositiveOrZero (valid on float, unlike
-	// @DecimalMax) enforces the >= 0 domain rule. The upper bound remains
-	// enforced downstream in the Liberty account layer as defense-in-depth.
+	// SECURITY (V3, CWE-20 Missing Input Validation - OWASP A03; reject-by-default
+	// at every controller boundary): bound the interest rate on BOTH sides at the
+	// Spring boundary before the value is serialised into a CreateAccountJson and
+	// forwarded to the downstream z/OS Connect /creacc call.
+	//   - @PositiveOrZero rejects a negative rate (the Db2 ACCOUNT_INTEREST_RATE
+	//     column is non-negative).
+	//   - @DecimalMax adds the previously-missing upper bound as defense-in-depth,
+	//     rejecting a grossly excessive rate at the Spring tier. The authoritative
+	//     fine-grained bound (reject > 9999.99) is enforced in the Liberty account
+	//     layer (AccountsResource); this guard stops clearly-invalid magnitudes
+	//     before any downstream mutation.
+	// The bound is intentionally expressed as "< 10000.00" (inclusive = false)
+	// rather than "<= 9999.99": interestRate is a primitive float and 9999.99 has
+	// no exact float representation (9999.99f is stored as ~9999.9902), so a
+	// "<= 9999.99" constraint would spuriously REJECT the legitimate maximum and
+	// break behaviour for an authorised teller (AAP zero-functional-change rule).
+	// "< 10000.00" accepts the entire legitimate [0, 9999.99] range (Jackson
+	// serialises 9999.99f back to "9999.99" for the exact downstream check) while
+	// still rejecting excessive input. Hibernate Validator 8.x supports @DecimalMax
+	// on float via DecimalMaxValidatorForFloat.
 	@PositiveOrZero
+	@DecimalMax(value = "10000.00", inclusive = false)
 	private float interestRate;
 
 
