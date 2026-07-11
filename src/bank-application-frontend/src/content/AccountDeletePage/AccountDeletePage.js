@@ -13,8 +13,7 @@ import {
   Button,
   Grid,
   Column,
-  NumberInput,
-  Modal
+  NumberInput
 } from '@carbon/react';
 
 const AccountDeletePage = () => {
@@ -28,9 +27,6 @@ const AccountDeletePage = () => {
 
 
 
-  function refreshPage() {
-    window.location.reload()
-  }
 
   function display() {
     setIsOpened(wasOpened => !wasOpened);

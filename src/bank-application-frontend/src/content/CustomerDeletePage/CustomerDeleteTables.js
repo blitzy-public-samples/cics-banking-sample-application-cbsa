@@ -124,7 +124,6 @@ const CustomerDeleteTables = ({customerRow, accountRow}) => {
    */
   async function deleteCustomer(row) {
     let customerNumber = row.cells[0].value
-    let responseData;
     let howManyAccountsData;
     try {
       await axios
@@ -137,8 +136,7 @@ const CustomerDeleteTables = ({customerRow, accountRow}) => {
         // Security (V2 auth, V6 CSRF): request carries credentials + X-XSRF-TOKEN via shared axios config
         await axios
           .delete(process.env.REACT_APP_CUSTOMER_URL + `/${customerNumber}`)
-          .then(response => {
-            responseData = response.data
+          .then(() => {
             displayModal()
             displaySuccessfulCustomerDeleteModal()
           })
@@ -166,13 +164,11 @@ const CustomerDeleteTables = ({customerRow, accountRow}) => {
     // account's row — deleting the wrong account. The modals are now hoisted out of
     // the map (see render) and this function reads the selected account from state.
     let accountNumber = accountNumberToDelete
-    let responseData;
     try {
       // Security (V2 auth, V6 CSRF): request carries credentials + X-XSRF-TOKEN via shared axios config
       await axios
         .delete(process.env.REACT_APP_ACCOUNT_URL + `/${accountNumber}`)
-        .then(response => {
-          responseData = response.data
+        .then(() => {
         })
       displayAccountModal()
       displaySuccessfulAccountDeleteModal()

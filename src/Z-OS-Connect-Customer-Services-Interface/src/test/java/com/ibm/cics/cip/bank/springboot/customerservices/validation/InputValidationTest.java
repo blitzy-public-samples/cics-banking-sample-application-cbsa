@@ -87,4 +87,57 @@ class InputValidationTest
 				.andExpect(model().attributeHasNoErrors("accountEnquiryForm"));
 	}
 
+
+	/*
+	 * V3 (CWE-20 Improper Input Validation / OWASP A03; reject-by-default): a negative
+	 * overdraft limit on CreateAccountForm must be rejected at the /createacc controller
+	 * boundary (a field binding error) rather than serialised into a CreateAccountJson and
+	 * forwarded to the downstream z/OS Connect /creacc/insert call. Before the fix the
+	 * overdraftLimit field carried no constraint and overdraftLimit=-999 was accepted.
+	 */
+	@Test
+	@WithMockUser(username = "teller", roles = "TELLER")
+	void createaccNegativeOverdraftIsRejectedAtBoundary() throws Exception
+	{
+		mvc.perform(post("/createacc").with(csrf())
+				.param("custNumber", "12345678").param("accountType", "ISA")
+				.param("overdraftLimit", "-999").param("interestRate", "1.5"))
+				.andExpect(model().attributeHasFieldErrors("createAccountForm",
+						"overdraftLimit"));
+	}
+
+
+	/*
+	 * V3 (CWE-20): a negative interest rate on CreateAccountForm must likewise be rejected at
+	 * the /createacc boundary. Before the fix the interestRate field carried no constraint.
+	 */
+	@Test
+	@WithMockUser(username = "teller", roles = "TELLER")
+	void createaccNegativeInterestRateIsRejectedAtBoundary() throws Exception
+	{
+		mvc.perform(post("/createacc").with(csrf())
+				.param("custNumber", "12345678").param("accountType", "ISA")
+				.param("overdraftLimit", "0").param("interestRate", "-1.0"))
+				.andExpect(model().attributeHasFieldErrors("createAccountForm",
+						"interestRate"));
+	}
+
+
+	/*
+	 * V3 (no over-constraint): a well-formed create-account form with a zero overdraft and a
+	 * non-negative interest rate must NOT raise field binding errors, so authorised, valid
+	 * account creation continues to behave identically for the teller (AAP zero-functional-
+	 * change requirement). The downstream z/OS Connect call is expected to be unavailable in
+	 * this test scope and is handled gracefully by the controller without a binding error.
+	 */
+	@Test
+	@WithMockUser(username = "teller", roles = "TELLER")
+	void createaccValidValuesHaveNoFieldErrors() throws Exception
+	{
+		mvc.perform(post("/createacc").with(csrf())
+				.param("custNumber", "12345678").param("accountType", "ISA")
+				.param("overdraftLimit", "0").param("interestRate", "1.5"))
+				.andExpect(model().attributeHasNoErrors("createAccountForm"));
+	}
+
 }

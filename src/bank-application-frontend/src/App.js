@@ -117,19 +117,4 @@ class App extends Component {
   }
 }
 
-// https://stackoverflow.com/questions/34093913/how-to-debug-react-router
-class DebugRouter extends HashRouter {
-  constructor(props){
-    super(props);
-    console.log('initial history is: ', JSON.stringify(this.history, null,2))
-    this.history.listen((location, action)=>{
-      console.log(
-        `The current URL is ${location.pathname}${location.search}${location.hash}`
-      )
-      console.log(`The last navigation action was ${action}`, JSON.stringify(this.history, null,2));
-window.alert(`The current URL is ${location.pathname}${location.search}${location.hash}`);
-    });
-  }
-}
-
 export default App;

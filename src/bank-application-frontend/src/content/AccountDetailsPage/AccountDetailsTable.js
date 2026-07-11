@@ -74,21 +74,6 @@ const headers = [
   },
 ];
 
-/**
- * Account headers in table
- */
-const account_headers = [
-  'Account Number',
-  'Sort Code',
-  'Account Type',
-  'Interest Rate',
-  'Overdraft Limit',
-  'Available Balance',
-  'Actual Balance',
-  'Account Opened',
-  'Last Statement Due',
-  'Next Statement Due',
-];
 
 const AccountDetailsTable = ({accountMainRow}) => {
   /**
@@ -104,7 +89,7 @@ const AccountDetailsTable = ({accountMainRow}) => {
   const [nextStatementDate, setNextStatementDate] = useState("")
   const [dateOpened, setDateOpened] = useState("")
   const [currentAvailableBalance, setCurrentAvailableBalance] = useState("")
-  const [currentAccountCustomerNumber, setAccountCustomerNumber] = useState("")
+  const [currentAccountCustomerNumber] = useState("")
 
   /**
    * States that are edited by the user
@@ -128,9 +113,6 @@ const AccountDetailsTable = ({accountMainRow}) => {
     setOverdraftLimit(event.target.value);
   };
 
-  const enteredAccountTypeChangeHandler = event => {
-    setAccountType(event.target.value);
-  };
 
   /**
    * Ensure no states have not been reset between account update
@@ -163,7 +145,6 @@ const AccountDetailsTable = ({accountMainRow}) => {
    *
    */
   async function updateAccount() {
-    let responseData;
     // Fix (QA F-H): track whether the PUT actually succeeded so the page is only
     // reloaded on success (and a failure surfaces a modal instead of silently
     // reloading).
@@ -203,8 +184,7 @@ let newDateOpened        = dateOpened.substring(6,10) + "-" + dateOpened.substri
           customerNumber: currentAccountCustomerNumber,
           sortCode: accountSortCode,
           availableBalance: currentAvailableBalance
-        }).then((response) => {
-          responseData = response.data
+        }).then(() => {
           // Fix (QA F-H): record success only when the PUT resolves.
           success = true
         }).catch(function (error) {
