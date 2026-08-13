@@ -3195,7 +3195,7 @@
 - abndinfo-respcode
   - Rule: XFRFUN abend site in UPDATE-ACCOUNT-DB2 SECTION / UAD010, opened by `INITIALIZE ABNDINFO-REC` [src/base/cobol_src/XFRFUN.cbl:L773]
     - Condition: `IF COMM-FAIL-CODE NOT = '2'` [src/base/cobol_src/XFRFUN.cbl:L766]
-      - Resulting Value: ABND-RESPCODE = the runtime content of EIBRESP via `MOVE EIBRESP TO ABND-RESPCODE` [src/base/cobol_src/XFRFUN.cbl:L840] (terminal: input field)
+      - Resulting Value: ABND-RESPCODE = the runtime content of EIBRESP via `MOVE EIBRESP TO ABND-RESPCODE` [src/base/cobol_src/XFRFUN.cbl:L774] (terminal: input field)
 - abndinfo-respcode
   - Rule: XFRFUN abend site in UPDATE-ACCOUNT-DB2 SECTION / UAD010, opened by `INITIALIZE ABNDINFO-REC` [src/base/cobol_src/XFRFUN.cbl:L839]
     - Condition: `IF WS-CICS-RESP IS NOT EQUAL TO DFHRESP(NORMAL)` [src/base/cobol_src/XFRFUN.cbl:L832]
@@ -3697,7 +3697,7 @@
 - abndinfo-resp2code
   - Rule: XFRFUN abend site in UPDATE-ACCOUNT-DB2 SECTION / UAD010, opened by `INITIALIZE ABNDINFO-REC` [src/base/cobol_src/XFRFUN.cbl:L773]
     - Condition: `IF COMM-FAIL-CODE NOT = '2'` [src/base/cobol_src/XFRFUN.cbl:L766]
-      - Resulting Value: ABND-RESP2CODE = the runtime content of EIBRESP2 via `MOVE EIBRESP2 TO ABND-RESP2CODE` [src/base/cobol_src/XFRFUN.cbl:L841] (terminal: input field)
+      - Resulting Value: ABND-RESP2CODE = the runtime content of EIBRESP2 via `MOVE EIBRESP2 TO ABND-RESP2CODE` [src/base/cobol_src/XFRFUN.cbl:L775] (terminal: input field)
 - abndinfo-resp2code
   - Rule: XFRFUN abend site in UPDATE-ACCOUNT-DB2 SECTION / UAD010, opened by `INITIALIZE ABNDINFO-REC` [src/base/cobol_src/XFRFUN.cbl:L839]
     - Condition: `IF WS-CICS-RESP IS NOT EQUAL TO DFHRESP(NORMAL)` [src/base/cobol_src/XFRFUN.cbl:L832]
