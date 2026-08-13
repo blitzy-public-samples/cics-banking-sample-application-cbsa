@@ -108,15 +108,15 @@
     - Condition: `05 PROC-TRAN-LOGICAL-DELETE-AREA REDEFINES PROC-TRAN-EYE-CATCHER.` [src/base/cobol_copy/PROCTRAN.cpy:L10-L11]
       - Resulting Value: PROC-TRAN-LOGICAL-DELETE-AREA overlays PROC-TRAN-EYE-CATCHER, so both names address the same storage and a value stored through either is visible through the other [src/base/cobol_copy/PROCTRAN.cpy:L10-L11] (terminal: input field)
     - Condition: `07 PROC-TRAN-LOGICAL-DELETE-FLAG PIC X.` [src/base/cobol_copy/PROCTRAN.cpy:L12]
-      - Resulting Value: no non-comment statement in any program under src/base/cobol_src/ names PROC-TRAN-LOGICAL-DELETE-FLAG, established by exhaustive case-sensitive search of `src/base/cobol_src/`, so no COBOL program ever sets the deleted state; the only value the declaration admits for it is the literal fixed by `88 PROC-TRAN-LOGICALLY-DELETED VALUE X'FF'.` [src/base/cobol_copy/PROCTRAN.cpy:L13] (terminal: literal)
+      - Resulting Value: no non-comment statement in any program under src/base/cobol_src/ names PROC-TRAN-LOGICAL-DELETE-FLAG, established by exhaustive case-sensitive search of `src/base/cobol_src/`, so no COBOL program ever sets the deleted state by naming this alias; `07 PROC-TRAN-LOGICAL-DELETE-FLAG PIC X.` [src/base/cobol_copy/PROCTRAN.cpy:L12] fixes only its storage format, one alphanumeric byte, and constrains no value, while the separate `88 PROC-TRAN-LOGICALLY-DELETED VALUE X'FF'.` [src/base/cobol_copy/PROCTRAN.cpy:L13] names the condition tested when that byte holds X'FF' rather than initialising it, so the byte holds at run time whatever the redefined eye-catcher carries, which the write paths recorded below in this section fix to 'P' (terminal: input field)
     - Condition: `88 PROC-TRAN-LOGICALLY-DELETED VALUE X'FF'.` [src/base/cobol_copy/PROCTRAN.cpy:L13]
-      - Resulting Value: PROC-TRAN-LOGICALLY-DELETED = X'FF' via `88 PROC-TRAN-LOGICALLY-DELETED VALUE X'FF'.` [src/base/cobol_copy/PROCTRAN.cpy:L13] (terminal: literal)
+      - Resulting Value: the condition name PROC-TRAN-LOGICALLY-DELETED is satisfied only when PROC-TRAN-LOGICAL-DELETE-FLAG holds the literal X'FF', which is what `88 PROC-TRAN-LOGICALLY-DELETED VALUE X'FF'.` [src/base/cobol_copy/PROCTRAN.cpy:L13] declares; the 88 item names that condition and stores nothing itself (terminal: literal)
 - proctran-logical-delete-flag
   - Rule: Read-path predicate: a logically deleted row fails the eye-catcher validity condition because the flag occupies the same byte, in `03 PROC-TRAN-DATA.` [src/base/cobol_copy/PROCTRAN.cpy:L7]
     - Condition: `88 PROC-TRAN-VALID VALUE 'PRTR'.` [src/base/cobol_copy/PROCTRAN.cpy:L9]
       - Resulting Value: condition name PROC-TRAN-VALID is satisfied only when the field holds 'PRTR' [src/base/cobol_copy/PROCTRAN.cpy:L9] (terminal: literal)
     - Condition: `05 PROC-TRAN-LOGICAL-DELETE-AREA REDEFINES PROC-TRAN-EYE-CATCHER.` [src/base/cobol_copy/PROCTRAN.cpy:L10-L11]
-      - Resulting Value: PROC-TRAN-VALID = 'PRTR', which a row carrying X'FF' in byte 1 cannot satisfy via `88 PROC-TRAN-VALID VALUE 'PRTR'.` [src/base/cobol_copy/PROCTRAN.cpy:L9] (terminal: literal)
+      - Resulting Value: the condition name PROC-TRAN-VALID is satisfied only when the four eye-catcher bytes hold the literal 'PRTR' per `88 PROC-TRAN-VALID VALUE 'PRTR'.` [src/base/cobol_copy/PROCTRAN.cpy:L9], so a row whose byte 1 holds X'FF' cannot satisfy it and is excluded from the read path (terminal: literal)
 - proctran-logical-delete-flag
   - Rule: CREACC write path: the flag byte is written physically through the redefined eye-catcher, never by naming the alias, in `WRITE-PROCTRAN-DB2 SECTION.` [src/base/cobol_src/CREACC.cbl:L928]
     - Condition: `INITIALIZE HOST-PROCTRAN-ROW.` [src/base/cobol_src/CREACC.cbl:L934]
@@ -175,6 +175,14 @@
       - Resulting Value: the setter would store its String argument into byte 1 of the four-byte area sized by `public static final int PROC_TRAN_LOGICAL_DELETE_AREA_LEN = 4;` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/PROCTRAN.java:L47], but no caller exists, so X'FF' is never stored through it anywhere in this repository (terminal: input field)
     - Condition: `return PROC_TRAN_LOGICAL_DELETE_FLAG.getString(byteBuffer);` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/PROCTRAN.java:L471]
       - Resulting Value: the getter returns byte 1 of whichever PROCTRAN row image the caller loaded into the buffer declared `protected byte[] byteBuffer;` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/PROCTRAN.java:L433], which on every in-repository path is the 'P' written by one of the six COBOL writers or by `stmt.setString(1, PROCTRAN.PROC_TRAN_VALID);` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/web/db2/ProcessedTransaction.java:L522] (terminal: input field)
+- proctran-logical-delete-flag
+  - Rule: Java-tier representation gap: the IBM Record Generator emits the deleted-state clause as generated documentation only and declares that constant form unsupported, so the generated class carries the raw byte but no deleted-state semantics, in `protected static final StringField PROC_TRAN_LOGICAL_DELETE_FLAG = factory.getStringField(1);` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/PROCTRAN.java:L52]
+    - Condition: `88 PROC-TRAN-LOGICALLY-DELETED VALUE X'FF'. </pre> */` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/PROCTRAN.java:L55]
+      - Resulting Value: the clause survives in the generated class only as a comment, producing no field, no constant and no method [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/PROCTRAN.java:L54-L56] (terminal: literal)
+    - Condition: `/** NOTE: this constant value form is not supported */` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/PROCTRAN.java:L56]
+      - Resulting Value: no PROC_TRAN_LOGICALLY_DELETED constant is generated, in contrast with the eye-catcher constant `public static final String PROC_TRAN_VALID = "PRTR";` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/PROCTRAN.java:L40] that the generator does produce, so the X'FF' deleted state has no supported Java expression (terminal: literal)
+    - Condition: `return PROC_TRAN_LOGICAL_DELETE_FLAG.getString(byteBuffer);` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/PROCTRAN.java:L471]
+      - Resulting Value: raw-byte access remains available through the generated accessor pair, so the Java tier can read and write byte 1 but cannot test it against a generated deleted-state constant [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/PROCTRAN.java:L471] (terminal: input field)
 
 ## newaccno-function-flag — NEWACCNO Account-Number Allocator Function Flag (G/R/C) (`PIC X`) [src/base/cobol_copy/NEWACCNO.cpy:L7]
 - newaccno-function-flag
@@ -960,11 +968,11 @@
       - Resulting Value: commFaciltype initialised to "0496" [src/Z-OS-Connect-Payment-Interface/src/main/java/com/ibm/cics/cip/bank/springboot/paymentinterface/jsonclasses/paymentinterface/OriginJson.java:L28] (terminal: literal)
     - Condition: accessor `public String getCommFacilType() { return commFaciltype; }` [src/Z-OS-Connect-Payment-Interface/src/main/java/com/ibm/cics/cip/bank/springboot/paymentinterface/jsonclasses/paymentinterface/OriginJson.java:L100-L103]
       - Resulting Value: commFaciltype = "0496" as a four-character String on the wire via `private String commFaciltype = "0496";` [src/Z-OS-Connect-Payment-Interface/src/main/java/com/ibm/cics/cip/bank/springboot/paymentinterface/jsonclasses/paymentinterface/OriginJson.java:L28] (terminal: literal)
-      - Resulting Value: representation hop: the same value is a packed binary field in the COBOL COMMAREA via `05 COMM-FACILTYPE PIC S9(8) COMP.` [src/base/cobol_copy/PAYDBCR.cpy:L17] (terminal: input field)
+      - Resulting Value: representation hop: the same value is a four-byte binary integer field in the COBOL COMMAREA via `05 COMM-FACILTYPE PIC S9(8) COMP.` [src/base/cobol_copy/PAYDBCR.cpy:L17], since COMP is binary computational usage and not the packed-decimal usage that PACKED-DECIMAL or COMP-3 would specify (terminal: input field)
 - dbcrfun-faciltype-channel-discriminator
   - Rule: Root path 2 - legacy CICS terminal-facility origin, where the value arrives inside the COMM-ORIGIN group populated from the facility of the invoking transaction, in `03 COMM-ORIGIN.` [src/base/cobol_copy/PAYDBCR.cpy:L12]
     - Condition: `03 COMM-ORIGIN.` [src/base/cobol_copy/PAYDBCR.cpy:L12]
-      - Resulting Value: COMM-ORIGIN is a group item, so it holds no value of its own - its content is the concatenation of the subordinate fields declared beneath `03 COMM-ORIGIN.` [src/base/cobol_copy/PAYDBCR.cpy:L12], and the group boundary itself is fixed by that declaration (terminal: literal)
+      - Resulting Value: COMM-ORIGIN is a group item, so it holds no value of its own - its content is the concatenation of the subordinate fields declared beneath `03 COMM-ORIGIN.` [src/base/cobol_copy/PAYDBCR.cpy:L12]; the group boundary is fixed by that declaration while the bytes it spans are populated only through those subordinate fields, which the invoking transaction supplies in the commarea (terminal: input field)
     - Condition: `05 COMM-FACILTYPE PIC S9(8) COMP.` [src/base/cobol_copy/PAYDBCR.cpy:L17]
       - Resulting Value: no COBOL program ever assigns COMM-FACILTYPE - all seven of its non-comment references are read-only comparisons against the literal 496 in DBCRFUN, established by exhaustive case-sensitive search of `src/base/cobol_src/`; the value arrives from the API tier as `private String commFaciltype = "0496";` [src/Z-OS-Connect-Payment-Interface/src/main/java/com/ibm/cics/cip/bank/springboot/paymentinterface/jsonclasses/paymentinterface/OriginJson.java:L28] (terminal: literal)
       - Resulting Value: COMM-FACILTYPE supplied by the invoking CICS facility, 496 meaning no terminal facility via `05 COMM-FACILTYPE PIC S9(8) COMP.` [src/base/cobol_copy/PAYDBCR.cpy:L17] (terminal: input field)
@@ -976,7 +984,7 @@
     - Condition: `05 PROC-TRAN-EYE-CATCHER PIC X(4).` [src/base/cobol_copy/PROCTRAN.cpy:L8]
       - Resulting Value: no non-comment statement in any program under src/base/cobol_src/ names PROC-TRAN-EYE-CATCHER, established by exhaustive case-sensitive search of `src/base/cobol_src/`; the stored value is written only through the DB2 host variable, as in `MOVE 'PRTR' TO HV-PROCTRAN-EYECATCHER.` [src/base/cobol_src/CREACC.cbl:L937] and its five siblings in CRECUST, DBCRFUN, DELACC, DELCUS and XFRFUN, and the valid state is the literal fixed by `88 PROC-TRAN-VALID VALUE 'PRTR'.` [src/base/cobol_copy/PROCTRAN.cpy:L9] (terminal: literal)
     - Condition: `88 PROC-TRAN-VALID VALUE 'PRTR'.` [src/base/cobol_copy/PROCTRAN.cpy:L9]
-      - Resulting Value: PROC-TRAN-VALID = 'PRTR' via `88 PROC-TRAN-VALID VALUE 'PRTR'.` [src/base/cobol_copy/PROCTRAN.cpy:L9] (terminal: literal)
+      - Resulting Value: the condition name PROC-TRAN-VALID is satisfied only when PROC-TRAN-EYE-CATCHER holds the literal 'PRTR', which is what `88 PROC-TRAN-VALID VALUE 'PRTR'.` [src/base/cobol_copy/PROCTRAN.cpy:L9] declares; the 88 item names that condition and stores nothing itself (terminal: literal)
 - proctran-eye-catcher
   - Rule: DBCRFUN stamps the eye-catcher with the literal rather than through the condition name, in `WRITE-TO-PROCTRAN-DB2 SECTION.` [src/base/cobol_src/DBCRFUN.cbl:L460]
     - Condition: `MOVE 'PRTR' TO HV-PROCTRAN-EYECATCHER.` [src/base/cobol_src/DBCRFUN.cbl:L466]
@@ -1014,7 +1022,7 @@
     - Condition: `07 PROC-TRAN-DESC-XFR-HEADER PIC X(26).` [src/base/cobol_copy/PROCTRAN.cpy:L50]
       - Resulting Value: the header is set to the literal 'TRANSFER' by `SET PROC-TRAN-DESC-XFR-FLAG IN PROCTRAN-AREA TO TRUE.` [src/base/cobol_src/XFRFUN.cbl:L1609], which assigns the value fixed by `88 PROC-TRAN-DESC-XFR-FLAG VALUE 'TRANSFER'.` [src/base/cobol_copy/PROCTRAN.cpy:L51-L52] (terminal: literal)
     - Condition: `88 PROC-TRAN-DESC-XFR-FLAG VALUE 'TRANSFER'.` [src/base/cobol_copy/PROCTRAN.cpy:L51-L52]
-      - Resulting Value: PROC-TRAN-DESC-XFR-FLAG = 'TRANSFER' via `88 PROC-TRAN-DESC-XFR-FLAG VALUE 'TRANSFER'.` [src/base/cobol_copy/PROCTRAN.cpy:L51-L52] (terminal: literal)
+      - Resulting Value: the condition name PROC-TRAN-DESC-XFR-FLAG is satisfied only when PROC-TRAN-DESC-XFR-HEADER holds the literal 'TRANSFER', space-padded across the 26 bytes of `07 PROC-TRAN-DESC-XFR-HEADER PIC X(26).` [src/base/cobol_copy/PROCTRAN.cpy:L50], which is what `88 PROC-TRAN-DESC-XFR-FLAG VALUE 'TRANSFER'.` [src/base/cobol_copy/PROCTRAN.cpy:L51-L52] declares; the 88 item names that condition and stores nothing itself (terminal: literal)
 - proctran-desc-xfr-flag
   - Rule: XFRFUN sets the discriminator through the condition name and fills the overlay with the destination leg, in `WRITE-TO-PROCTRAN-DB2 SECTION.` [src/base/cobol_src/XFRFUN.cbl:L1571]
     - Condition: `SET PROC-TRAN-DESC-XFR-FLAG IN PROCTRAN-AREA TO TRUE.` [src/base/cobol_src/XFRFUN.cbl:L1609]
@@ -1035,7 +1043,7 @@
     - Condition: `07 PROC-DESC-CREACC-FOOTER PIC X(6).` [src/base/cobol_copy/PROCTRAN.cpy:L78]
       - Resulting Value: no program under src/base/cobol_src/ references PROC-DESC-CREACC-FOOTER or its condition name, established by exhaustive case-sensitive search of `src/base/cobol_src/` - CREACC populates the descriptor positionally into the DB2 host variable instead, as in `MOVE STORED-CUSTNO     TO HV-PROCTRAN-DESC(1:10).` [src/base/cobol_src/CREACC.cbl:L960], so the literal 'CREATE' fixed by `88 PROC-DESC-CREACC-FLAG VALUE 'CREATE'.` [src/base/cobol_copy/PROCTRAN.cpy:L79-L80] is never written (terminal: literal)
     - Condition: `88 PROC-DESC-CREACC-FLAG VALUE 'CREATE'.` [src/base/cobol_copy/PROCTRAN.cpy:L79-L80]
-      - Resulting Value: PROC-DESC-CREACC-FLAG = 'CREATE' via `88 PROC-DESC-CREACC-FLAG VALUE 'CREATE'.` [src/base/cobol_copy/PROCTRAN.cpy:L79-L80] (terminal: literal)
+      - Resulting Value: the condition name PROC-DESC-CREACC-FLAG is satisfied only when PROC-DESC-CREACC-FOOTER holds the literal 'CREATE' across the six bytes of `07 PROC-DESC-CREACC-FOOTER PIC X(6).` [src/base/cobol_copy/PROCTRAN.cpy:L78], which is what `88 PROC-DESC-CREACC-FLAG VALUE 'CREATE'.` [src/base/cobol_copy/PROCTRAN.cpy:L79-L80] declares; the 88 item names that condition and stores nothing itself (terminal: literal)
 - proctran-desc-creacc-flag
   - Rule: Determination: CREACC never sets the discriminator - it writes the descriptor by displacement and leaves the footer bytes that carry the flag as spaces, so the declared value is unreachable in this repository, in `WRITE-PROCTRAN-DB2 SECTION.` [src/base/cobol_src/CREACC.cbl:L928]
     - Condition: `MOVE STORED-CUSTNO TO HV-PROCTRAN-DESC(1:10).` [src/base/cobol_src/CREACC.cbl:L960]
@@ -1054,7 +1062,7 @@
     - Condition: `07 PROC-DESC-DELACC-FOOTER PIC X(6).` [src/base/cobol_copy/PROCTRAN.cpy:L66]
       - Resulting Value: the footer is set to the literal 'DELETE' by `SET PROC-DESC-DELACC-FLAG  OF PROCTRAN-AREA TO TRUE.` [src/base/cobol_src/DELACC.cbl:L512], which assigns the value fixed by `88 PROC-DESC-DELACC-FLAG VALUE 'DELETE'.` [src/base/cobol_copy/PROCTRAN.cpy:L67-L68] (terminal: literal)
     - Condition: `88 PROC-DESC-DELACC-FLAG VALUE 'DELETE'.` [src/base/cobol_copy/PROCTRAN.cpy:L67-L68]
-      - Resulting Value: PROC-DESC-DELACC-FLAG = 'DELETE' via `88 PROC-DESC-DELACC-FLAG VALUE 'DELETE'.` [src/base/cobol_copy/PROCTRAN.cpy:L67-L68] (terminal: literal)
+      - Resulting Value: the condition name PROC-DESC-DELACC-FLAG is satisfied only when PROC-DESC-DELACC-FOOTER holds the literal 'DELETE' across the six bytes of `07 PROC-DESC-DELACC-FOOTER PIC X(6).` [src/base/cobol_copy/PROCTRAN.cpy:L66], which is what `88 PROC-DESC-DELACC-FLAG VALUE 'DELETE'.` [src/base/cobol_copy/PROCTRAN.cpy:L67-L68] declares; the 88 item names that condition and stores nothing itself (terminal: literal)
 - proctran-desc-delacc-flag
   - Rule: DELACC sets the discriminator through the condition name after filling the overlay from the account row being deleted, in `WRITE-PROCTRAN-DB2 SECTION.` [src/base/cobol_src/DELACC.cbl:L462]
     - Condition: `MOVE ACCOUNT-CUST-NO TO PROC-DESC-DELACC-CUSTOMER OF PROCTRAN-AREA` [src/base/cobol_src/DELACC.cbl:L495-L496]
@@ -1123,7 +1131,7 @@
     - Condition: `05 ACCOUNT-EYE-CATCHER PIC X(4).` [src/base/cobol_copy/ACCOUNT.cpy:L8]
       - Resulting Value: no program under src/base/cobol_src/ assigns ACCOUNT-EYE-CATCHER - its only non-comment uses are reads, `MOVE ACCOUNT-EYE-CATCHER       TO INQACC-EYE` [src/base/cobol_src/INQACC.cbl:L232] and `MOVE ACCOUNT-EYE-CATCHER       TO DELACC-EYE.` [src/base/cobol_src/DELACC.cbl:L413], established by exhaustive case-sensitive search of `src/base/cobol_src/`; the stored value is written through the DB2 host variable by `MOVE 'ACCT' TO HV-ACCOUNT-EYECATCHER.` [src/base/cobol_src/CREACC.cbl:L778] and `MOVE 'ACCT' TO HV-ACCOUNT-EYECATCHER OF HOST-ACCOUNT-ROW.` [src/base/cobol_src/BANKDATA.cbl:L740-L741] (terminal: literal)
     - Condition: `88 ACCOUNT-EYECATCHER-VALUE VALUE 'ACCT'.` [src/base/cobol_copy/ACCOUNT.cpy:L9]
-      - Resulting Value: ACCOUNT-EYECATCHER-VALUE = 'ACCT' via `88 ACCOUNT-EYECATCHER-VALUE VALUE 'ACCT'.` [src/base/cobol_copy/ACCOUNT.cpy:L9] (terminal: literal)
+      - Resulting Value: the condition name ACCOUNT-EYECATCHER-VALUE is satisfied only when ACCOUNT-EYE-CATCHER holds the literal 'ACCT', which is what `88 ACCOUNT-EYECATCHER-VALUE        VALUE 'ACCT'.` [src/base/cobol_copy/ACCOUNT.cpy:L9] declares; the 88 item names that condition and stores nothing itself (terminal: literal)
 - account-eye-catcher
   - Rule: BANKDATA stamps the eye-catcher on every seeded ACCOUNT row, in `POPULATE-ACC SECTION.` [src/base/cobol_src/BANKDATA.cbl:L716]
     - Condition: `MOVE 'ACCT' TO HV-ACCOUNT-EYECATCHER OF HOST-ACCOUNT-ROW.` [src/base/cobol_src/BANKDATA.cbl:L740-L741]
@@ -1254,7 +1262,7 @@
 - account-overdraft-limit
   - Rule: Determination: DBCRFUN carries the overdraft limit through its SELECT and UPDATE but never reads it in a predicate - the overdraft gate tests the sign of the available balance instead, in `UPDATE-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/DBCRFUN.cbl:L235]
     - Condition: SELECT host variable `EXEC SQL SELECT ACCOUNT_EYECATCHER, ACCOUNT_CUSTOMER_NUMBER, ACCOUNT_SORTCODE, ACCOUNT_NUMBER, ACCOUNT_TYPE, ACCOUNT_INTEREST_RATE, ACCOUNT_OPENED, ACCOUNT_OVERDRAFT_LIMIT, ACCOUNT_LAST_STATEMENT, ACCOUNT_NEXT_STATEMENT, ACCOUNT_AVAILABLE_BALANCE, ACCOUNT_ACTUAL_BALANCE INTO :HV-ACCOUNT-EYECATCHER, :HV-ACCOUNT-CUST-NO, :HV-ACCOUNT-SORTCODE, :HV-ACCOUNT-ACC-NO, :HV-ACCOUNT-ACC-TYPE, :HV-ACCOUNT-INT-RATE, :HV-ACCOUNT-OPENED, :HV-ACCOUNT-OVERDRAFT-LIM, :HV-ACCOUNT-LAST-STMT, :HV-ACCOUNT-NEXT-STMT, :HV-ACCOUNT-AVAIL-BAL, :HV-ACCOUNT-ACTUAL-BAL FROM ACCOUNT WHERE (ACCOUNT_SORTCODE = :HV-ACCOUNT-SORTCODE AND ACCOUNT_NUMBER = :HV-ACCOUNT-ACC-NO) END-EXEC.` [src/base/cobol_src/DBCRFUN.cbl:L245-L273]
-      - Resulting Value: the selected ACCOUNT or CUSTOMER column values are loaded into the host variables listed in the INTO clause [src/base/cobol_src/DBCRFUN.cbl:L245-L273] (terminal: input field)
+      - Resulting Value: the selected ACCOUNT column values, this SELECT reading only the ACCOUNT table, are loaded into the host variables listed in the INTO clause [src/base/cobol_src/DBCRFUN.cbl:L245-L273] (terminal: input field)
     - Condition: `IF WS-DIFFERENCE < 0 AND COMM-FACILTYPE = 496` [src/base/cobol_src/DBCRFUN.cbl:L344]
       - Resulting Value: overdraft limit rewritten unchanged by the payment update via `EXEC SQL UPDATE ACCOUNT SET ACCOUNT_EYECATCHER = :HV-ACCOUNT-EYECATCHER, ACCOUNT_CUSTOMER_NUMBER = :HV-ACCOUNT-CUST-NO, ACCOUNT_SORTCODE = :HV-ACCOUNT-SORTCODE, ACCOUNT_NUMBER = :HV-ACCOUNT-ACC-NO, ACCOUNT_TYPE = :HV-ACCOUNT-ACC-TYPE, ACCOUNT_INTEREST_RATE = :HV-ACCOUNT-INT-RATE, ACCOUNT_OPENED = :HV-ACCOUNT-OPENED, ACCOUNT_OVERDRAFT_LIMIT = :HV-ACCOUNT-OVERDRAFT-LIM, ACCOUNT_LAST_STATEMENT = :HV-ACCOUNT-LAST-STMT, ACCOUNT_NEXT_STATEMENT = :HV-ACCOUNT-NEXT-STMT, ACCOUNT_AVAILABLE_BALANCE = :HV-ACCOUNT-AVAIL-BAL, ACCOUNT_ACTUAL_BALANCE = :HV-ACCOUNT-ACTUAL-BAL WHERE (ACCOUNT_SORTCODE = :HV-ACCOUNT-SORTCODE AND ACCOUNT_NUMBER = :HV-ACCOUNT-ACC-NO) END-EXEC.` [src/base/cobol_src/DBCRFUN.cbl:L392-L408] (terminal: literal)
       - Resulting Value: gate decided by the computed available balance, not by the limit via `COMPUTE WS-DIFFERENCE = HV-ACCOUNT-AVAIL-BAL + COMM-AMT` [src/base/cobol_src/DBCRFUN.cbl:L341-L342] (terminal: input field)
@@ -1265,7 +1273,7 @@
     - Condition: `05 CUSTOMER-EYECATCHER PIC X(4).` [src/base/cobol_copy/CUSTOMER.cpy:L8]
       - Resulting Value: the field is assigned the literal 'CUST' by `MOVE 'CUST'              TO CUSTOMER-EYECATCHER.` [src/base/cobol_src/CRECUST.cbl:L1076] on the online path and by `SET CUSTOMER-EYECATCHER-VALUE TO TRUE` [src/base/cobol_src/BANKDATA.cbl:L473] on the seeding path (terminal: literal)
     - Condition: `88 CUSTOMER-EYECATCHER-VALUE VALUE 'CUST'.` [src/base/cobol_copy/CUSTOMER.cpy:L9]
-      - Resulting Value: CUSTOMER-EYECATCHER-VALUE = 'CUST' via `88 CUSTOMER-EYECATCHER-VALUE VALUE 'CUST'.` [src/base/cobol_copy/CUSTOMER.cpy:L9] (terminal: literal)
+      - Resulting Value: the condition name CUSTOMER-EYECATCHER-VALUE is satisfied only when CUSTOMER-EYECATCHER holds the literal 'CUST', which is what `88 CUSTOMER-EYECATCHER-VALUE        VALUE 'CUST'.` [src/base/cobol_copy/CUSTOMER.cpy:L9] declares; the 88 item names that condition and stores nothing itself (terminal: literal)
 - customer-eye-catcher
   - Rule: BANKDATA sets the eye-catcher through the condition name on every seeded CUSTOMER record, in `PREMIERE SECTION.` [src/base/cobol_src/BANKDATA.cbl:L369]
     - Condition: `INITIALIZE CUSTOMER-RECORD IN CUSTOMER-RECORD-STRUCTURE` [src/base/cobol_src/BANKDATA.cbl:L471]
@@ -1299,15 +1307,17 @@
 - acctctrl-eye-catcher
   - Rule: Copybook declaration and validity condition on the ACCOUNT control record, in `03 ACCOUNT-CONTROL-RECORD.` [src/base/cobol_copy/ACCTCTRL.cpy:L7]
     - Condition: `05 ACCOUNT-CONTROL-EYE-CATCHER PIC X(4).` [src/base/cobol_copy/ACCTCTRL.cpy:L8]
-      - Resulting Value: no program under src/base/cobol_src/ references ACCOUNT-CONTROL-EYE-CATCHER or its condition name ACCOUNT-CONTROL-EYECATCHER-V, established by exhaustive case-sensitive search of `src/base/cobol_src/`, so the only value the layout admits for it is the literal fixed by `88 ACCOUNT-CONTROL-EYECATCHER-V   VALUE 'CTRL'.` [src/base/cobol_copy/ACCTCTRL.cpy:L9] (terminal: literal)
+      - Resulting Value: no program under src/base/cobol_src/ references ACCOUNT-CONTROL-EYE-CATCHER or its condition name ACCOUNT-CONTROL-EYECATCHER-V, established by exhaustive case-sensitive search of `src/base/cobol_src/`, so the field has no producer in this repository; `05 ACCOUNT-CONTROL-EYE-CATCHER        PIC X(4).` [src/base/cobol_copy/ACCTCTRL.cpy:L8] fixes only its storage format, four alphanumeric bytes, and constrains no value, while the separate `88 ACCOUNT-CONTROL-EYECATCHER-V   VALUE 'CTRL'.` [src/base/cobol_copy/ACCTCTRL.cpy:L9] names the condition tested when those bytes hold 'CTRL' rather than initialising them, so the bytes hold at run time whatever the stored VSAM control record image supplies (terminal: input field)
     - Condition: `88 ACCOUNT-CONTROL-EYECATCHER-V VALUE 'CTRL'.` [src/base/cobol_copy/ACCTCTRL.cpy:L9]
-      - Resulting Value: ACCOUNT-CONTROL-EYECATCHER-V = 'CTRL' via `88 ACCOUNT-CONTROL-EYECATCHER-V VALUE 'CTRL'.` [src/base/cobol_copy/ACCTCTRL.cpy:L9] (terminal: literal)
+      - Resulting Value: the condition name ACCOUNT-CONTROL-EYECATCHER-V is satisfied only when ACCOUNT-CONTROL-EYE-CATCHER holds the literal 'CTRL', which is what `88 ACCOUNT-CONTROL-EYECATCHER-V   VALUE 'CTRL'.` [src/base/cobol_copy/ACCTCTRL.cpy:L9] declares; the 88 item names that condition and stores nothing itself (terminal: literal)
 - acctctrl-eye-catcher
-  - Rule: Determination: neither the eye-catcher field nor its condition name is referenced by any program in src/base/cobol_src/, established by exhaustive case-sensitive search - the two programs that COPY the layout use only its counter fields, in `88 ACCOUNT-CONTROL-EYECATCHER-V VALUE 'CTRL'.` [src/base/cobol_copy/ACCTCTRL.cpy:L9]
+  - Rule: Determination: neither the eye-catcher field nor its condition name is referenced by any program in src/base/cobol_src/, established by exhaustive case-sensitive search - the three programs that COPY the layout, BANKDATA, CREACC and DELACC, use only its counter fields, in `88 ACCOUNT-CONTROL-EYECATCHER-V VALUE 'CTRL'.` [src/base/cobol_copy/ACCTCTRL.cpy:L9]
     - Condition: layout instantiated at `COPY ACCTCTRL.` [src/base/cobol_src/BANKDATA.cbl:L329]
       - Resulting Value: BANKDATA declares the layout under `01 ACCOUNT-CONTROL.` [src/base/cobol_src/BANKDATA.cbl:L328] and assigns only its two counters, never the eye-catcher, established by exhaustive case-sensitive search of `src/base/cobol_src/`, so the literal 'CTRL' fixed by `88 ACCOUNT-CONTROL-EYECATCHER-V   VALUE 'CTRL'.` [src/base/cobol_copy/ACCTCTRL.cpy:L9] is never written (terminal: literal)
     - Condition: layout instantiated at `COPY ACCTCTRL.` [src/base/cobol_src/CREACC.cbl:L266]
       - Resulting Value: 'CTRL' unreachable from COBOL in this repository via `88 ACCOUNT-CONTROL-EYECATCHER-V VALUE 'CTRL'.` [src/base/cobol_copy/ACCTCTRL.cpy:L9] (terminal: literal)
+    - Condition: layout instantiated at `COPY ACCTCTRL.` [src/base/cobol_src/DELACC.cbl:L184]
+      - Resulting Value: DELACC declares the layout under `01 ACCOUNT-CONTROL.` [src/base/cobol_src/DELACC.cbl:L183] and never references the eye-catcher or its condition name, established by exhaustive case-sensitive search of `src/base/cobol_src/`, so the third and last COPY site contributes no value to it either (terminal: input field)
 
 ## acctctrl-number-of-accounts — ACCOUNT Control-Record Account Population Counter (`PIC 9(8)`) [src/base/cobol_copy/ACCTCTRL.cpy:L14]
 - acctctrl-number-of-accounts
@@ -1361,7 +1371,7 @@
 - acctctrl-last-account-number
   - Rule: CREACC allocates the next account number from the CONTROL row rather than from this VSAM field, which is the representation hop for the allocator, in `FIND-NEXT-ACCOUNT SECTION.` [src/base/cobol_src/CREACC.cbl:L429]
     - Condition: `EXEC SQL SELECT CONTROL_NAME, CONTROL_VALUE_NUM, CONTROL_VALUE_STR INTO :HV-CONTROL-NAME, :HV-CONTROL-VALUE-NUM, :HV-CONTROL-VALUE-STR FROM CONTROL WHERE CONTROL_NAME = :HV-CONTROL-NAME END-EXEC.` [src/base/cobol_src/CREACC.cbl:L444-L453]
-      - Resulting Value: the selected ACCOUNT or CUSTOMER column values are loaded into the host variables listed in the INTO clause [src/base/cobol_src/CREACC.cbl:L444-L453] (terminal: input field)
+      - Resulting Value: the selected CONTROL column values, CONTROL_NAME, CONTROL_VALUE_NUM and CONTROL_VALUE_STR, are loaded into the host variables listed in the INTO clause [src/base/cobol_src/CREACC.cbl:L444-L453] (terminal: input field)
     - Condition: `ADD 1 TO HV-CONTROL-VALUE-NUM GIVING COMM-NUMBER ACCOUNT-NUMBER REQUIRED-ACCT-NUMBER3 NCS-ACC-NO-VALUE HV-CONTROL-VALUE-NUM` [src/base/cobol_src/CREACC.cbl:L525-L527]
       - Resulting Value: COMM-NUMBER ACCOUNT-NUMBER REQUIRED-ACCT-NUMBER3 NCS-ACC-NO-VALUE HV-CONTROL-VALUE-NUM takes HV-CONTROL-VALUE-NUM plus 1 [src/base/cobol_src/CREACC.cbl:L525-L527] (terminal: input field)
     - Condition: UPDATE SET clause `EXEC SQL UPDATE CONTROL SET CONTROL_VALUE_NUM = :HV-CONTROL-VALUE-NUM WHERE (CONTROL_NAME = :HV-CONTROL-NAME) END-EXEC` [src/base/cobol_src/CREACC.cbl:L529-L533]
@@ -1372,27 +1382,31 @@
 - acctctrl-success-flag
   - Rule: Copybook declaration and success condition on the ACCOUNT control record, in `03 ACCOUNT-CONTROL-RECORD.` [src/base/cobol_copy/ACCTCTRL.cpy:L7]
     - Condition: `05 ACCOUNT-CONTROL-SUCCESS-FLAG PIC X.` [src/base/cobol_copy/ACCTCTRL.cpy:L16]
-      - Resulting Value: no program under src/base/cobol_src/ references ACCOUNT-CONTROL-SUCCESS-FLAG or its condition name ACCOUNT-CONTROL-SUCCESS, established by exhaustive case-sensitive search of `src/base/cobol_src/`, so the only value the layout admits for it is the literal fixed by `88 ACCOUNT-CONTROL-SUCCESS VALUE 'Y'.` [src/base/cobol_copy/ACCTCTRL.cpy:L17] (terminal: literal)
+      - Resulting Value: no program under src/base/cobol_src/ references ACCOUNT-CONTROL-SUCCESS-FLAG or its condition name ACCOUNT-CONTROL-SUCCESS, established by exhaustive case-sensitive search of `src/base/cobol_src/`, so the field has no producer in this repository; `05 ACCOUNT-CONTROL-SUCCESS-FLAG       PIC X.` [src/base/cobol_copy/ACCTCTRL.cpy:L16] fixes only its storage format, one alphanumeric byte, and constrains no value, while the separate `88 ACCOUNT-CONTROL-SUCCESS VALUE 'Y'.` [src/base/cobol_copy/ACCTCTRL.cpy:L17] names the condition tested when that byte holds 'Y' rather than initialising it, so the byte holds at run time whatever the stored VSAM control record image supplies (terminal: input field)
     - Condition: `88 ACCOUNT-CONTROL-SUCCESS VALUE 'Y'.` [src/base/cobol_copy/ACCTCTRL.cpy:L17]
-      - Resulting Value: ACCOUNT-CONTROL-SUCCESS = 'Y' via `88 ACCOUNT-CONTROL-SUCCESS VALUE 'Y'.` [src/base/cobol_copy/ACCTCTRL.cpy:L17] (terminal: literal)
+      - Resulting Value: the condition name ACCOUNT-CONTROL-SUCCESS is satisfied only when ACCOUNT-CONTROL-SUCCESS-FLAG holds the literal 'Y', which is what `88 ACCOUNT-CONTROL-SUCCESS VALUE 'Y'.` [src/base/cobol_copy/ACCTCTRL.cpy:L17] declares; the 88 item names that condition and stores nothing itself (terminal: literal)
 - acctctrl-success-flag
   - Rule: Determination: neither the flag field nor its condition name is referenced by any program in src/base/cobol_src/, established by exhaustive case-sensitive search, in `05 ACCOUNT-CONTROL-SUCCESS-FLAG PIC X.` [src/base/cobol_copy/ACCTCTRL.cpy:L16]
     - Condition: layout instantiated at `COPY ACCTCTRL.` [src/base/cobol_src/BANKDATA.cbl:L329]
-      - Resulting Value: BANKDATA declares the layout under `01 ACCOUNT-CONTROL.` [src/base/cobol_src/BANKDATA.cbl:L328] and assigns only its two counters, never the success flag, established by exhaustive case-sensitive search of `src/base/cobol_src/` (terminal: literal)
+      - Resulting Value: BANKDATA declares the layout under `01 ACCOUNT-CONTROL.` [src/base/cobol_src/BANKDATA.cbl:L328] and assigns only its two counters, never the success flag, established by exhaustive case-sensitive search of `src/base/cobol_src/`, so this program contributes no value to the flag and the byte it occupies holds whatever the stored VSAM control record image supplies (terminal: input field)
     - Condition: layout instantiated at `COPY ACCTCTRL.` [src/base/cobol_src/CREACC.cbl:L266]
       - Resulting Value: 'Y' unreachable from COBOL in this repository via `88 ACCOUNT-CONTROL-SUCCESS VALUE 'Y'.` [src/base/cobol_copy/ACCTCTRL.cpy:L17] (terminal: literal)
+    - Condition: layout instantiated at `COPY ACCTCTRL.` [src/base/cobol_src/DELACC.cbl:L184]
+      - Resulting Value: DELACC declares the layout under `01 ACCOUNT-CONTROL.` [src/base/cobol_src/DELACC.cbl:L183] and never references the success flag or its condition name, established by exhaustive case-sensitive search of `src/base/cobol_src/`, so the third and last COPY site contributes no value to it either (terminal: input field)
 
 ## acctctrl-fail-code — ACCOUNT Control-Record Fail Code ACCOUNT-CONTROL-FAIL-CODE (`PIC X`) [src/base/cobol_copy/ACCTCTRL.cpy:L18]
 - acctctrl-fail-code
   - Rule: Copybook declaration of the ACCOUNT control-record fail code, which carries no condition names, in `03 ACCOUNT-CONTROL-RECORD.` [src/base/cobol_copy/ACCTCTRL.cpy:L7]
     - Condition: `05 ACCOUNT-CONTROL-FAIL-CODE PIC X.` [src/base/cobol_copy/ACCTCTRL.cpy:L18]
-      - Resulting Value: no program under src/base/cobol_src/ assigns ACCOUNT-CONTROL-FAIL-CODE, established by exhaustive case-sensitive search of `src/base/cobol_src/`, and the field carries no condition names, so the declaration `05 ACCOUNT-CONTROL-FAIL-CODE PIC X.` [src/base/cobol_copy/ACCTCTRL.cpy:L18] is the only thing that determines it (terminal: literal)
+      - Resulting Value: no program under src/base/cobol_src/ assigns ACCOUNT-CONTROL-FAIL-CODE, established by exhaustive case-sensitive search of `src/base/cobol_src/`, so the field has no producer in this repository, and it carries no condition names, so nothing constrains its value either; `05 ACCOUNT-CONTROL-FAIL-CODE PIC X.` [src/base/cobol_copy/ACCTCTRL.cpy:L18] fixes only its storage format, one alphanumeric byte, and the byte holds at run time whatever the stored VSAM control record image supplies (terminal: input field)
 - acctctrl-fail-code
   - Rule: Determination: the field is never assigned by any program in src/base/cobol_src/, established by exhaustive case-sensitive search, in `05 ACCOUNT-CONTROL-FAIL-CODE PIC X.` [src/base/cobol_copy/ACCTCTRL.cpy:L18]
     - Condition: layout instantiated at `COPY ACCTCTRL.` [src/base/cobol_src/BANKDATA.cbl:L329]
-      - Resulting Value: BANKDATA declares the layout under `01 ACCOUNT-CONTROL.` [src/base/cobol_src/BANKDATA.cbl:L328] and assigns only its two counters, never the fail code, established by exhaustive case-sensitive search of `src/base/cobol_src/` (terminal: literal)
+      - Resulting Value: BANKDATA declares the layout under `01 ACCOUNT-CONTROL.` [src/base/cobol_src/BANKDATA.cbl:L328] and assigns only its two counters, never the fail code, established by exhaustive case-sensitive search of `src/base/cobol_src/`, so this program contributes no value to the fail code and the byte it occupies holds whatever the stored VSAM control record image supplies (terminal: input field)
     - Condition: layout instantiated at `COPY ACCTCTRL.` [src/base/cobol_src/CREACC.cbl:L266]
       - Resulting Value: value passes through untouched from the stored control record via `05 ACCOUNT-CONTROL-FAIL-CODE PIC X.` [src/base/cobol_copy/ACCTCTRL.cpy:L18] (terminal: input field)
+    - Condition: layout instantiated at `COPY ACCTCTRL.` [src/base/cobol_src/DELACC.cbl:L184]
+      - Resulting Value: DELACC declares the layout under `01 ACCOUNT-CONTROL.` [src/base/cobol_src/DELACC.cbl:L183] and never references the fail code, established by exhaustive case-sensitive search of `src/base/cobol_src/`, so the third and last COPY site contributes no value to it either (terminal: input field)
 
 ## custctrl-eye-catcher — CUSTOMER Control-Record Eye-Catcher (`PIC X(4)`) [src/base/cobol_copy/CUSTCTRL.cpy:L8]
 - custctrl-eye-catcher
@@ -1400,7 +1414,7 @@
     - Condition: `05 CUSTOMER-CONTROL-EYECATCHER PIC X(4).` [src/base/cobol_copy/CUSTCTRL.cpy:L8]
       - Resulting Value: the field is assigned the literal 'CTRL' by `SET CUSTOMER-CONTROL-EYECATCHER-V TO TRUE` [src/base/cobol_src/BANKDATA.cbl:L590], which assigns the value fixed by `88 CUSTOMER-CONTROL-EYECATCHER-V        VALUE 'CTRL'.` [src/base/cobol_copy/CUSTCTRL.cpy:L9] (terminal: literal)
     - Condition: `88 CUSTOMER-CONTROL-EYECATCHER-V VALUE 'CTRL'.` [src/base/cobol_copy/CUSTCTRL.cpy:L9]
-      - Resulting Value: CUSTOMER-CONTROL-EYECATCHER-V = 'CTRL' via `88 CUSTOMER-CONTROL-EYECATCHER-V VALUE 'CTRL'.` [src/base/cobol_copy/CUSTCTRL.cpy:L9] (terminal: literal)
+      - Resulting Value: the condition name CUSTOMER-CONTROL-EYECATCHER-V is satisfied only when CUSTOMER-CONTROL-EYECATCHER holds the literal 'CTRL', which is what `88 CUSTOMER-CONTROL-EYECATCHER-V        VALUE 'CTRL'.` [src/base/cobol_copy/CUSTCTRL.cpy:L9] declares; the 88 item names that condition and stores nothing itself (terminal: literal)
 - custctrl-eye-catcher
   - Rule: BANKDATA sets the eye-catcher through the condition name when it writes the control record, in `PREMIERE SECTION.` [src/base/cobol_src/BANKDATA.cbl:L369]
     - Condition: `MOVE '000000' TO CUSTOMER-CONTROL-SORTCODE` [src/base/cobol_src/BANKDATA.cbl:L588]
@@ -1483,15 +1497,15 @@
 - custctrl-success-flag
   - Rule: Copybook declaration and success condition on the CUSTOMER control record, in `03 CUSTOMER-CONTROL-RECORD.` [src/base/cobol_copy/CUSTCTRL.cpy:L7]
     - Condition: `05 CUSTOMER-CONTROL-SUCCESS-FLAG PIC X.` [src/base/cobol_copy/CUSTCTRL.cpy:L15]
-      - Resulting Value: no program under src/base/cobol_src/ references CUSTOMER-CONTROL-SUCCESS-FLAG or its condition name CUSTOMER-CONTROL-SUCCESS, established by exhaustive case-sensitive search of `src/base/cobol_src/`, so the only value the layout admits for it is the literal fixed by `88 CUSTOMER-CONTROL-SUCCESS VALUE 'Y'.` [src/base/cobol_copy/CUSTCTRL.cpy:L16] (terminal: literal)
+      - Resulting Value: no program under src/base/cobol_src/ references CUSTOMER-CONTROL-SUCCESS-FLAG or its condition name CUSTOMER-CONTROL-SUCCESS, established by exhaustive case-sensitive search of `src/base/cobol_src/`, so the field has no producer in this repository; `05 CUSTOMER-CONTROL-SUCCESS-FLAG       PIC X.` [src/base/cobol_copy/CUSTCTRL.cpy:L15] fixes only its storage format, one alphanumeric byte, and constrains no value, while the separate `88 CUSTOMER-CONTROL-SUCCESS VALUE 'Y'.` [src/base/cobol_copy/CUSTCTRL.cpy:L16] names the condition tested when that byte holds 'Y' rather than initialising it, so the byte holds at run time whatever the stored VSAM control record image supplies (terminal: input field)
     - Condition: `88 CUSTOMER-CONTROL-SUCCESS VALUE 'Y'.` [src/base/cobol_copy/CUSTCTRL.cpy:L16]
-      - Resulting Value: CUSTOMER-CONTROL-SUCCESS = 'Y' via `88 CUSTOMER-CONTROL-SUCCESS VALUE 'Y'.` [src/base/cobol_copy/CUSTCTRL.cpy:L16] (terminal: literal)
+      - Resulting Value: the condition name CUSTOMER-CONTROL-SUCCESS is satisfied only when CUSTOMER-CONTROL-SUCCESS-FLAG holds the literal 'Y', which is what `88 CUSTOMER-CONTROL-SUCCESS VALUE 'Y'.` [src/base/cobol_copy/CUSTCTRL.cpy:L16] declares; the 88 item names that condition and stores nothing itself (terminal: literal)
 - custctrl-success-flag
   - Rule: Determination: neither the flag field nor its condition name is referenced by any program in src/base/cobol_src/, established by exhaustive case-sensitive search - CRECUST signals control-record failures through its own COMMAREA fail code instead, in `05 CUSTOMER-CONTROL-SUCCESS-FLAG PIC X.` [src/base/cobol_copy/CUSTCTRL.cpy:L15]
     - Condition: layout instantiated at `COPY CUSTCTRL.` [src/base/cobol_src/BANKDATA.cbl:L326]
-      - Resulting Value: BANKDATA declares the layout under `01 CUSTOMER-CONTROL.` [src/base/cobol_src/BANKDATA.cbl:L325] and assigns only the eye-catcher and the two counters, never the success flag, established by exhaustive case-sensitive search of `src/base/cobol_src/` (terminal: literal)
+      - Resulting Value: BANKDATA declares the layout under `01 CUSTOMER-CONTROL.` [src/base/cobol_src/BANKDATA.cbl:L325] and assigns only the eye-catcher and the two counters, never the success flag, established by exhaustive case-sensitive search of `src/base/cobol_src/`, so this program contributes no value to the flag and the byte it occupies holds whatever the stored VSAM control record image supplies (terminal: input field)
     - Condition: layout instantiated at `01 CUSTOMER-CONTROL.` [src/base/cobol_src/CRECUST.cbl:L344]
-      - Resulting Value: CUSTOMER-CONTROL is a group item, so it holds no value of its own - it names the storage that `COPY CUSTCTRL.` maps beneath `01 CUSTOMER-CONTROL.` [src/base/cobol_src/CRECUST.cbl:L344], and the group boundary itself is fixed by that declaration (terminal: literal)
+      - Resulting Value: CUSTOMER-CONTROL is a group item, so it holds no value of its own - it names the storage that `COPY CUSTCTRL.` maps beneath `01 CUSTOMER-CONTROL.` [src/base/cobol_src/CRECUST.cbl:L344]; the group boundary is fixed by that declaration while the bytes it spans are populated only through the subordinate fields the copybook maps, which the stored VSAM control record image supplies (terminal: input field)
     - Condition: `IF WS-CICS-RESP IS NOT EQUAL TO DFHRESP(NORMAL)` [src/base/cobol_src/CRECUST.cbl:L1405]
       - Resulting Value: 'Y' unreachable from COBOL in this repository via `88 CUSTOMER-CONTROL-SUCCESS VALUE 'Y'.` [src/base/cobol_copy/CUSTCTRL.cpy:L16] (terminal: literal)
       - Resulting Value: COMM-FAIL-CODE = '4' used in its place on the rewrite failure path via `MOVE '4' TO COMM-FAIL-CODE` [src/base/cobol_src/CRECUST.cbl:L1407] (terminal: literal)
@@ -1500,11 +1514,11 @@
 - custctrl-fail-code
   - Rule: Copybook declaration of the CUSTOMER control-record fail code, which carries no condition names, in `03 CUSTOMER-CONTROL-RECORD.` [src/base/cobol_copy/CUSTCTRL.cpy:L7]
     - Condition: `05 CUSTOMER-CONTROL-FAIL-CODE PIC X.` [src/base/cobol_copy/CUSTCTRL.cpy:L17]
-      - Resulting Value: no program under src/base/cobol_src/ assigns CUSTOMER-CONTROL-FAIL-CODE, established by exhaustive case-sensitive search of `src/base/cobol_src/`, and the field carries no condition names, so the declaration `05 CUSTOMER-CONTROL-FAIL-CODE PIC X.` [src/base/cobol_copy/CUSTCTRL.cpy:L17] is the only thing that determines it (terminal: literal)
+      - Resulting Value: no program under src/base/cobol_src/ assigns CUSTOMER-CONTROL-FAIL-CODE, established by exhaustive case-sensitive search of `src/base/cobol_src/`, so the field has no producer in this repository, and it carries no condition names, so nothing constrains its value either; `05 CUSTOMER-CONTROL-FAIL-CODE PIC X.` [src/base/cobol_copy/CUSTCTRL.cpy:L17] fixes only its storage format, one alphanumeric byte, and the byte holds at run time whatever the stored VSAM control record image supplies (terminal: input field)
 - custctrl-fail-code
   - Rule: Determination: the field is never assigned by any program in src/base/cobol_src/, established by exhaustive case-sensitive search, in `05 CUSTOMER-CONTROL-FAIL-CODE PIC X.` [src/base/cobol_copy/CUSTCTRL.cpy:L17]
     - Condition: layout instantiated at `COPY CUSTCTRL.` [src/base/cobol_src/BANKDATA.cbl:L326]
-      - Resulting Value: BANKDATA declares the layout under `01 CUSTOMER-CONTROL.` [src/base/cobol_src/BANKDATA.cbl:L325] and assigns only the eye-catcher and the two counters, never the fail code, established by exhaustive case-sensitive search of `src/base/cobol_src/` (terminal: literal)
+      - Resulting Value: BANKDATA declares the layout under `01 CUSTOMER-CONTROL.` [src/base/cobol_src/BANKDATA.cbl:L325] and assigns only the eye-catcher and the two counters, never the fail code, established by exhaustive case-sensitive search of `src/base/cobol_src/`, so this program contributes no value to the fail code and the byte it occupies holds whatever the stored VSAM control record image supplies (terminal: input field)
     - Condition: layout instantiated at `01 CUSTOMER-CONTROL.` [src/base/cobol_src/CRECUST.cbl:L344]
       - Resulting Value: value passes through untouched from the stored control record via `05 CUSTOMER-CONTROL-FAIL-CODE PIC X.` [src/base/cobol_copy/CUSTCTRL.cpy:L17] (terminal: input field)
 
@@ -1512,13 +1526,13 @@
 - controli-control-counters
   - Rule: Copybook declaration of the packed-decimal counter quartet, in `03 CONTROL-CUSTOMER-COUNT PIC 9(10) PACKED-DECIMAL.` [src/base/cobol_copy/CONTROLI.cpy:L7]
     - Condition: `03 CONTROL-CUSTOMER-COUNT PIC 9(10) PACKED-DECIMAL.` [src/base/cobol_copy/CONTROLI.cpy:L7]
-      - Resulting Value: no program, Java class or service interface in this repository references CONTROL-CUSTOMER-COUNT, so it has no producer at all and the declaration `03 CONTROL-CUSTOMER-COUNT PIC 9(10) PACKED-DECIMAL.` [src/base/cobol_copy/CONTROLI.cpy:L7] is the only thing that determines it (terminal: literal)
+      - Resulting Value: no program, Java class or service interface in this repository references CONTROL-CUSTOMER-COUNT, so it has no producer here; `03 CONTROL-CUSTOMER-COUNT PIC 9(10) PACKED-DECIMAL.` [src/base/cobol_copy/CONTROLI.cpy:L7] fixes only its storage format, ten decimal digits in packed-decimal usage, and constrains no value, so the digits hold at run time whatever the record image supplied by the program that owns this layout outside this repository carries (terminal: input field)
     - Condition: `03 CONTROL-CUSTOMER-LAST PIC 9(10) PACKED-DECIMAL.` [src/base/cobol_copy/CONTROLI.cpy:L8]
-      - Resulting Value: no program, Java class or service interface in this repository references CONTROL-CUSTOMER-LAST, so it has no producer at all and the declaration `03 CONTROL-CUSTOMER-LAST PIC 9(10) PACKED-DECIMAL.` [src/base/cobol_copy/CONTROLI.cpy:L8] is the only thing that determines it (terminal: literal)
+      - Resulting Value: no program, Java class or service interface in this repository references CONTROL-CUSTOMER-LAST, so it has no producer here; `03 CONTROL-CUSTOMER-LAST PIC 9(10) PACKED-DECIMAL.` [src/base/cobol_copy/CONTROLI.cpy:L8] fixes only its storage format, ten decimal digits in packed-decimal usage, and constrains no value, so the digits hold at run time whatever the record image supplied by the program that owns this layout outside this repository carries (terminal: input field)
     - Condition: `03 CONTROL-ACCOUNT-COUNT PIC 9(8) PACKED-DECIMAL.` [src/base/cobol_copy/CONTROLI.cpy:L9]
-      - Resulting Value: no program, Java class or service interface in this repository references CONTROL-ACCOUNT-COUNT, so it has no producer at all and the declaration `03 CONTROL-ACCOUNT-COUNT PIC 9(8) PACKED-DECIMAL.` [src/base/cobol_copy/CONTROLI.cpy:L9] is the only thing that determines it (terminal: literal)
+      - Resulting Value: no program, Java class or service interface in this repository references CONTROL-ACCOUNT-COUNT, so it has no producer here; `03 CONTROL-ACCOUNT-COUNT PIC 9(8) PACKED-DECIMAL.` [src/base/cobol_copy/CONTROLI.cpy:L9] fixes only its storage format, eight decimal digits in packed-decimal usage, and constrains no value, so the digits hold at run time whatever the record image supplied by the program that owns this layout outside this repository carries (terminal: input field)
     - Condition: `03 CONTROL-ACCOUNT-LAST PIC 9(8) PACKED-DECIMAL.` [src/base/cobol_copy/CONTROLI.cpy:L10]
-      - Resulting Value: no program, Java class or service interface in this repository references CONTROL-ACCOUNT-LAST, so it has no producer at all and the declaration `03 CONTROL-ACCOUNT-LAST PIC 9(8) PACKED-DECIMAL.` [src/base/cobol_copy/CONTROLI.cpy:L10] is the only thing that determines it (terminal: literal)
+      - Resulting Value: no program, Java class or service interface in this repository references CONTROL-ACCOUNT-LAST, so it has no producer here; `03 CONTROL-ACCOUNT-LAST PIC 9(8) PACKED-DECIMAL.` [src/base/cobol_copy/CONTROLI.cpy:L10] fixes only its storage format, eight decimal digits in packed-decimal usage, and constrains no value, so the digits hold at run time whatever the record image supplied by the program that owns this layout outside this repository carries (terminal: input field)
 - controli-control-counters
   - Rule: Determination: the copybook is referenced by no program, no Java class and no service interface anywhere in the repository, established by exhaustive case-sensitive search excluding .git and node_modules - the live counters with the same meaning are the VSAM control records, in `03 CONTROL-CUSTOMER-COUNT PIC 9(10) PACKED-DECIMAL.` [src/base/cobol_copy/CONTROLI.cpy:L7]
     - Condition: live equivalent `05 NUMBER-OF-ACCOUNTS PIC 9(8).` [src/base/cobol_copy/ACCTCTRL.cpy:L14]
@@ -2183,7 +2197,7 @@
 - procisrt-function-flag
   - Rule: Copybook declaration of the function-flag field itself, in `01 PROCISRT-COMMAREA.` [src/base/cobol_copy/PROCISRT.cpy:L7]
     - Condition: `03 PROCISRT-FUNCTION PIC X.` [src/base/cobol_copy/PROCISRT.cpy:L8]
-      - Resulting Value: PROCISRT-FUNCTION is declared `03 PROCISRT-FUNCTION PIC X.` [src/base/cobol_copy/PROCISRT.cpy:L8] and no program assigns it, so its value is confined to the seven single-character literals fixed by the condition names from `88 PROCISRT-DEBIT VALUE '1'.` [src/base/cobol_copy/PROCISRT.cpy:L9] to `88 PROCISRT-CREATE-ACCOUNT VALUE '7'.` [src/base/cobol_copy/PROCISRT.cpy:L15] (terminal: literal)
+      - Resulting Value: `03 PROCISRT-FUNCTION PIC X.` [src/base/cobol_copy/PROCISRT.cpy:L8] fixes only its storage format, one alphanumeric byte, and no program, Java class or service interface in this repository assigns it, so the field has no producer here; the seven condition names from `88 PROCISRT-DEBIT VALUE '1'.` [src/base/cobol_copy/PROCISRT.cpy:L9] to `88 PROCISRT-CREATE-ACCOUNT VALUE '7'.` [src/base/cobol_copy/PROCISRT.cpy:L15] name the conditions tested when the byte holds each of those seven single-character literals rather than restricting what it may hold, so the byte holds at run time whatever the commarea image supplied by the caller carries (terminal: input field)
 - procisrt-function-flag
   - Rule: Copybook declaration fixes the debit value of the seven-valued PROCISRT function flag, in `03 PROCISRT-FUNCTION PIC X.` [src/base/cobol_copy/PROCISRT.cpy:L8]
     - Condition: `88 PROCISRT-DEBIT VALUE '1'.` [src/base/cobol_copy/PROCISRT.cpy:L9]
@@ -2214,10 +2228,10 @@
       - Resulting Value: PROCISRT-FUNCTION = '7', which sets condition name PROCISRT-CREATE-ACCOUNT [src/base/cobol_copy/PROCISRT.cpy:L15] (terminal: literal)
 - procisrt-function-flag
   - Rule: Determination: the copybook is referenced by no program, no Java class and no service interface anywhere in the repository, established by exhaustive case-sensitive search excluding .git and node_modules - each value is reachable only as the declared literal, in `03 PROCISRT-FUNCTION PIC X.` [src/base/cobol_copy/PROCISRT.cpy:L8]
-    - Condition: layout continues with an IMS PCB pointer at `03 PROCISRT-PCB-POINTER POINTER.` [src/base/cobol_copy/PROCISRT.cpy:L16]
-      - Resulting Value: no program, Java class or service interface in this repository references PROCISRT-PCB-POINTER, so it has no producer at all and the `POINTER` usage clause in `03 PROCISRT-PCB-POINTER POINTER.` [src/base/cobol_copy/PROCISRT.cpy:L16] is the only thing that determines its storage form (terminal: literal)
+    - Condition: layout continues with a PCB pointer item at `03 PROCISRT-PCB-POINTER POINTER.` [src/base/cobol_copy/PROCISRT.cpy:L16]
+      - Resulting Value: no program, Java class or service interface in this repository references PROCISRT-PCB-POINTER, so it has no producer here; the POINTER usage clause in `03 PROCISRT-PCB-POINTER POINTER.` [src/base/cobol_copy/PROCISRT.cpy:L16] fixes only its storage form, one address-sized item, and constrains no value, so the address it holds at run time is whatever the caller places in the commarea (terminal: input field)
     - Condition: `03 PROCISRT-DEBIT-STRUCT.` [src/base/cobol_copy/PROCISRT.cpy:L17]
-      - Resulting Value: PROCISRT-DEBIT-STRUCT is a group item, so it holds no value of its own, and no program, Java class or service interface in this repository references it or any of the debit-request fields declared beneath `03 PROCISRT-DEBIT-STRUCT.` [src/base/cobol_copy/PROCISRT.cpy:L17] (terminal: literal)
+      - Resulting Value: PROCISRT-DEBIT-STRUCT is a group item, so it holds no value of its own, and no program, Java class or service interface in this repository references it or any of the debit-request fields declared beneath `03 PROCISRT-DEBIT-STRUCT.` [src/base/cobol_copy/PROCISRT.cpy:L17]; the group boundary is fixed by that declaration while the bytes it spans are populated only through those subordinate fields from the commarea image supplied by the caller (terminal: input field)
 
 ## abndinfo-abend-code — ABNDINFO CICS Abend Code ABND-CODE, One Derivation Path per Abend Site (123 Sites Across 23 Programs) (`PIC X(4)`) [src/base/cobol_copy/ABNDINFO.cpy:L14]
 - abndinfo-abend-code
@@ -4767,7 +4781,7 @@
 - getcompy-company-name
   - Rule: Copybook declaration of the company-name wire field, in `03 GETCompanyOperation.` [src/base/cobol_copy/GETCOMPY.cpy:L7]
     - Condition: `03 GETCompanyOperation.` [src/base/cobol_copy/GETCOMPY.cpy:L7]
-      - Resulting Value: GETCompanyOperation is a group item, so it holds no value of its own - its content is the single company-name field declared at `06 company-name pic x(40).` [src/base/cobol_copy/GETCOMPY.cpy:L8] declared beneath `03 GETCompanyOperation.` [src/base/cobol_copy/GETCOMPY.cpy:L7], and the group boundary itself is fixed by that declaration (terminal: literal)
+      - Resulting Value: GETCompanyOperation is a group item, so it holds no value of its own - its content is the single company-name field declared at `06 company-name pic x(40).` [src/base/cobol_copy/GETCOMPY.cpy:L8] declared beneath `03 GETCompanyOperation.` [src/base/cobol_copy/GETCOMPY.cpy:L7]; the group boundary is fixed by that declaration while the bytes it spans are populated only through that subordinate field at run time (terminal: input field)
     - Condition: `06 company-name pic x(40).` [src/base/cobol_copy/GETCOMPY.cpy:L8]
       - Resulting Value: the field is a 40-byte alphanumeric wire field declared `06 company-name pic x(40).` [src/base/cobol_copy/GETCOMPY.cpy:L8], and the only value ever placed in it is the literal moved by `move 'CICS Bank Sample Application' to COMPANY-NAME.` [src/base/cobol_src/GETCOMPY.cbl:L38] (terminal: literal)
 - getcompy-company-name
@@ -4781,7 +4795,7 @@
 - getscode-sortcode
   - Rule: Copybook declaration of the sort-code wire field, whose PICTURE mixes cases and is recorded exactly as found, in `03 GETSORTCODEOperation.` [src/base/cobol_copy/GETSCODE.cpy:L7]
     - Condition: `03 GETSORTCODEOperation.` [src/base/cobol_copy/GETSCODE.cpy:L7]
-      - Resulting Value: GETSORTCODEOperation is a group item, so it holds no value of its own - its content is the single SORTCODE field declared at `06 SORTCODE pic xXXXXX.` [src/base/cobol_copy/GETSCODE.cpy:L8] declared beneath `03 GETSORTCODEOperation.` [src/base/cobol_copy/GETSCODE.cpy:L7], and the group boundary itself is fixed by that declaration (terminal: literal)
+      - Resulting Value: GETSORTCODEOperation is a group item, so it holds no value of its own - its content is the single SORTCODE field declared at `06 SORTCODE pic xXXXXX.` [src/base/cobol_copy/GETSCODE.cpy:L8] declared beneath `03 GETSORTCODEOperation.` [src/base/cobol_copy/GETSCODE.cpy:L7]; the group boundary is fixed by that declaration while the bytes it spans are populated only through that subordinate field at run time (terminal: input field)
     - Condition: `06 SORTCODE pic xXXXXX.` [src/base/cobol_copy/GETSCODE.cpy:L8]
       - Resulting Value: the field is a six-character alphanumeric wire field declared with a mixed-case PICTURE `06 SORTCODE pic xXXXXX.` [src/base/cobol_copy/GETSCODE.cpy:L8], and the only value ever placed in it is the copybook literal moved by `MOVE LITERAL-SORTCODE TO SORTCODE OF DFHCOMMAREA.` [src/base/cobol_src/GETSCODE.cbl:L39-L40] (terminal: literal)
 - getscode-sortcode
@@ -4797,12 +4811,44 @@
 - stcustno-customer-number-key
   - Rule: Copybook declaration of the customer-number VSAM key, in `05 Customer-Number-Key.` [src/base/cobol_copy/STCUSTNO.cpy:L7]
     - Condition: `05 Customer-Number-Key.` [src/base/cobol_copy/STCUSTNO.cpy:L7]
-      - Resulting Value: Customer-Number-Key is a group item, so it holds no value of its own - its content is the CNO-KEY field declared beneath `05 Customer-Number-Key.` [src/base/cobol_copy/STCUSTNO.cpy:L7], and the group boundary itself is fixed by that declaration (terminal: literal)
+      - Resulting Value: Customer-Number-Key is a group item, so it holds no value of its own - its content is the CNO-KEY field declared beneath `05 Customer-Number-Key.` [src/base/cobol_copy/STCUSTNO.cpy:L7]; the group boundary is fixed by that declaration while the bytes it spans are populated only through CNO-KEY, and no program, Java class or service interface in this repository references either name (terminal: input field)
     - Condition: `10 CNO-KEY PIC 9(10) DISPLAY.` [src/base/cobol_copy/STCUSTNO.cpy:L8]
-      - Resulting Value: no program, Java class or service interface in this repository references CNO-KEY, so it has no producer at all and the declaration `10 CNO-KEY PIC 9(10) DISPLAY.` [src/base/cobol_copy/STCUSTNO.cpy:L8] is the only thing that determines it (terminal: literal)
+      - Resulting Value: no program, Java class or service interface in this repository references CNO-KEY, so it has no producer here; `10 CNO-KEY PIC 9(10) DISPLAY.` [src/base/cobol_copy/STCUSTNO.cpy:L8] fixes only its storage format, ten zoned-decimal display digits, and constrains no value, so the digits hold at run time whatever the record image supplied by the program that owns this layout outside this repository carries (terminal: input field)
 - stcustno-customer-number-key
   - Rule: Determination: the copybook is referenced by no program, no Java class and no service interface anywhere in the repository, established by exhaustive case-sensitive search excluding .git and node_modules - the live key with the same meaning is the CUSTOMER record key, in `10 CNO-KEY PIC 9(10) DISPLAY.` [src/base/cobol_copy/STCUSTNO.cpy:L8]
     - Condition: live equivalent `05 CUSTOMER-KEY.` [src/base/cobol_copy/CUSTOMER.cpy:L10]
-      - Resulting Value: CUSTOMER-KEY is a group item, so it holds no value of its own - its content is the sort-code and customer-number fields declared beneath `05 CUSTOMER-KEY.` [src/base/cobol_copy/CUSTOMER.cpy:L10], and the group boundary itself is fixed by that declaration (terminal: literal)
+      - Resulting Value: CUSTOMER-KEY is a group item, so it holds no value of its own - its content is the sort-code and customer-number fields declared beneath `05 CUSTOMER-KEY.` [src/base/cobol_copy/CUSTOMER.cpy:L10]; the group boundary is fixed by that declaration while the bytes it spans are populated only through those two subordinate fields at run time (terminal: input field)
     - Condition: live equivalent `07 CUSTOMER-NUMBER PIC 9(10) DISPLAY.` [src/base/cobol_copy/CUSTOMER.cpy:L12]
       - Resulting Value: customer number allocated by the control-record increment, not by this layout via `ADD 1 TO LAST-CUSTOMER-NUMBER IN CUSTOMER-CONTROL GIVING LAST-CUSTOMER-NUMBER IN CUSTOMER-CONTROL` [src/base/cobol_src/CRECUST.cbl:L1381-L1382] (terminal: input field)
+- stcustno-customer-number-key
+  - Rule: Live-equivalent derivation path 1 - BANKDATA seeds the customer-number key from its own sequential key generator during test-data population, in `PREMIERE SECTION.` [src/base/cobol_src/BANKDATA.cbl:L369]
+    - Condition: `MOVE NEXT-KEY TO CUSTOMER-NUMBER` [src/base/cobol_src/BANKDATA.cbl:L475]
+      - Resulting Value: CUSTOMER-NUMBER takes the current value of the seeding key counter NEXT-KEY [src/base/cobol_src/BANKDATA.cbl:L475] (terminal: input field)
+    - Condition: `MOVE NEXT-KEY TO LAST-CUSTOMER-NUMBER` [src/base/cobol_src/BANKDATA.cbl:L476]
+      - Resulting Value: the same seeded value is recorded as the last allocated customer number in the control record, so the seeded key and the high-water mark agree [src/base/cobol_src/BANKDATA.cbl:L476] (terminal: input field)
+- stcustno-customer-number-key
+  - Rule: Live-equivalent derivation path 2 - CRECUST allocates the next customer number by incrementing the control-record high-water mark, in `GET-LAST-CUSTOMER-VSAM SECTION.` [src/base/cobol_src/CRECUST.cbl:L1341]
+    - Condition: `ADD 1 TO LAST-CUSTOMER-NUMBER IN CUSTOMER-CONTROL GIVING LAST-CUSTOMER-NUMBER IN CUSTOMER-CONTROL` [src/base/cobol_src/CRECUST.cbl:L1381-L1382]
+      - Resulting Value: the high-water mark takes its previous value plus the literal increment 1 [src/base/cobol_src/CRECUST.cbl:L1381-L1382] (terminal: literal)
+    - Condition: `MOVE LAST-CUSTOMER-NUMBER OF CUSTOMER-CONTROL  TO COMM-NUMBER CUSTOMER-NUMBER REQUIRED-CUST-NUMBER2 NCS-CUST-NO-VALUE.` [src/base/cobol_src/CRECUST.cbl:L1414-L1416]
+      - Resulting Value: the live key field, the commarea number and the allocator work field all take the incremented high-water mark [src/base/cobol_src/CRECUST.cbl:L1414-L1416] (terminal: input field)
+    - Condition: `MOVE NCS-CUST-NO-VALUE   TO CUSTOMER-NUMBER.` [src/base/cobol_src/CRECUST.cbl:L1078]
+      - Resulting Value: the live key field takes the allocated number immediately before the VSAM write in `WRITE-CUSTOMER-VSAM SECTION.` [src/base/cobol_src/CRECUST.cbl:L1069] (terminal: input field)
+- stcustno-customer-number-key
+  - Rule: Live-equivalent read path - the stored key is used as the read key and then returned to the caller unchanged, in `READ-CUSTOMER-VSAM SECTION.` [src/base/cobol_src/INQCUST.cbl:L258]
+    - Condition: `MOVE REQUIRED-CUST-NUMBER TO CUSTOMER-NUMBER OF OUTPUT-DATA` [src/base/cobol_src/INQCUST.cbl:L343-L344]
+      - Resulting Value: the record image used as the VSAM read key takes the requested number, which reached INQCUST through the commarea via `MOVE INQCUST-CUSTNO TO REQUIRED-CUST-NUMBER.` [src/base/cobol_src/INQCUST.cbl:L179] (terminal: input field)
+    - Condition: `MOVE CUSTOMER-NUMBER OF OUTPUT-DATA TO INQCUST-CUSTNO` [src/base/cobol_src/INQCUST.cbl:L226-L227]
+      - Resulting Value: the commarea field takes the key held in the record just read [src/base/cobol_src/INQCUST.cbl:L226-L227] (terminal: input field)
+    - Condition: `MOVE CUSTOMER-NUMBER OF WS-CUST-DATA TO COMM-CUSTNO.` [src/base/cobol_src/UPDCUST.cbl:L320-L321]
+      - Resulting Value: UPDCUST returns the same key unchanged after its update, in `UPDATE-CUSTOMER-VSAM SECTION.` [src/base/cobol_src/UPDCUST.cbl:L211] (terminal: input field)
+    - Condition: `MOVE CUSTOMER-NUMBER OF CUSTOMER-RECORD TO WS-STOREDC-NUMBER COMM-CUSTNO IN DFHCOMMAREA.` [src/base/cobol_src/DELCUS.cbl:L458-L459]
+      - Resulting Value: DELCUS returns the key of the record it has deleted, in `DEL-CUST-VSAM SECTION.` [src/base/cobol_src/DELCUS.cbl:L343] (terminal: input field)
+- stcustno-customer-number-key
+  - Rule: Live-equivalent carry path across program boundaries, which uses the distinct list-accounts COMMAREA field rather than the CUSTOMER record key, in `03 CUSTOMER-NUMBER PIC 9(10).` [src/base/cobol_copy/INQACCCU.cpy:L8]
+    - Condition: `MOVE COMM-CUSTNO IN DFHCOMMAREA TO CUSTOMER-NUMBER IN INQACCCU-COMMAREA.` [src/base/cobol_src/CREACC.cbl:L1083-L1084]
+      - Resulting Value: the list-accounts commarea field takes the customer number supplied to CREACC [src/base/cobol_src/CREACC.cbl:L1083-L1084] (terminal: input field)
+    - Condition: `MOVE CUSTNOI TO CUSTOMER-NUMBER OF INQACCCU-COMMAREA.` [src/base/cobol_src/BNK1CCA.cbl:L429]
+      - Resulting Value: the same field takes the BMS screen input field CUSTNOI unchanged [src/base/cobol_src/BNK1CCA.cbl:L429] (terminal: input field)
+    - Condition: `IF CUSTOMER-NUMBER IN DFHCOMMAREA = '9999999999'` [src/base/cobol_src/INQACCCU.cbl:L841]
+      - Resulting Value: the sentinel number 9999999999 selects the diagnostic path instead of a customer lookup [src/base/cobol_src/INQACCCU.cbl:L841] (terminal: literal)
