@@ -80,21 +80,25 @@
     - Condition: `88 PROC-TY-CHEQUE-PAID-OUT VALUE 'CHO'.` [src/base/cobol_copy/PROCTRAN.cpy:L33]
       - Resulting Value: PROC-TRAN-TYPE = 'CHO' whenever condition name PROC-TY-CHEQUE-PAID-OUT is set, and no statement in any of the 29 COBOL programs sets it [src/base/cobol_copy/PROCTRAN.cpy:L33] (terminal: literal)
 - proctran-type-code
-  - Rule: Declaration-only transaction type 'ICA' (internet create account) with no in-repository producer, established by exhaustive case-sensitive search of every program in src/base/cobol_src/, in `05 PROC-TRAN-TYPE PIC X(3).` [src/base/cobol_copy/PROCTRAN.cpy:L29]
-    - Condition: `88 PROC-TY-WEB-CREATE-ACCOUNT VALUE 'ICA'.` [src/base/cobol_copy/PROCTRAN.cpy:L36]
-      - Resulting Value: PROC-TRAN-TYPE = 'ICA' whenever condition name PROC-TY-WEB-CREATE-ACCOUNT is set, and no statement in any of the 29 COBOL programs sets it [src/base/cobol_copy/PROCTRAN.cpy:L36] (terminal: literal)
+  - Rule: webui Java tier internet create-account stamp bound at position 7 of the nine-column PROCTRAN INSERT - the only in-repository producer of 'ICA', because no statement in any of the 29 COBOL programs sets it, in `public boolean writeCreateAccount(String sortCode2, String accountNumber, BigDecimal actualBalance, Date lastStatement, Date nextStatement, String customerNumber, String accountType)` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/web/db2/ProcessedTransaction.java:L815-L817]
+    - Condition: `stmt.setString(7, PROCTRAN.PROC_TY_WEB_CREATE_ACCOUNT);` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/web/db2/ProcessedTransaction.java:L855]
+      - Resulting Value: PROCTRAN_TYPE column takes 'ICA' from the generated constant `public static final String PROC_TY_WEB_CREATE_ACCOUNT = "ICA";` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/PROCTRAN.java:L158] (terminal: literal)
+      - Resulting Value: PROC-TY-WEB-CREATE-ACCOUNT condition name via `88 PROC-TY-WEB-CREATE-ACCOUNT VALUE 'ICA'.` [src/base/cobol_copy/PROCTRAN.cpy:L36] (terminal: literal)
 - proctran-type-code
-  - Rule: Declaration-only transaction type 'ICC' (internet create customer) with no in-repository producer, established by exhaustive case-sensitive search of every program in src/base/cobol_src/, in `05 PROC-TRAN-TYPE PIC X(3).` [src/base/cobol_copy/PROCTRAN.cpy:L29]
-    - Condition: `88 PROC-TY-WEB-CREATE-CUSTOMER VALUE 'ICC'.` [src/base/cobol_copy/PROCTRAN.cpy:L37]
-      - Resulting Value: PROC-TRAN-TYPE = 'ICC' whenever condition name PROC-TY-WEB-CREATE-CUSTOMER is set, and no statement in any of the 29 COBOL programs sets it [src/base/cobol_copy/PROCTRAN.cpy:L37] (terminal: literal)
+  - Rule: webui Java tier internet create-customer stamp bound at position 7 of the nine-column PROCTRAN INSERT - the only in-repository producer of 'ICC', because no statement in any of the 29 COBOL programs sets it, in `public boolean writeCreateCustomer(String sortCode2, String accountNumber, double amountWhichWillBeZero, Date customerDOB, String customerName, String customerNumber)` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/web/db2/ProcessedTransaction.java:L693-L695]
+    - Condition: `stmt.setString(7, PROCTRAN.PROC_TY_WEB_CREATE_CUSTOMER);` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/web/db2/ProcessedTransaction.java:L734]
+      - Resulting Value: PROCTRAN_TYPE column takes 'ICC' from the generated constant `public static final String PROC_TY_WEB_CREATE_CUSTOMER = "ICC";` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/PROCTRAN.java:L162] (terminal: literal)
+      - Resulting Value: PROC-TY-WEB-CREATE-CUSTOMER condition name via `88 PROC-TY-WEB-CREATE-CUSTOMER VALUE 'ICC'.` [src/base/cobol_copy/PROCTRAN.cpy:L37] (terminal: literal)
 - proctran-type-code
-  - Rule: Declaration-only transaction type 'IDA' (internet delete account) with no in-repository producer, established by exhaustive case-sensitive search of every program in src/base/cobol_src/, in `05 PROC-TRAN-TYPE PIC X(3).` [src/base/cobol_copy/PROCTRAN.cpy:L29]
-    - Condition: `88 PROC-TY-WEB-DELETE-ACCOUNT VALUE 'IDA'.` [src/base/cobol_copy/PROCTRAN.cpy:L38]
-      - Resulting Value: PROC-TRAN-TYPE = 'IDA' whenever condition name PROC-TY-WEB-DELETE-ACCOUNT is set, and no statement in any of the 29 COBOL programs sets it [src/base/cobol_copy/PROCTRAN.cpy:L38] (terminal: literal)
+  - Rule: webui Java tier internet delete-account stamp bound at position 7 of the nine-column PROCTRAN INSERT - the only in-repository producer of 'IDA', because no statement in any of the 29 COBOL programs sets it, in `public boolean writeDeleteAccount(String sortCode2, String accountNumber, BigDecimal actualBalance, Date lastStatement, Date nextStatement, String customerNumber, String accountType)` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/web/db2/ProcessedTransaction.java:L752-L754]
+    - Condition: `stmt.setString(7, PROCTRAN.PROC_TY_WEB_DELETE_ACCOUNT);` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/web/db2/ProcessedTransaction.java:L791]
+      - Resulting Value: PROCTRAN_TYPE column takes 'IDA' from the generated constant `public static final String PROC_TY_WEB_DELETE_ACCOUNT = "IDA";` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/PROCTRAN.java:L166] (terminal: literal)
+      - Resulting Value: PROC-TY-WEB-DELETE-ACCOUNT condition name via `88 PROC-TY-WEB-DELETE-ACCOUNT VALUE 'IDA'.` [src/base/cobol_copy/PROCTRAN.cpy:L38] (terminal: literal)
 - proctran-type-code
-  - Rule: Declaration-only transaction type 'IDC' (internet delete customer) with no in-repository producer, established by exhaustive case-sensitive search of every program in src/base/cobol_src/, in `05 PROC-TRAN-TYPE PIC X(3).` [src/base/cobol_copy/PROCTRAN.cpy:L29]
-    - Condition: `88 PROC-TY-WEB-DELETE-CUSTOMER VALUE 'IDC'.` [src/base/cobol_copy/PROCTRAN.cpy:L39]
-      - Resulting Value: PROC-TRAN-TYPE = 'IDC' whenever condition name PROC-TY-WEB-DELETE-CUSTOMER is set, and no statement in any of the 29 COBOL programs sets it [src/base/cobol_copy/PROCTRAN.cpy:L39] (terminal: literal)
+  - Rule: webui Java tier internet delete-customer stamp bound at position 7 of the nine-column PROCTRAN INSERT - the only in-repository producer of 'IDC', because no statement in any of the 29 COBOL programs sets it, in `public boolean writeDeleteCustomer(String sortCode2, String accountNumber, double amountWhichWillAlwaysBeZero, Date customerDOB, String customerName, String customerNumber)` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/web/db2/ProcessedTransaction.java:L628-L630]
+    - Condition: `stmt.setString(7, PROCTRAN.PROC_TY_WEB_DELETE_CUSTOMER);` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/web/db2/ProcessedTransaction.java:L676]
+      - Resulting Value: PROCTRAN_TYPE column takes 'IDC' from the generated constant `public static final String PROC_TY_WEB_DELETE_CUSTOMER = "IDC";` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/PROCTRAN.java:L170] (terminal: literal)
+      - Resulting Value: PROC-TY-WEB-DELETE-CUSTOMER condition name via `88 PROC-TY-WEB-DELETE-CUSTOMER VALUE 'IDC'.` [src/base/cobol_copy/PROCTRAN.cpy:L39] (terminal: literal)
 - proctran-type-code
   - Rule: Declaration-only transaction type 'OCS' (create standing order or direct debit) with no in-repository producer, established by exhaustive case-sensitive search of every program in src/base/cobol_src/, in `05 PROC-TRAN-TYPE PIC X(3).` [src/base/cobol_copy/PROCTRAN.cpy:L29]
     - Condition: `88 PROC-TY-CREATE-SODD VALUE 'OCS'.` [src/base/cobol_copy/PROCTRAN.cpy:L44]
@@ -1059,7 +1063,7 @@
     - Condition: `88 PROC-DESC-CREACC-FLAG VALUE 'CREATE'.` [src/base/cobol_copy/PROCTRAN.cpy:L79-L80]
       - Resulting Value: the condition name PROC-DESC-CREACC-FLAG is satisfied only when PROC-DESC-CREACC-FOOTER holds the literal 'CREATE' across the six bytes of `07 PROC-DESC-CREACC-FOOTER PIC X(6).` [src/base/cobol_copy/PROCTRAN.cpy:L78], which is what `88 PROC-DESC-CREACC-FLAG VALUE 'CREATE'.` [src/base/cobol_copy/PROCTRAN.cpy:L79-L80] declares; the 88 item names that condition and stores nothing itself (terminal: literal)
 - proctran-desc-creacc-flag
-  - Rule: Determination: CREACC never sets the discriminator - it writes the descriptor by displacement and leaves the footer bytes that carry the flag as spaces, so the declared value is unreachable in this repository, in `WRITE-PROCTRAN-DB2 SECTION.` [src/base/cobol_src/CREACC.cbl:L928]
+  - Rule: Determination: CREACC never sets the discriminator - it writes the descriptor by displacement and leaves the footer bytes that carry the flag as spaces, so the declared value is unreachable from the COBOL tier, whereas the webui Java writer does store it into the same six footer bytes at `myPROCTRAN.setProcDescCreaccFooter(PROCTRAN.PROC_DESC_CREACC_FLAG);` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/web/db2/ProcessedTransaction.java:L839] before binding the whole descriptor at `stmt.setString(8, descriptionForCreatedAccount);` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/web/db2/ProcessedTransaction.java:L856], in `WRITE-PROCTRAN-DB2 SECTION.` [src/base/cobol_src/CREACC.cbl:L928]
     - Condition: `MOVE STORED-CUSTNO TO HV-PROCTRAN-DESC(1:10).` [src/base/cobol_src/CREACC.cbl:L960]
       - Resulting Value: HV-PROCTRAN-DESC(1:10) takes STORED-CUSTNO via `MOVE STORED-CUSTNO     TO HV-PROCTRAN-DESC(1:10).` [src/base/cobol_src/CREACC.cbl:L960], which is not an input but the value CREACC saved from the row it had just inserted at `MOVE HV-ACCOUNT-CUST-NO        TO STORED-CUSTNO.` [src/base/cobol_src/CREACC.cbl:L874], itself taken from the caller COMMAREA field `03 COMM-CUSTNO PIC 9(10).` [src/base/cobol_copy/CREACC.cpy:L8] (terminal: input field)
     - Condition: `MOVE STORED-ACCTYPE TO HV-PROCTRAN-DESC(11:8).` [src/base/cobol_src/CREACC.cbl:L961]
@@ -1103,7 +1107,7 @@
     - Condition: `88 PROC-DESC-CRECUS-FILLER2-SET VALUE '-'.` [src/base/cobol_copy/PROCTRAN.cpy:L101]
       - Resulting Value: PROC-DESC-CRECUS-FILLER2 = '-' whenever condition name PROC-DESC-CRECUS-FILLER2-SET is set [src/base/cobol_copy/PROCTRAN.cpy:L101] (terminal: literal)
 - proctran-desc-crecus-separator
-  - Rule: Determination: CRECUST writes a '/' separator into the same byte positions, so the declared '-' value is never satisfied, in `WRITE-CUSTOMER-VSAM SECTION.` [src/base/cobol_src/CRECUST.cbl:L1069]
+  - Rule: Determination: CRECUST writes a '/' separator at different byte offsets from the declared separators, the ten-byte STORED-DOB group landing at descriptor bytes 31 to 40 so that its two '/' bytes fall at descriptor bytes 33 and 36 rather than the declared 35 and 38, which is why the declared '-' value is never satisfied, in `WRITE-CUSTOMER-VSAM SECTION.` [src/base/cobol_src/CRECUST.cbl:L1069]
     - Condition: `MOVE CUSTOMER-DATE-OF-BIRTH(1:2) TO STORED-DOB(1:2).` [src/base/cobol_src/CRECUST.cbl:L1154]
       - Resulting Value: STORED-DOB(1:2) takes the value of CUSTOMER-DATE-OF-BIRTH(1:2) [src/base/cobol_src/CRECUST.cbl:L1154] (terminal: input field)
     - Condition: `MOVE '/' TO STORED-DOB(3:1).` [src/base/cobol_src/CRECUST.cbl:L1155]
@@ -1128,7 +1132,7 @@
     - Condition: `88 PROC-DESC-DELCUS-FILLER2-SET VALUE '-'.` [src/base/cobol_copy/PROCTRAN.cpy:L90]
       - Resulting Value: PROC-DESC-DELCUS-FILLER2 = '-' whenever condition name PROC-DESC-DELCUS-FILLER2-SET is set [src/base/cobol_copy/PROCTRAN.cpy:L90] (terminal: literal)
 - proctran-desc-delcus-separator
-  - Rule: Determination: DELCUS writes a '/' separator into the same byte positions, so the declared '-' value is never satisfied, in `DEL-CUST-VSAM SECTION.` [src/base/cobol_src/DELCUS.cbl:L343]
+  - Rule: Determination: DELCUS writes a '/' separator at different byte offsets from the declared separators, the ten-byte WS-STOREDC-DATE-OF-BIRTH group landing at descriptor bytes 31 to 40 so that its two '/' bytes fall at descriptor bytes 33 and 36 rather than the declared 35 and 38, which is why the declared '-' value is never satisfied, in `DEL-CUST-VSAM SECTION.` [src/base/cobol_src/DELCUS.cbl:L343]
     - Condition: `MOVE CUSTOMER-DATE-OF-BIRTH(1:2) TO WS-STOREDC-DATE-OF-BIRTH(1:2) COMM-BIRTH-DAY IN DFHCOMMAREA.` [src/base/cobol_src/DELCUS.cbl:L464-L466]
       - Resulting Value: WS-STOREDC-DATE-OF-BIRTH(1:2) COMM-BIRTH-DAY IN DFHCOMMAREA takes the value of CUSTOMER-DATE-OF-BIRTH(1:2) [src/base/cobol_src/DELCUS.cbl:L464-L466] (terminal: input field)
     - Condition: `MOVE '/' TO WS-STOREDC-DATE-OF-BIRTH(3:1).` [src/base/cobol_src/DELCUS.cbl:L467]
