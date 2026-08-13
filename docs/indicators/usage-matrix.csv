@@ -57,7 +57,7 @@ delcus-del-fail-code,,,,,,,,,,,,,,W,,,,,X,,,,,,,,,,,W,,,,,,,,,,,,,,,,,,,,,,,,,,,
 updacc-success-flag,,,,,,,,,,,,W,,,,,,,X,,,,,,,,,W,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 updcust-upd-success-flag,,,,,,,,,,,W,,,,,,,,X,,,,,,,,W,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 updcust-upd-fail-code,,,,,,,,,,,W,,,,,,,,X,,,,,,,,W,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
-procisrt-function-flag,,,,C,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,X,X,X,X,X,X
+procisrt-function-flag,,,,C,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,X,X,X,X,X,X,X
 abndinfo-abend-code,,,,,,W,W,W,W,W,X,X,W,W,W,W,W,,,,,W,W,W,W,W,X,X,W,W,W,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 abndinfo-respcode,,,,,,W,W,W,W,W,X,X,W,W,W,W,W,,,,,W,W,W,W,W,X,X,W,W,W,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 abndinfo-resp2code,,,,,,W,W,W,W,W,X,X,W,W,W,W,W,,,,,W,W,W,W,W,X,X,W,W,W,,,,,,,,,,,,,,,,,,,,,,,,,,,,
