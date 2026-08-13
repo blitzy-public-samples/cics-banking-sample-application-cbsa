@@ -108,7 +108,7 @@
     - Condition: `05 PROC-TRAN-LOGICAL-DELETE-AREA REDEFINES PROC-TRAN-EYE-CATCHER.` [src/base/cobol_copy/PROCTRAN.cpy:L10-L11]
       - Resulting Value: PROC-TRAN-LOGICAL-DELETE-AREA overlays PROC-TRAN-EYE-CATCHER, so both names address the same storage and a value stored through either is visible through the other [src/base/cobol_copy/PROCTRAN.cpy:L10-L11] (terminal: input field)
     - Condition: `07 PROC-TRAN-LOGICAL-DELETE-FLAG PIC X.` [src/base/cobol_copy/PROCTRAN.cpy:L12]
-      - Resulting Value: no non-comment statement in any program under src/base/cobol_src/ names PROC-TRAN-LOGICAL-DELETE-FLAG, established by exhaustive case-sensitive search of `src/base/cobol_src/`, so no COBOL program ever sets the deleted state by naming this alias; `07 PROC-TRAN-LOGICAL-DELETE-FLAG PIC X.` [src/base/cobol_copy/PROCTRAN.cpy:L12] fixes only its storage format, one alphanumeric byte, and constrains no value, while the separate `88 PROC-TRAN-LOGICALLY-DELETED VALUE X'FF'.` [src/base/cobol_copy/PROCTRAN.cpy:L13] names the condition tested when that byte holds X'FF' rather than initialising it, so the byte holds at run time whatever the redefined eye-catcher carries, which the write paths recorded below in this section fix to 'P' (terminal: input field)
+      - Resulting Value: no non-comment statement in any program under src/base/cobol_src/ names PROC-TRAN-LOGICAL-DELETE-FLAG, established by exhaustive case-sensitive search of `src/base/cobol_src/`, so no COBOL program ever sets the deleted state by naming this alias; `07 PROC-TRAN-LOGICAL-DELETE-FLAG PIC X.` [src/base/cobol_copy/PROCTRAN.cpy:L12] fixes only its storage format, one alphanumeric byte, and constrains no value, while the separate `88 PROC-TRAN-LOGICALLY-DELETED VALUE X'FF'.` [src/base/cobol_copy/PROCTRAN.cpy:L13] names the condition tested when that byte holds X'FF' rather than initialising it, so the byte holds at run time whatever the redefined eye-catcher carries, which every write path in this repository fixes to 'P' (terminal: input field)
     - Condition: `88 PROC-TRAN-LOGICALLY-DELETED VALUE X'FF'.` [src/base/cobol_copy/PROCTRAN.cpy:L13]
       - Resulting Value: the condition name PROC-TRAN-LOGICALLY-DELETED is satisfied only when PROC-TRAN-LOGICAL-DELETE-FLAG holds the literal X'FF', which is what `88 PROC-TRAN-LOGICALLY-DELETED VALUE X'FF'.` [src/base/cobol_copy/PROCTRAN.cpy:L13] declares; the 88 item names that condition and stores nothing itself (terminal: literal)
 - proctran-logical-delete-flag
@@ -176,11 +176,13 @@
     - Condition: `return PROC_TRAN_LOGICAL_DELETE_FLAG.getString(byteBuffer);` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/PROCTRAN.java:L471]
       - Resulting Value: the getter returns byte 1 of whichever PROCTRAN row image the caller loaded into the buffer declared `protected byte[] byteBuffer;` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/PROCTRAN.java:L433], which on every in-repository path is the 'P' written by one of the six COBOL writers or by `stmt.setString(1, PROCTRAN.PROC_TRAN_VALID);` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/web/db2/ProcessedTransaction.java:L522] (terminal: input field)
 - proctran-logical-delete-flag
-  - Rule: Java-tier representation gap: the IBM Record Generator emits the deleted-state clause as generated documentation only and declares that constant form unsupported, so the generated class carries the raw byte but no deleted-state semantics, in `protected static final StringField PROC_TRAN_LOGICAL_DELETE_FLAG = factory.getStringField(1);` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/PROCTRAN.java:L52]
-    - Condition: `88 PROC-TRAN-LOGICALLY-DELETED VALUE X'FF'. </pre> */` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/PROCTRAN.java:L55]
-      - Resulting Value: the clause survives in the generated class only as a comment, producing no field, no constant and no method [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/PROCTRAN.java:L54-L56] (terminal: literal)
-    - Condition: `/** NOTE: this constant value form is not supported */` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/PROCTRAN.java:L56]
-      - Resulting Value: no PROC_TRAN_LOGICALLY_DELETED constant is generated, in contrast with the eye-catcher constant `public static final String PROC_TRAN_VALID = "PRTR";` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/PROCTRAN.java:L40] that the generator does produce, so the X'FF' deleted state has no supported Java expression (terminal: literal)
+  - Rule: Java-tier representation gap: the generated commarea class declares the flag as a raw byte and declares no deleted-state constant or predicate for it, in `protected static final StringField PROC_TRAN_LOGICAL_DELETE_FLAG = factory.getStringField(1);` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/PROCTRAN.java:L52]
+    - Condition: `protected static final StringField PROC_TRAN_LOGICAL_DELETE_FLAG = factory.getStringField(1);` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/PROCTRAN.java:L52]
+      - Resulting Value: byte 1 of the four-byte overlay sized by `public static final int PROC_TRAN_LOGICAL_DELETE_AREA_LEN = 4;` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/PROCTRAN.java:L47] is addressable as a one-character String and as nothing else, so the flag reaches the Java tier as a raw byte carrying no generated value semantics (terminal: input field)
+    - Condition: `protected static final StringField FILLER_1 = factory.getStringField(3);` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/PROCTRAN.java:L60]
+      - Resulting Value: this is the next member the generator declares after the flag field, so no PROC_TRAN_LOGICALLY_DELETED constant and no deleted-state predicate is declared between them or anywhere else in the class, the identifier returning zero matches across every Java source in the repository under exhaustive case-sensitive search, which leaves the literal X'FF' declared by `88 PROC-TRAN-LOGICALLY-DELETED VALUE X'FF'.` [src/base/cobol_copy/PROCTRAN.cpy:L13] with no generated Java expression (terminal: literal)
+    - Condition: `return getProcTranEyeCatcher().equals(PROC_TRAN_VALID);` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/PROCTRAN.java:L467]
+      - Resulting Value: the eye-catcher condition name by contrast receives both this generated predicate and the generated constant `public static final String PROC_TRAN_VALID = "PRTR";` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/PROCTRAN.java:L40], which is the generated form the deleted state lacks (terminal: literal)
     - Condition: `return PROC_TRAN_LOGICAL_DELETE_FLAG.getString(byteBuffer);` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/PROCTRAN.java:L471]
       - Resulting Value: raw-byte access remains available through the generated accessor pair, so the Java tier can read and write byte 1 but cannot test it against a generated deleted-state constant [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/PROCTRAN.java:L471] (terminal: input field)
 
@@ -378,7 +380,7 @@
     - Condition: `WHEN DFHVALUE(ABEND)` [src/base/cobol_src/CRECUST.cbl:L990]
       - Resulting Value: COMM-FAIL-CODE = 'F', scoped to CRECUST only via `MOVE 'F' TO COMM-FAIL-CODE` [src/base/cobol_src/CRECUST.cbl:L1004] (terminal: literal)
 - crecust-fail-code
-  - Rule: CRECUST code 'G' at the child-completion gate - status SECERROR, the same character as the credit-check gate uses, recorded as found, in `CREDIT-CHECK SECTION.` [src/base/cobol_src/CRECUST.cbl:L563]
+  - Rule: CRECUST code 'G' at the child-completion gate - status SECERROR, the same character as the credit-check gate uses, in `CREDIT-CHECK SECTION.` [src/base/cobol_src/CRECUST.cbl:L563]
     - Condition: `WHEN DFHVALUE(SECERROR)` [src/base/cobol_src/CRECUST.cbl:L1009]
       - Resulting Value: COMM-FAIL-CODE = 'G', scoped to CRECUST only via `MOVE 'G' TO COMM-FAIL-CODE` [src/base/cobol_src/CRECUST.cbl:L1023] (terminal: literal)
 - crecust-fail-code
@@ -497,7 +499,7 @@
     - Condition: `IF SQLCODE NOT = 0` [src/base/cobol_src/DBCRFUN.cbl:L425]
       - Resulting Value: COMM-FAIL-CODE = '2', scoped to DBCRFUN only via `MOVE '2' TO COMM-FAIL-CODE` [src/base/cobol_src/DBCRFUN.cbl:L427] (terminal: literal)
 - dbcrfun-fail-code
-  - Rule: DBCRFUN code '02' - a two-character literal moved into a single-byte PIC X field after a failed PROCTRAN INSERT, recorded exactly as found, in `WRITE-TO-PROCTRAN-DB2 SECTION.` [src/base/cobol_src/DBCRFUN.cbl:L460]
+  - Rule: DBCRFUN code '02' - a two-character literal moved into a single-byte PIC X field after a failed PROCTRAN INSERT, in `WRITE-TO-PROCTRAN-DB2 SECTION.` [src/base/cobol_src/DBCRFUN.cbl:L460]
     - Condition: `IF SQLCODE NOT = 0` [src/base/cobol_src/DBCRFUN.cbl:L554]
       - Resulting Value: COMM-FAIL-CODE receives the two-character literal '02' and retains only its first character via `MOVE '02' TO COMM-FAIL-CODE` [src/base/cobol_src/DBCRFUN.cbl:L637] (terminal: literal)
       - Resulting Value: declared width of the receiving field is a single byte via `03 COMM-FAIL-CODE PIC X.` [src/base/cobol_copy/PAYDBCR.cpy:L20] (terminal: input field)
@@ -973,7 +975,7 @@
 
 ## dbcrfun-faciltype-channel-discriminator — DBCRFUN FACILTYPE Channel Discriminator COMM-FACILTYPE Within COMM-ORIGIN (`PIC S9(8) COMP`) [src/base/cobol_copy/PAYDBCR.cpy:L17]
 - dbcrfun-faciltype-channel-discriminator
-  - Rule: Root path 1 - API-tier route binding, which currently originates from a client-side DTO field initialiser rather than from a controller route binding, recorded as a governance gap and not as compliant behaviour, in `@JsonProperty("CommFaciltype")` [src/Z-OS-Connect-Payment-Interface/src/main/java/com/ibm/cics/cip/bank/springboot/paymentinterface/jsonclasses/paymentinterface/OriginJson.java:L27]
+  - Rule: Root path 1 - API-tier route binding governance gap: the discriminator originates from a client-side DTO field initialiser rather than from a controller route binding, in `@JsonProperty("CommFaciltype")` [src/Z-OS-Connect-Payment-Interface/src/main/java/com/ibm/cics/cip/bank/springboot/paymentinterface/jsonclasses/paymentinterface/OriginJson.java:L27]
     - Condition: `private String commFaciltype = "0496";` [src/Z-OS-Connect-Payment-Interface/src/main/java/com/ibm/cics/cip/bank/springboot/paymentinterface/jsonclasses/paymentinterface/OriginJson.java:L28]
       - Resulting Value: commFaciltype initialised to "0496" [src/Z-OS-Connect-Payment-Interface/src/main/java/com/ibm/cics/cip/bank/springboot/paymentinterface/jsonclasses/paymentinterface/OriginJson.java:L28] (terminal: literal)
     - Condition: accessor `public String getCommFacilType() { return commFaciltype; }` [src/Z-OS-Connect-Payment-Interface/src/main/java/com/ibm/cics/cip/bank/springboot/paymentinterface/jsonclasses/paymentinterface/OriginJson.java:L100-L103]
@@ -987,8 +989,8 @@
       - Resulting Value: SUBPGM-FACILTYPE takes the facility type CICS reports for the task named by EIBTASKN, so the value originates outside the program as a CICS origin-descriptor attribute rather than as any program-assigned literal [src/base/cobol_src/BNK1CRA.cbl:L503-L509] (terminal: input field)
     - Condition: `EXEC CICS LINK PROGRAM('DBCRFUN') COMMAREA(SUBPGM-PARMS) RESP(WS-CICS-RESP) RESP2(WS-CICS-RESP2) SYNCONRETURN END-EXEC.` [src/base/cobol_src/BNK1CRA.cbl:L511-L517]
       - Resulting Value: DBCRFUN receives that commarea as its own COMM-ORIGIN group, whose `05 COMM-FACILTYPE        PIC S9(8) COMP.` [src/base/cobol_copy/PAYDBCR.cpy:L17] occupies the same offset inside `03 COMM-ORIGIN.` [src/base/cobol_copy/PAYDBCR.cpy:L12-L18] that BNK1CRA fills before handing the layout over with `EXEC CICS LINK PROGRAM('DBCRFUN') COMMAREA(SUBPGM-PARMS) RESP(WS-CICS-RESP) RESP2(WS-CICS-RESP2) SYNCONRETURN END-EXEC.` [src/base/cobol_src/BNK1CRA.cbl:L511-L517], and no program under src/base/cobol_src/ ever assigns COMM-FACILTYPE - all seven of its non-comment references are read-only comparisons against the literal 496, at [src/base/cobol_src/DBCRFUN.cbl:L331], [src/base/cobol_src/DBCRFUN.cbl:L333], [src/base/cobol_src/DBCRFUN.cbl:L344], [src/base/cobol_src/DBCRFUN.cbl:L369], [src/base/cobol_src/DBCRFUN.cbl:L371], [src/base/cobol_src/DBCRFUN.cbl:L498] and [src/base/cobol_src/DBCRFUN.cbl:L511], the only other two occurrences in the program being the comment lines [src/base/cobol_src/DBCRFUN.cbl:L325] and [src/base/cobol_src/DBCRFUN.cbl:L362], established by exhaustive case-sensitive search of src/base/cobol_src/ (terminal: input field)
-    - Condition: `COMM-FACILTYPE(496 = NONE)` [src/base/cobol_src/DBCRFUN.cbl:L325]
-      - Resulting Value: this source comment fixes the meaning of the literal only - 496 is the facility-type value for no terminal facility - and is not evidence of a producer; the value it describes is compared at every channel gate, as in `IF WS-DIFFERENCE < 0 AND COMM-FACILTYPE = 496` [src/base/cobol_src/DBCRFUN.cbl:L344] (terminal: literal)
+    - Condition: `IF COMM-FACILTYPE = 496` [src/base/cobol_src/DBCRFUN.cbl:L498]
+      - Resulting Value: the arriving value is only ever compared against the literal 496 and is never assigned by any program, and 496 is the payment-channel value the Payment Interface request body requires, `set to 496, to internally differentiate the PAYMENT traffic from BMS` [etc/usage/springBoot/doc/CBSA_Restful_API_guide.md:L119]; the same comparison gates the overdraft check at `IF WS-DIFFERENCE < 0 AND COMM-FACILTYPE = 496` [src/base/cobol_src/DBCRFUN.cbl:L344] (terminal: literal)
 
 ## proctran-eye-catcher — PROCTRAN Eye-Catcher (`PIC X(4)`) [src/base/cobol_copy/PROCTRAN.cpy:L8]
 - proctran-eye-catcher
@@ -1101,7 +1103,7 @@
     - Condition: `88 PROC-DESC-CRECUS-FILLER2-SET VALUE '-'.` [src/base/cobol_copy/PROCTRAN.cpy:L101]
       - Resulting Value: PROC-DESC-CRECUS-FILLER2 = '-' whenever condition name PROC-DESC-CRECUS-FILLER2-SET is set [src/base/cobol_copy/PROCTRAN.cpy:L101] (terminal: literal)
 - proctran-desc-crecus-separator
-  - Rule: Determination: CRECUST writes a '/' separator into the same byte positions, so the declared '-' value is never satisfied - the divergence is recorded as found and not normalised, in `WRITE-CUSTOMER-VSAM SECTION.` [src/base/cobol_src/CRECUST.cbl:L1069]
+  - Rule: Determination: CRECUST writes a '/' separator into the same byte positions, so the declared '-' value is never satisfied, in `WRITE-CUSTOMER-VSAM SECTION.` [src/base/cobol_src/CRECUST.cbl:L1069]
     - Condition: `MOVE CUSTOMER-DATE-OF-BIRTH(1:2) TO STORED-DOB(1:2).` [src/base/cobol_src/CRECUST.cbl:L1154]
       - Resulting Value: STORED-DOB(1:2) takes the value of CUSTOMER-DATE-OF-BIRTH(1:2) [src/base/cobol_src/CRECUST.cbl:L1154] (terminal: input field)
     - Condition: `MOVE '/' TO STORED-DOB(3:1).` [src/base/cobol_src/CRECUST.cbl:L1155]
@@ -1126,7 +1128,7 @@
     - Condition: `88 PROC-DESC-DELCUS-FILLER2-SET VALUE '-'.` [src/base/cobol_copy/PROCTRAN.cpy:L90]
       - Resulting Value: PROC-DESC-DELCUS-FILLER2 = '-' whenever condition name PROC-DESC-DELCUS-FILLER2-SET is set [src/base/cobol_copy/PROCTRAN.cpy:L90] (terminal: literal)
 - proctran-desc-delcus-separator
-  - Rule: Determination: DELCUS writes a '/' separator into the same byte positions, so the declared '-' value is never satisfied - the divergence is recorded as found and not normalised, in `DEL-CUST-VSAM SECTION.` [src/base/cobol_src/DELCUS.cbl:L343]
+  - Rule: Determination: DELCUS writes a '/' separator into the same byte positions, so the declared '-' value is never satisfied, in `DEL-CUST-VSAM SECTION.` [src/base/cobol_src/DELCUS.cbl:L343]
     - Condition: `MOVE CUSTOMER-DATE-OF-BIRTH(1:2) TO WS-STOREDC-DATE-OF-BIRTH(1:2) COMM-BIRTH-DAY IN DFHCOMMAREA.` [src/base/cobol_src/DELCUS.cbl:L464-L466]
       - Resulting Value: WS-STOREDC-DATE-OF-BIRTH(1:2) COMM-BIRTH-DAY IN DFHCOMMAREA takes the value of CUSTOMER-DATE-OF-BIRTH(1:2) [src/base/cobol_src/DELCUS.cbl:L464-L466] (terminal: input field)
     - Condition: `MOVE '/' TO WS-STOREDC-DATE-OF-BIRTH(3:1).` [src/base/cobol_src/DELCUS.cbl:L467]
@@ -1819,7 +1821,7 @@
     - Condition: `WHEN 'AFCT'` [src/base/cobol_src/XFRFUN.cbl:L1809]
       - Resulting Value: COMM-FAIL-CODE = '2', scoped to XFRFUN only via `MOVE '2' TO COMM-FAIL-CODE` [src/base/cobol_src/XFRFUN.cbl:L1890] (terminal: literal)
 - xfrfun-fail-code
-  - Rule: Declaration order records the fail code ahead of the success flag, the reverse of every other COMMAREA copybook, recorded as found, in `03 COMM-FACCNO PIC 9(8).` [src/base/cobol_copy/XFRFUN.cpy:L7]
+  - Rule: Declaration order places the fail code ahead of the success flag, the reverse of every other COMMAREA copybook, in `03 COMM-FACCNO PIC 9(8).` [src/base/cobol_copy/XFRFUN.cpy:L7]
     - Condition: `03 COMM-FAIL-CODE PIC X.` [src/base/cobol_copy/XFRFUN.cpy:L16]
       - Resulting Value: XFRFUN itself assigns every value this field ever carries - '4' via `MOVE '4' TO COMM-FAIL-CODE` [src/base/cobol_src/XFRFUN.cbl:L291], '1' via `MOVE '1' TO COMM-FAIL-CODE` [src/base/cobol_src/XFRFUN.cbl:L968], '3' via `MOVE '3' TO COMM-FAIL-CODE` [src/base/cobol_src/XFRFUN.cbl:L970] and '2' via `MOVE '2' TO COMM-FAIL-CODE` [src/base/cobol_src/XFRFUN.cbl:L1103] - so the caller supplies nothing (terminal: literal)
     - Condition: `03 COMM-SUCCESS PIC X.` [src/base/cobol_copy/XFRFUN.cpy:L17]
@@ -4809,7 +4811,7 @@
 
 ## getscode-sortcode — GETSCODE Sort-Code Wire Field With Anomalous Mixed-Case PICTURE (`pic xXXXXX`) [src/base/cobol_copy/GETSCODE.cpy:L8]
 - getscode-sortcode
-  - Rule: Copybook declaration of the sort-code wire field, whose PICTURE mixes cases and is recorded exactly as found, in `03 GETSORTCODEOperation.` [src/base/cobol_copy/GETSCODE.cpy:L7]
+  - Rule: Copybook declaration of the sort-code wire field, whose PICTURE mixes cases, in `03 GETSORTCODEOperation.` [src/base/cobol_copy/GETSCODE.cpy:L7]
     - Condition: `03 GETSORTCODEOperation.` [src/base/cobol_copy/GETSCODE.cpy:L7]
       - Resulting Value: GETSORTCODEOperation is a group item, so it holds no value of its own - its content is the single SORTCODE field declared at `06 SORTCODE pic xXXXXX.` [src/base/cobol_copy/GETSCODE.cpy:L8] declared beneath `03 GETSORTCODEOperation.` [src/base/cobol_copy/GETSCODE.cpy:L7]; the group boundary is fixed by that declaration while the bytes it spans are populated only through that subordinate field at run time (terminal: input field)
     - Condition: `06 SORTCODE pic xXXXXX.` [src/base/cobol_copy/GETSCODE.cpy:L8]
