@@ -216,9 +216,9 @@
     - Condition: `NEWACCNO_FUNCTION.putString(newaccnoFunction, byteBuffer);` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/NewAccountNumber.java:L82]
       - Resulting Value: NEWACCNO-FUNCTION byte written into the COMMAREA buffer by the caller before the allocator is invoked [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/NewAccountNumber.java:L82] (terminal: input field)
 - newaccno-function-flag
-  - Rule: Determination: the runtime value is supplied by the NEWACCNO allocator program, which is not present in this repository - no NEWACCNO.cbl exists in src/base/cobol_src/, no COPY NEWACCNO or EXEC SQL INCLUDE NEWACCNO site exists in any of the 29 COBOL programs, and no service interface or Swagger artifact names NEWACCNO (case-sensitive repository-wide search excluding .git and node_modules) [src/base/cobol_copy/NEWACCNO.cpy:L7]
+  - Rule: Determination: the runtime value is caller-supplied function input, written into the COMMAREA by whichever caller invokes the allocator and never produced by the allocator itself; the allocator program is not present in this repository - no NEWACCNO.cbl exists in src/base/cobol_src/, no COPY NEWACCNO or EXEC SQL INCLUDE NEWACCNO site exists in any of the 29 COBOL programs, and no service interface or Swagger artifact names NEWACCNO (case-sensitive repository-wide search excluding .git and node_modules) [src/base/cobol_copy/NEWACCNO.cpy:L7]
     - Condition: `03 NEWACCNO-FUNCTION PIC X.` [src/base/cobol_copy/NEWACCNO.cpy:L7]
-      - Resulting Value: NEWACCNO-FUNCTION = the account-number allocation function requested by the caller; the copybook is a COMMAREA contract only, so no in-repository statement assigns it [src/base/cobol_copy/NEWACCNO.cpy:L7] (terminal: input field)
+      - Resulting Value: NEWACCNO-FUNCTION = the account-number allocation function the caller selects, placed in the COMMAREA before the allocator is invoked by `NEWACCNO_FUNCTION.putString(newaccnoFunction, byteBuffer);` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/NewAccountNumber.java:L82]; the copybook is a COMMAREA contract only, so no in-repository statement on the allocator side assigns it (terminal: input field)
 
 ## newcusno-function-flag — NEWCUSNO Customer-Number Allocator Function Flag (G/R/C) (`PIC X`) [src/base/cobol_copy/NEWCUSNO.cpy:L7]
 - newcusno-function-flag
@@ -252,9 +252,9 @@
     - Condition: `NEWCUSNO_FUNCTION.putString(newcusnoFunction, byteBuffer);` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/NewCustomerNumber.java:L82]
       - Resulting Value: NEWCUSNO-FUNCTION byte written into the COMMAREA buffer by the caller before the allocator is invoked [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/NewCustomerNumber.java:L82] (terminal: input field)
 - newcusno-function-flag
-  - Rule: Determination: the runtime value is supplied by the NEWCUSNO allocator program, which is not present in this repository - no NEWCUSNO.cbl exists in src/base/cobol_src/, no COPY NEWCUSNO or EXEC SQL INCLUDE NEWCUSNO site exists in any of the 29 COBOL programs, and no service interface or Swagger artifact names NEWCUSNO (case-sensitive repository-wide search excluding .git and node_modules) [src/base/cobol_copy/NEWCUSNO.cpy:L7]
+  - Rule: Determination: the runtime value is caller-supplied function input, written into the COMMAREA by whichever caller invokes the allocator and never produced by the allocator itself; the allocator program is not present in this repository - no NEWCUSNO.cbl exists in src/base/cobol_src/, no COPY NEWCUSNO or EXEC SQL INCLUDE NEWCUSNO site exists in any of the 29 COBOL programs, and no service interface or Swagger artifact names NEWCUSNO (case-sensitive repository-wide search excluding .git and node_modules) [src/base/cobol_copy/NEWCUSNO.cpy:L7]
     - Condition: `03 NEWCUSNO-FUNCTION PIC X.` [src/base/cobol_copy/NEWCUSNO.cpy:L7]
-      - Resulting Value: NEWCUSNO-FUNCTION = the customer-number allocation function requested by the caller; the copybook is a COMMAREA contract only, so no in-repository statement assigns it [src/base/cobol_copy/NEWCUSNO.cpy:L7] (terminal: input field)
+      - Resulting Value: NEWCUSNO-FUNCTION = the customer-number allocation function the caller selects, placed in the COMMAREA before the allocator is invoked by `NEWCUSNO_FUNCTION.putString(newcusnoFunction, byteBuffer);` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/NewCustomerNumber.java:L82]; the copybook is a COMMAREA contract only, so no in-repository statement on the allocator side assigns it (terminal: input field)
 
 ## crecust-success-flag — CRECUST COMMAREA Success Flag COMM-SUCCESS (`PIC X`) [src/base/cobol_copy/CRECUST.cpy:L24]
 - crecust-success-flag
@@ -690,40 +690,50 @@
   - Rule: CRDTAGY1 credit-agency simulator generates one pseudo-random score per invocation, unconditionally in PREMIERE SECTION / A010 [src/base/cobol_src/CRDTAGY1.cbl:L122]
     - Condition: `MOVE EIBTASKN TO WS-SEED.` [src/base/cobol_src/CRDTAGY1.cbl:L122]
       - Resulting Value: WS-SEED takes the CICS task number of the invoking task, which is the only non-literal input to the generator [src/base/cobol_src/CRDTAGY1.cbl:L122] (terminal: input field)
+    - Condition: `COMPUTE WS-DELAY-AMT = ((3 - 1) * FUNCTION RANDOM(WS-SEED)) + 1.` [src/base/cobol_src/CRDTAGY1.cbl:L124-L125]
+      - Resulting Value: WS-DELAY-AMT bounded by the literals 1 and 3, and this is the one call that passes WS-SEED as the seed argument, so it starts the pseudo-random sequence that the later score call continues [src/base/cobol_src/CRDTAGY1.cbl:L124-L125] (terminal: literal)
     - Condition: `COMPUTE WS-NEW-CREDSCORE = ((999 - 1) * FUNCTION RANDOM) + 1.` [src/base/cobol_src/CRDTAGY1.cbl:L215-L216]
-      - Resulting Value: WS-NEW-CREDSCORE bounded by the literals 1 and 999 [src/base/cobol_src/CRDTAGY1.cbl:L215-L216] (terminal: literal)
+      - Resulting Value: WS-NEW-CREDSCORE bounded by the literals 1 and 999, drawn from an unseeded FUNCTION RANDOM that continues the sequence seeded above rather than starting a new one [src/base/cobol_src/CRDTAGY1.cbl:L215-L216] (terminal: literal)
     - Condition: `MOVE WS-NEW-CREDSCORE TO WS-CONT-IN-CREDIT-SCORE.` [src/base/cobol_src/CRDTAGY1.cbl:L218]
       - Resulting Value: WS-CONT-IN-CREDIT-SCORE takes the generated WS-NEW-CREDSCORE value returned to CRECUST in the agency container [src/base/cobol_src/CRDTAGY1.cbl:L218] (terminal: input field)
 - customer-credit-score
   - Rule: CRDTAGY2 credit-agency simulator generates one pseudo-random score per invocation, unconditionally in PREMIERE SECTION / A010 [src/base/cobol_src/CRDTAGY2.cbl:L121]
     - Condition: `MOVE EIBTASKN TO WS-SEED.` [src/base/cobol_src/CRDTAGY2.cbl:L121]
       - Resulting Value: WS-SEED takes the CICS task number of the invoking task, which is the only non-literal input to the generator [src/base/cobol_src/CRDTAGY2.cbl:L121] (terminal: input field)
+    - Condition: `COMPUTE WS-DELAY-AMT = ((3 - 1) * FUNCTION RANDOM(WS-SEED)) + 1.` [src/base/cobol_src/CRDTAGY2.cbl:L123-L124]
+      - Resulting Value: WS-DELAY-AMT bounded by the literals 1 and 3, and this is the one call that passes WS-SEED as the seed argument, so it starts the pseudo-random sequence that the later score call continues [src/base/cobol_src/CRDTAGY2.cbl:L123-L124] (terminal: literal)
     - Condition: `COMPUTE WS-NEW-CREDSCORE = ((999 - 1) * FUNCTION RANDOM) + 1.` [src/base/cobol_src/CRDTAGY2.cbl:L215-L216]
-      - Resulting Value: WS-NEW-CREDSCORE bounded by the literals 1 and 999 [src/base/cobol_src/CRDTAGY2.cbl:L215-L216] (terminal: literal)
+      - Resulting Value: WS-NEW-CREDSCORE bounded by the literals 1 and 999, drawn from an unseeded FUNCTION RANDOM that continues the sequence seeded above rather than starting a new one [src/base/cobol_src/CRDTAGY2.cbl:L215-L216] (terminal: literal)
     - Condition: `MOVE WS-NEW-CREDSCORE TO WS-CONT-IN-CREDIT-SCORE.` [src/base/cobol_src/CRDTAGY2.cbl:L218]
       - Resulting Value: WS-CONT-IN-CREDIT-SCORE takes the generated WS-NEW-CREDSCORE value returned to CRECUST in the agency container [src/base/cobol_src/CRDTAGY2.cbl:L218] (terminal: input field)
 - customer-credit-score
   - Rule: CRDTAGY3 credit-agency simulator generates one pseudo-random score per invocation, unconditionally in PREMIERE SECTION / A010 [src/base/cobol_src/CRDTAGY3.cbl:L121]
     - Condition: `MOVE EIBTASKN TO WS-SEED.` [src/base/cobol_src/CRDTAGY3.cbl:L121]
       - Resulting Value: WS-SEED takes the CICS task number of the invoking task, which is the only non-literal input to the generator [src/base/cobol_src/CRDTAGY3.cbl:L121] (terminal: input field)
+    - Condition: `COMPUTE WS-DELAY-AMT = ((3 - 1) * FUNCTION RANDOM(WS-SEED)) + 1.` [src/base/cobol_src/CRDTAGY3.cbl:L123-L124]
+      - Resulting Value: WS-DELAY-AMT bounded by the literals 1 and 3, and this is the one call that passes WS-SEED as the seed argument, so it starts the pseudo-random sequence that the later score call continues [src/base/cobol_src/CRDTAGY3.cbl:L123-L124] (terminal: literal)
     - Condition: `COMPUTE WS-NEW-CREDSCORE = ((999 - 1) * FUNCTION RANDOM) + 1.` [src/base/cobol_src/CRDTAGY3.cbl:L213-L214]
-      - Resulting Value: WS-NEW-CREDSCORE bounded by the literals 1 and 999 [src/base/cobol_src/CRDTAGY3.cbl:L213-L214] (terminal: literal)
+      - Resulting Value: WS-NEW-CREDSCORE bounded by the literals 1 and 999, drawn from an unseeded FUNCTION RANDOM that continues the sequence seeded above rather than starting a new one [src/base/cobol_src/CRDTAGY3.cbl:L213-L214] (terminal: literal)
     - Condition: `MOVE WS-NEW-CREDSCORE TO WS-CONT-IN-CREDIT-SCORE.` [src/base/cobol_src/CRDTAGY3.cbl:L217]
       - Resulting Value: WS-CONT-IN-CREDIT-SCORE takes the generated WS-NEW-CREDSCORE value returned to CRECUST in the agency container [src/base/cobol_src/CRDTAGY3.cbl:L217] (terminal: input field)
 - customer-credit-score
   - Rule: CRDTAGY4 credit-agency simulator generates one pseudo-random score per invocation, unconditionally in PREMIERE SECTION / A010 [src/base/cobol_src/CRDTAGY4.cbl:L122]
     - Condition: `MOVE EIBTASKN TO WS-SEED.` [src/base/cobol_src/CRDTAGY4.cbl:L122]
       - Resulting Value: WS-SEED takes the CICS task number of the invoking task, which is the only non-literal input to the generator [src/base/cobol_src/CRDTAGY4.cbl:L122] (terminal: input field)
+    - Condition: `COMPUTE WS-DELAY-AMT = ((3 - 1) * FUNCTION RANDOM(WS-SEED)) + 1.` [src/base/cobol_src/CRDTAGY4.cbl:L124-L125]
+      - Resulting Value: WS-DELAY-AMT bounded by the literals 1 and 3, and this is the one call that passes WS-SEED as the seed argument, so it starts the pseudo-random sequence that the later score call continues [src/base/cobol_src/CRDTAGY4.cbl:L124-L125] (terminal: literal)
     - Condition: `COMPUTE WS-NEW-CREDSCORE = ((999 - 1) * FUNCTION RANDOM) + 1.` [src/base/cobol_src/CRDTAGY4.cbl:L217-L218]
-      - Resulting Value: WS-NEW-CREDSCORE bounded by the literals 1 and 999 [src/base/cobol_src/CRDTAGY4.cbl:L217-L218] (terminal: literal)
+      - Resulting Value: WS-NEW-CREDSCORE bounded by the literals 1 and 999, drawn from an unseeded FUNCTION RANDOM that continues the sequence seeded above rather than starting a new one [src/base/cobol_src/CRDTAGY4.cbl:L217-L218] (terminal: literal)
     - Condition: `MOVE WS-NEW-CREDSCORE TO WS-CONT-IN-CREDIT-SCORE.` [src/base/cobol_src/CRDTAGY4.cbl:L220]
       - Resulting Value: WS-CONT-IN-CREDIT-SCORE takes the generated WS-NEW-CREDSCORE value returned to CRECUST in the agency container [src/base/cobol_src/CRDTAGY4.cbl:L220] (terminal: input field)
 - customer-credit-score
   - Rule: CRDTAGY5 credit-agency simulator generates one pseudo-random score per invocation, unconditionally in PREMIERE SECTION / A010 [src/base/cobol_src/CRDTAGY5.cbl:L121]
     - Condition: `MOVE EIBTASKN TO WS-SEED.` [src/base/cobol_src/CRDTAGY5.cbl:L121]
       - Resulting Value: WS-SEED takes the CICS task number of the invoking task, which is the only non-literal input to the generator [src/base/cobol_src/CRDTAGY5.cbl:L121] (terminal: input field)
+    - Condition: `COMPUTE WS-DELAY-AMT = ((3 - 1) * FUNCTION RANDOM(WS-SEED)) + 1.` [src/base/cobol_src/CRDTAGY5.cbl:L123-L124]
+      - Resulting Value: WS-DELAY-AMT bounded by the literals 1 and 3, and this is the one call that passes WS-SEED as the seed argument, so it starts the pseudo-random sequence that the later score call continues [src/base/cobol_src/CRDTAGY5.cbl:L123-L124] (terminal: literal)
     - Condition: `COMPUTE WS-NEW-CREDSCORE = ((999 - 1) * FUNCTION RANDOM) + 1.` [src/base/cobol_src/CRDTAGY5.cbl:L216-L217]
-      - Resulting Value: WS-NEW-CREDSCORE bounded by the literals 1 and 999 [src/base/cobol_src/CRDTAGY5.cbl:L216-L217] (terminal: literal)
+      - Resulting Value: WS-NEW-CREDSCORE bounded by the literals 1 and 999, drawn from an unseeded FUNCTION RANDOM that continues the sequence seeded above rather than starting a new one [src/base/cobol_src/CRDTAGY5.cbl:L216-L217] (terminal: literal)
     - Condition: `MOVE WS-NEW-CREDSCORE TO WS-CONT-IN-CREDIT-SCORE.` [src/base/cobol_src/CRDTAGY5.cbl:L219]
       - Resulting Value: WS-CONT-IN-CREDIT-SCORE takes the generated WS-NEW-CREDSCORE value returned to CRECUST in the agency container [src/base/cobol_src/CRDTAGY5.cbl:L219] (terminal: input field)
 - customer-credit-score
@@ -902,7 +912,7 @@
 - customer-cs-review-date
   - Rule: CRECUST fallback to today's date whenever the credit check failed, in `CREDIT-CHECK SECTION.` [src/base/cobol_src/CRECUST.cbl:L563]
     - Condition: `IF WS-CREDIT-CHECK-ERROR = 'Y'` [src/base/cobol_src/CRECUST.cbl:L429]
-      - Resulting Value: COMM-CS-REVIEW-DATE built by concatenating the delimited operands WS-ORIG-DATE-DD DELIMITED BY SIZE, WS-ORIG-DATE-MM DELIMITED BY SIZE, WS-ORIG-DATE-YYYY DE via `STRING WS-ORIG-DATE-DD DELIMITED BY SIZE, WS-ORIG-DATE-MM DELIMITED BY SIZE, WS-ORIG-DATE-YYYY DELIMITED BY SIZE INTO COMM-CS-REVIEW-DATE` [src/base/cobol_src/CRECUST.cbl:L432-L435] (terminal: input field)
+      - Resulting Value: COMM-CS-REVIEW-DATE built by concatenating the delimited operands WS-ORIG-DATE-DD DELIMITED BY SIZE, WS-ORIG-DATE-MM DELIMITED BY SIZE, WS-ORIG-DATE-YYYY DELIMITED BY SIZE via `STRING WS-ORIG-DATE-DD DELIMITED BY SIZE, WS-ORIG-DATE-MM DELIMITED BY SIZE, WS-ORIG-DATE-YYYY DELIMITED BY SIZE INTO COMM-CS-REVIEW-DATE` [src/base/cobol_src/CRECUST.cbl:L432-L435] (terminal: input field)
     - Condition: `STRING WS-ORIG-DATE-DD DELIMITED BY SIZE, WS-ORIG-DATE-MM DELIMITED BY SIZE, WS-ORIG-DATE-YYYY DELIMITED BY SIZE INTO COMM-CS-REVIEW-DATE` [src/base/cobol_src/CRECUST.cbl:L432-L435]
       - Resulting Value: review date = today's date components as supplied by the CICS clock via `STRING WS-ORIG-DATE-DD DELIMITED BY SIZE, WS-ORIG-DATE-MM DELIMITED BY SIZE, WS-ORIG-DATE-YYYY DELIMITED BY SIZE INTO COMM-CS-REVIEW-DATE` [src/base/cobol_src/CRECUST.cbl:L432-L435] (terminal: input field)
 - customer-cs-review-date
@@ -970,13 +980,15 @@
       - Resulting Value: commFaciltype = "0496" as a four-character String on the wire via `private String commFaciltype = "0496";` [src/Z-OS-Connect-Payment-Interface/src/main/java/com/ibm/cics/cip/bank/springboot/paymentinterface/jsonclasses/paymentinterface/OriginJson.java:L28] (terminal: literal)
       - Resulting Value: representation hop: the same value is a four-byte binary integer field in the COBOL COMMAREA via `05 COMM-FACILTYPE PIC S9(8) COMP.` [src/base/cobol_copy/PAYDBCR.cpy:L17], since COMP is binary computational usage and not the packed-decimal usage that PACKED-DECIMAL or COMP-3 would specify (terminal: input field)
 - dbcrfun-faciltype-channel-discriminator
-  - Rule: Root path 2 - legacy CICS terminal-facility origin, where the value arrives inside the COMM-ORIGIN group populated from the facility of the invoking transaction, in `03 COMM-ORIGIN.` [src/base/cobol_copy/PAYDBCR.cpy:L12]
-    - Condition: `03 COMM-ORIGIN.` [src/base/cobol_copy/PAYDBCR.cpy:L12]
-      - Resulting Value: COMM-ORIGIN is a group item, so it holds no value of its own - its content is the concatenation of the subordinate fields declared beneath `03 COMM-ORIGIN.` [src/base/cobol_copy/PAYDBCR.cpy:L12]; the group boundary is fixed by that declaration while the bytes it spans are populated only through those subordinate fields, which the invoking transaction supplies in the commarea (terminal: input field)
-    - Condition: `05 COMM-FACILTYPE PIC S9(8) COMP.` [src/base/cobol_copy/PAYDBCR.cpy:L17]
-      - Resulting Value: no COBOL program ever assigns COMM-FACILTYPE - all seven of its non-comment references are read-only comparisons against the literal 496 in DBCRFUN, established by exhaustive case-sensitive search of `src/base/cobol_src/`; the value arrives from the API tier as `private String commFaciltype = "0496";` [src/Z-OS-Connect-Payment-Interface/src/main/java/com/ibm/cics/cip/bank/springboot/paymentinterface/jsonclasses/paymentinterface/OriginJson.java:L28] (terminal: literal)
-      - Resulting Value: COMM-FACILTYPE supplied by the invoking CICS facility, 496 meaning no terminal facility via `05 COMM-FACILTYPE PIC S9(8) COMP.` [src/base/cobol_copy/PAYDBCR.cpy:L17] (terminal: input field)
-      - Resulting Value: the value is compared against the literal 496 at every channel gate via `IF WS-DIFFERENCE < 0 AND COMM-FACILTYPE = 496` [src/base/cobol_src/DBCRFUN.cbl:L344] (terminal: literal)
+  - Rule: Root path 2 - legacy CICS terminal-facility origin, where the BMS credit/debit front end BNK1CRA asks CICS for the origin descriptor of the invoking task and hands it to DBCRFUN in a commarea that mirrors the PAYDBCR layout field for field, in `01 SUBPGM-PARMS.` [src/base/cobol_src/BNK1CRA.cbl:L120]
+    - Condition: `05 SUBPGM-FACILTYPE        PIC S9(8) COMP.` [src/base/cobol_src/BNK1CRA.cbl:L131]
+      - Resulting Value: SUBPGM-FACILTYPE carries the same PICTURE at the same offset within `03 SUBPGM-ORIGIN.` [src/base/cobol_src/BNK1CRA.cbl:L126] as `05 COMM-FACILTYPE        PIC S9(8) COMP.` [src/base/cobol_copy/PAYDBCR.cpy:L17] does within COMM-ORIGIN, so the byte BNK1CRA fills is the byte DBCRFUN reads (terminal: input field)
+    - Condition: `EXEC CICS INQUIRE ASSOCIATION(EIBTASKN) ODAPPLID(SUBPGM-APPLID) ODUSERID(SUBPGM-USERID) ODFACILNAME(SUBPGM-FACILITY-NAME) ODNETWORKID(SUBPGM-NETWRK-ID) ODFACILTYPE(SUBPGM-FACILTYPE) END-EXEC.` [src/base/cobol_src/BNK1CRA.cbl:L503-L509]
+      - Resulting Value: SUBPGM-FACILTYPE takes the facility type CICS reports for the task named by EIBTASKN, so the value originates outside the program as a CICS origin-descriptor attribute rather than as any program-assigned literal [src/base/cobol_src/BNK1CRA.cbl:L503-L509] (terminal: input field)
+    - Condition: `EXEC CICS LINK PROGRAM('DBCRFUN') COMMAREA(SUBPGM-PARMS) RESP(WS-CICS-RESP) RESP2(WS-CICS-RESP2) SYNCONRETURN END-EXEC.` [src/base/cobol_src/BNK1CRA.cbl:L511-L517]
+      - Resulting Value: DBCRFUN receives that commarea as its own COMM-ORIGIN group, and no program under src/base/cobol_src/ ever assigns COMM-FACILTYPE - all seven of its non-comment references are read-only comparisons against the literal 496, established by exhaustive case-sensitive search of `src/base/cobol_src/` (terminal: input field)
+    - Condition: `COMM-FACILTYPE(496 = NONE)` [src/base/cobol_src/DBCRFUN.cbl:L325]
+      - Resulting Value: this source comment fixes the meaning of the literal only - 496 is the facility-type value for no terminal facility - and is not evidence of a producer; the value it describes is compared at every channel gate, as in `IF WS-DIFFERENCE < 0 AND COMM-FACILTYPE = 496` [src/base/cobol_src/DBCRFUN.cbl:L344] (terminal: literal)
 
 ## proctran-eye-catcher — PROCTRAN Eye-Catcher (`PIC X(4)`) [src/base/cobol_copy/PROCTRAN.cpy:L8]
 - proctran-eye-catcher
@@ -1243,11 +1255,15 @@
     - Condition: `MOVE 5 TO ACCOUNT-OVERDRAFT-COUNT.` [src/base/cobol_src/BANKDATA.cbl:L1168]
       - Resulting Value: ACCOUNT-OVERDRAFT-COUNT = 5 [src/base/cobol_src/BANKDATA.cbl:L1168] (terminal: literal)
     - Condition: `MOVE 0 TO WS-ACCOUNT-OVERDRAFT-LIM(1).` [src/base/cobol_src/BANKDATA.cbl:L1170]
-      - Resulting Value: WS-ACCOUNT-OVERDRAFT-LIM(1) = 0 [src/base/cobol_src/BANKDATA.cbl:L1170] (terminal: literal)
+      - Resulting Value: WS-ACCOUNT-OVERDRAFT-LIM(1) = 0, the first of the five seeded overdraft limits [src/base/cobol_src/BANKDATA.cbl:L1170] (terminal: literal)
+    - Condition: `MOVE 0 TO WS-ACCOUNT-OVERDRAFT-LIM(2).` [src/base/cobol_src/BANKDATA.cbl:L1171]
+      - Resulting Value: WS-ACCOUNT-OVERDRAFT-LIM(2) = 0, the second of the five seeded overdraft limits [src/base/cobol_src/BANKDATA.cbl:L1171] (terminal: literal)
     - Condition: `MOVE 00000100 TO WS-ACCOUNT-OVERDRAFT-LIM(3).` [src/base/cobol_src/BANKDATA.cbl:L1172]
-      - Resulting Value: WS-ACCOUNT-OVERDRAFT-LIM(3) = 00000100 [src/base/cobol_src/BANKDATA.cbl:L1172] (terminal: literal)
+      - Resulting Value: WS-ACCOUNT-OVERDRAFT-LIM(3) = 00000100, the only non-zero entry in the table [src/base/cobol_src/BANKDATA.cbl:L1172] (terminal: literal)
+    - Condition: `MOVE 0 TO WS-ACCOUNT-OVERDRAFT-LIM(4).` [src/base/cobol_src/BANKDATA.cbl:L1173]
+      - Resulting Value: WS-ACCOUNT-OVERDRAFT-LIM(4) = 0, the fourth of the five seeded overdraft limits [src/base/cobol_src/BANKDATA.cbl:L1173] (terminal: literal)
     - Condition: `MOVE 0 TO WS-ACCOUNT-OVERDRAFT-LIM(5).` [src/base/cobol_src/BANKDATA.cbl:L1174]
-      - Resulting Value: WS-ACCOUNT-OVERDRAFT-LIM(1) = 0, the first of the five seeded overdraft limits via `MOVE 0 TO WS-ACCOUNT-OVERDRAFT-LIM(1).` [src/base/cobol_src/BANKDATA.cbl:L1170] (terminal: literal)
+      - Resulting Value: WS-ACCOUNT-OVERDRAFT-LIM(5) = 0, the fifth and last of the five seeded overdraft limits [src/base/cobol_src/BANKDATA.cbl:L1174] (terminal: literal)
       - Resulting Value: WS-OVERDRAFT-CONVERSION takes the table entry selected by the row counter via `MOVE WS-ACCOUNT-OVERDRAFT-LIM(WS-CNT) TO WS-OVERDRAFT-CONVERSION.` [src/base/cobol_src/BANKDATA.cbl:L765-L766] (terminal: input field)
 - account-overdraft-limit
   - Rule: UPDACC persistence of a supplied overdraft limit, in `UPDATE-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/UPDACC.cbl:L180]
@@ -1457,7 +1473,7 @@
     - Condition: `INITIALIZE CUSTOMER-CONTROL` [src/base/cobol_src/CRECUST.cbl:L1129]
       - Resulting Value: CUSTOMER-CONTROL MOVE ZERO TO CUSTOMER-CONTROL-SORTCODE MOVE ALL '9' TO CUSTOMER-CONTROL-NUMBER and every field subordinate to it reset to the category default for its PICTURE [src/base/cobol_src/CRECUST.cbl:L1129] (terminal: literal)
     - Condition: `EXEC CICS READ FILE('CUSTOMER') RIDFLD(CUSTOMER-CONTROL-KEY) INTO(CUSTOMER-CONTROL) UPDATE END-EXEC` [src/base/cobol_src/CRECUST.cbl:L1133-L1137]
-      - Resulting Value: WS-CICS-RESP and WS-CICS-RESP2 are set by the CICS request and carry its outcome [src/base/cobol_src/CRECUST.cbl:L1133-L1137] (terminal: input field)
+      - Resulting Value: the command names no response variable at all, carrying neither the RESP nor the RESP2 option [src/base/cobol_src/CRECUST.cbl:L1133-L1137], so its only result is the customer control record it reads under the UPDATE lock into CUSTOMER-CONTROL, whose stored counter is declared `05 NUMBER-OF-CUSTOMERS                 PIC 9(10) DISPLAY.` [src/base/cobol_copy/CUSTCTRL.cpy:L13] (terminal: input field)
     - Condition: `ADD 1 TO NUMBER-OF-CUSTOMERS IN CUSTOMER-CONTROL-RECORD GIVING NUMBER-OF-CUSTOMERS IN CUSTOMER-CONTROL-RECORD` [src/base/cobol_src/CRECUST.cbl:L1139-L1140]
       - Resulting Value: NUMBER-OF-CUSTOMERS IN CUSTOMER-CONTROL-RECORD takes NUMBER-OF-CUSTOMERS IN CUSTOMER-CONTROL-RECORD plus 1 [src/base/cobol_src/CRECUST.cbl:L1139-L1140] (terminal: input field)
     - Condition: `EXEC CICS REWRITE FILE('CUSTOMER') FROM(CUSTOMER-CONTROL) END-EXEC` [src/base/cobol_src/CRECUST.cbl:L1144-L1146]
@@ -1604,7 +1620,7 @@
 - creacc-success-flag
   - Rule: Customer inquiry failed or reported that the customer does not exist, in `PREMIERE SECTION.` [src/base/cobol_src/CREACC.cbl:L287]
     - Condition: `EXEC CICS LINK PROGRAM('INQCUST ') COMMAREA(INQCUST-COMMAREA) RESP(WS-CICS-RESP) END-EXEC.` [src/base/cobol_src/CREACC.cbl:L304-L307]
-      - Resulting Value: WS-CICS-RESP and WS-CICS-RESP2 are set by the CICS request and carry its outcome [src/base/cobol_src/CREACC.cbl:L304-L307] (terminal: input field)
+      - Resulting Value: WS-CICS-RESP takes the condition of the LINK because the command names it in its RESP option, while no response2 variable is set because the command carries no RESP2 option [src/base/cobol_src/CREACC.cbl:L304-L307]; the linked program's verdict arrives in the COMMAREA field `03 INQCUST-INQ-SUCCESS          PIC X.` [src/base/cobol_copy/INQCUST.cpy:L21] (terminal: input field)
     - Condition: `IF EIBRESP IS NOT EQUAL TO DFHRESP(NORMAL) OR INQCUST-INQ-SUCCESS IS NOT EQUAL TO 'Y'` [src/base/cobol_src/CREACC.cbl:L314-L315]
       - Resulting Value: COMM-SUCCESS = 'N' via `MOVE 'N' TO COMM-SUCCESS IN DFHCOMMAREA` [src/base/cobol_src/CREACC.cbl:L317] (terminal: literal)
 - creacc-success-flag
@@ -1852,7 +1868,7 @@
       - Resulting Value: INQCUST-INQ-SUCCESS = 'Y' (INQCUST inquiry verdict) via `MOVE 'Y' TO INQCUST-INQ-SUCCESS` [src/base/cobol_src/INQCUST.cbl:L299] (terminal: literal)
 - inqcust-inq-success-flag
   - Rule: INQCUST guard on the `ELSE` [src/base/cobol_src/INQCUST.cbl:L316] branch of `IF INQCUST-RETRY < 1000` [src/base/cobol_src/INQCUST.cbl:L312], in `READ-CUSTOMER-VSAM SECTION.` [src/base/cobol_src/INQCUST.cbl:L258] / RCV010
-    - Condition: `IF INQCUST-RETRY < 1000` [src/base/cobol_src/INQCUST.cbl:L312]
+    - Condition: `ELSE` [src/base/cobol_src/INQCUST.cbl:L316], the ELSE branch of `IF INQCUST-RETRY < 1000` [src/base/cobol_src/INQCUST.cbl:L312]
       - Resulting Value: INQCUST-INQ-SUCCESS = 'N' (INQCUST inquiry verdict) via `MOVE 'N' TO INQCUST-INQ-SUCCESS` [src/base/cobol_src/INQCUST.cbl:L318] (terminal: literal)
 - inqcust-inq-success-flag
   - Rule: INQCUST guard in READ-CUSTOMER-VSAM SECTION / RCV010 [src/base/cobol_src/INQCUST.cbl:L339-L342]
@@ -1890,7 +1906,7 @@
       - Resulting Value: INQCUST-INQ-FAIL-CD = '0' (INQCUST inquiry fail code) via `MOVE '0' TO INQCUST-INQ-FAIL-CD` [src/base/cobol_src/INQCUST.cbl:L221] (terminal: literal)
 - inqcust-inq-fail-code
   - Rule: INQCUST guard on the `ELSE` [src/base/cobol_src/INQCUST.cbl:L316] branch of `IF INQCUST-RETRY < 1000` [src/base/cobol_src/INQCUST.cbl:L312], in `READ-CUSTOMER-VSAM SECTION.` [src/base/cobol_src/INQCUST.cbl:L258] / RCV010
-    - Condition: `IF INQCUST-RETRY < 1000` [src/base/cobol_src/INQCUST.cbl:L312]
+    - Condition: `ELSE` [src/base/cobol_src/INQCUST.cbl:L316], the ELSE branch of `IF INQCUST-RETRY < 1000` [src/base/cobol_src/INQCUST.cbl:L312]
       - Resulting Value: INQCUST-INQ-FAIL-CD = '1' (INQCUST inquiry fail code) via `MOVE '1' TO INQCUST-INQ-FAIL-CD` [src/base/cobol_src/INQCUST.cbl:L319] (terminal: literal)
 - inqcust-inq-fail-code
   - Rule: INQCUST guard in READ-CUSTOMER-VSAM SECTION / RCV010 [src/base/cobol_src/INQCUST.cbl:L339-L342]
@@ -1986,7 +2002,7 @@
 - inqacccu-customer-found-flag
   - Rule: Linked customer inquiry reported success, in `CUSTOMER-CHECK SECTION.` [src/base/cobol_src/INQACCCU.cbl:L829]
     - Condition: `EXEC CICS LINK PROGRAM('INQCUST ') COMMAREA(INQCUST-COMMAREA) END-EXEC.` [src/base/cobol_src/INQACCCU.cbl:L851-L853]
-      - Resulting Value: WS-CICS-RESP and WS-CICS-RESP2 are set by the CICS request and carry its outcome [src/base/cobol_src/INQACCCU.cbl:L851-L853] (terminal: input field)
+      - Resulting Value: the LINK names no response variable at all, carrying neither the RESP nor the RESP2 option [src/base/cobol_src/INQACCCU.cbl:L851-L853], so its only result is the COMMAREA the linked program fills, whose verdict field is `03 INQCUST-INQ-SUCCESS          PIC X.` [src/base/cobol_copy/INQCUST.cpy:L21] (terminal: input field)
     - Condition: `IF INQCUST-INQ-SUCCESS = 'Y'` [src/base/cobol_src/INQACCCU.cbl:L855]
       - Resulting Value: CUSTOMER-FOUND = 'Y' via `MOVE 'Y' TO CUSTOMER-FOUND` [src/base/cobol_src/INQACCCU.cbl:L856] (terminal: literal)
       - Resulting Value: INQCUST-INQ-SUCCESS returned by the linked program is the deciding input via `03 INQCUST-INQ-SUCCESS PIC X.` [src/base/cobol_copy/INQCUST.cpy:L21] (terminal: input field)
@@ -2034,7 +2050,7 @@
       - Resulting Value: NUMBER-OF-ACCOUNTS = ZERO via `MOVE ZERO TO NUMBER-OF-ACCOUNTS` [src/base/cobol_src/INQACCCU.cbl:L843] (terminal: literal)
 - inqacccu-number-of-accounts
   - Rule: INQACCCU guard on the `ELSE` [src/base/cobol_src/INQACCCU.cbl:L857] branch of `IF INQCUST-INQ-SUCCESS = 'Y'` [src/base/cobol_src/INQACCCU.cbl:L855], in `CUSTOMER-CHECK SECTION.` [src/base/cobol_src/INQACCCU.cbl:L829] / CC010
-    - Condition: `IF INQCUST-INQ-SUCCESS = 'Y'` [src/base/cobol_src/INQACCCU.cbl:L855]
+    - Condition: `ELSE` [src/base/cobol_src/INQACCCU.cbl:L857], the ELSE branch of `IF INQCUST-INQ-SUCCESS = 'Y'` [src/base/cobol_src/INQACCCU.cbl:L855]
       - Resulting Value: NUMBER-OF-ACCOUNTS = ZERO via `MOVE ZERO TO NUMBER-OF-ACCOUNTS` [src/base/cobol_src/INQACCCU.cbl:L859] (terminal: literal)
 
 ## delacc-success-flag — DELACC COMMAREA Read Success Flag DELACC-SUCCESS (`PIC X`) [src/base/cobol_copy/DELACC.cpy:L32]
@@ -2061,7 +2077,7 @@
 - delacc-fail-code
   - Rule: Determination: DELACC-FAIL-CD is never assigned anywhere in src/base/cobol_src/, established by exhaustive case-sensitive search - the read outcome is signalled through the delete fail code instead, in `03 DELACC-FAIL-CD PIC X.` [src/base/cobol_copy/DELACC.cpy:L33]
     - Condition: layout instantiated at `COPY DELACC REPLACING DELACC-COMMAREA BY DFHCOMMAREA.` [src/base/cobol_src/DELACC.cbl:L200]
-      - Resulting Value: the REPLACING clause maps the layout onto the caller's COMMAREA, which reaches DELACC through `PROGRAM('DELACC')` [src/base/cobol_src/BNK1DAC.cbl:L713]; DELACC-FAIL-CD is never assigned by any program, established by exhaustive case-sensitive search of `src/base/cobol_src/`, so it stays at whatever byte the caller's storage already held (terminal: literal)
+      - Resulting Value: the REPLACING clause maps the layout onto the caller's COMMAREA, which reaches DELACC through `PROGRAM('DELACC')` [src/base/cobol_src/BNK1DAC.cbl:L713]; DELACC does not define this byte's value at all - DELACC-FAIL-CD is never assigned by any program, established by exhaustive case-sensitive search of `src/base/cobol_src/`, so the byte the caller reads back is the byte the caller's own storage already held on entry, inherited from input or storage rather than produced by DELACC (terminal: input field)
     - Condition: delete fail code used in its place `MOVE '1' TO DELACC-DEL-FAIL-CD` [src/base/cobol_src/DELACC.cbl:L355]
       - Resulting Value: value passes through untouched from the caller COMMAREA via `03 DELACC-FAIL-CD PIC X.` [src/base/cobol_copy/DELACC.cpy:L33] (terminal: input field)
 
@@ -2099,7 +2115,7 @@
 - delcus-del-success-flag
   - Rule: Linked customer inquiry reported that the customer does not exist, in `PREMIERE SECTION.` [src/base/cobol_src/DELCUS.cbl:L246]
     - Condition: `EXEC CICS LINK PROGRAM(INQCUST-PROGRAM) COMMAREA(INQCUST-COMMAREA) END-EXEC.` [src/base/cobol_src/DELCUS.cbl:L260-L262]
-      - Resulting Value: WS-CICS-RESP and WS-CICS-RESP2 are set by the CICS request and carry its outcome [src/base/cobol_src/DELCUS.cbl:L260-L262] (terminal: input field)
+      - Resulting Value: the LINK names no response variable at all, carrying neither the RESP nor the RESP2 option [src/base/cobol_src/DELCUS.cbl:L260-L262], so its only result is the COMMAREA the linked program fills, whose verdict field is `03 INQCUST-INQ-SUCCESS          PIC X.` [src/base/cobol_copy/INQCUST.cpy:L21] and whose fail code is `03 INQCUST-INQ-FAIL-CD          PIC X.` [src/base/cobol_copy/INQCUST.cpy:L22] (terminal: input field)
     - Condition: `IF INQCUST-INQ-SUCCESS = 'N'` [src/base/cobol_src/DELCUS.cbl:L264]
       - Resulting Value: COMM-DEL-SUCCESS = 'N' via `MOVE 'N' TO COMM-DEL-SUCCESS` [src/base/cobol_src/DELCUS.cbl:L265] (terminal: literal)
 - delcus-del-success-flag
@@ -2499,8 +2515,8 @@
     - Condition: `IF WS-CICS-RESP NOT = DFHRESP(NORMAL)` [src/base/cobol_src/BNKMENU.cbl:L178]
       - Resulting Value: ABND-CODE = 'HBNK' via `MOVE 'HBNK' TO ABND-CODE` [src/base/cobol_src/BNKMENU.cbl:L209] (terminal: literal)
 - abndinfo-abend-code
-  - Rule: BNKMENU abend site in RECEIVE-MENU-MAP SECTION / RMM010, opened by `INITIALIZE ABNDINFO-REC` [src/base/cobol_src/BNKMENU.cbl:L297], entered on the negated branch of `IF WS-CICS-RESP = DFHRESP(MAPFAIL)` [src/base/cobol_src/BNKMENU.cbl:L284], whose ELSE is at line 289
-    - Condition: `IF WS-CICS-RESP = DFHRESP(MAPFAIL)` [src/base/cobol_src/BNKMENU.cbl:L284]
+  - Rule: BNKMENU abend site in RECEIVE-MENU-MAP SECTION / RMM010, opened by `INITIALIZE ABNDINFO-REC` [src/base/cobol_src/BNKMENU.cbl:L297]
+    - Condition: `ELSE` [src/base/cobol_src/BNKMENU.cbl:L289], the ELSE branch of `IF WS-CICS-RESP = DFHRESP(MAPFAIL)` [src/base/cobol_src/BNKMENU.cbl:L284]
       - Resulting Value: ABND-CODE = 'HBNK' via `MOVE 'HBNK' TO ABND-CODE` [src/base/cobol_src/BNKMENU.cbl:L321] (terminal: literal)
 - abndinfo-abend-code
   - Rule: BNKMENU abend site in INVOKE-OTHER-TXNS SECTION / IOT010, opened by `INITIALIZE ABNDINFO-REC` [src/base/cobol_src/BNKMENU.cbl:L401]
@@ -2679,8 +2695,8 @@
     - Condition: `IF WS-CICS-RESP IS NOT EQUAL TO DFHRESP(NORMAL)` [src/base/cobol_src/XFRFUN.cbl:L413]
       - Resulting Value: ABND-CODE = 'HROL' via `MOVE 'HROL' TO ABND-CODE` [src/base/cobol_src/XFRFUN.cbl:L444] (terminal: literal)
 - abndinfo-abend-code
-  - Rule: XFRFUN abend site in UPDATE-ACCOUNT-DB2 SECTION / UAD010, opened by `INITIALIZE ABNDINFO-REC` [src/base/cobol_src/XFRFUN.cbl:L533], entered on the negated branch of `IF COMM-FAIL-CODE = '1'` [src/base/cobol_src/XFRFUN.cbl:L501], whose ELSE is at line 526
-    - Condition: `IF COMM-FAIL-CODE = '1'` [src/base/cobol_src/XFRFUN.cbl:L501]
+  - Rule: XFRFUN abend site in UPDATE-ACCOUNT-DB2 SECTION / UAD010, opened by `INITIALIZE ABNDINFO-REC` [src/base/cobol_src/XFRFUN.cbl:L533]
+    - Condition: `ELSE` [src/base/cobol_src/XFRFUN.cbl:L526], the ELSE branch of `IF COMM-FAIL-CODE = '1'` [src/base/cobol_src/XFRFUN.cbl:L501]
       - Resulting Value: ABND-CODE = 'FROM' via `MOVE 'FROM' TO ABND-CODE` [src/base/cobol_src/XFRFUN.cbl:L557] (terminal: literal)
 - abndinfo-abend-code
   - Rule: XFRFUN abend site in UPDATE-ACCOUNT-DB2 SECTION / UAD010, opened by `INITIALIZE ABNDINFO-REC` [src/base/cobol_src/XFRFUN.cbl:L624]
@@ -3001,8 +3017,8 @@
     - Condition: `IF WS-CICS-RESP NOT = DFHRESP(NORMAL)` [src/base/cobol_src/BNKMENU.cbl:L178]
       - Resulting Value: ABND-RESPCODE = the runtime content of EIBRESP via `MOVE EIBRESP TO ABND-RESPCODE` [src/base/cobol_src/BNKMENU.cbl:L186] (terminal: input field)
 - abndinfo-respcode
-  - Rule: BNKMENU abend site in RECEIVE-MENU-MAP SECTION / RMM010, opened by `INITIALIZE ABNDINFO-REC` [src/base/cobol_src/BNKMENU.cbl:L297], entered on the negated branch of `IF WS-CICS-RESP = DFHRESP(MAPFAIL)` [src/base/cobol_src/BNKMENU.cbl:L284], whose ELSE is at line 289
-    - Condition: `IF WS-CICS-RESP = DFHRESP(MAPFAIL)` [src/base/cobol_src/BNKMENU.cbl:L284]
+  - Rule: BNKMENU abend site in RECEIVE-MENU-MAP SECTION / RMM010, opened by `INITIALIZE ABNDINFO-REC` [src/base/cobol_src/BNKMENU.cbl:L297]
+    - Condition: `ELSE` [src/base/cobol_src/BNKMENU.cbl:L289], the ELSE branch of `IF WS-CICS-RESP = DFHRESP(MAPFAIL)` [src/base/cobol_src/BNKMENU.cbl:L284]
       - Resulting Value: ABND-RESPCODE = the runtime content of EIBRESP via `MOVE EIBRESP TO ABND-RESPCODE` [src/base/cobol_src/BNKMENU.cbl:L298] (terminal: input field)
 - abndinfo-respcode
   - Rule: BNKMENU abend site in INVOKE-OTHER-TXNS SECTION / IOT010, opened by `INITIALIZE ABNDINFO-REC` [src/base/cobol_src/BNKMENU.cbl:L401]
@@ -3181,8 +3197,8 @@
     - Condition: `IF WS-CICS-RESP IS NOT EQUAL TO DFHRESP(NORMAL)` [src/base/cobol_src/XFRFUN.cbl:L413]
       - Resulting Value: ABND-RESPCODE = the runtime content of EIBRESP via `MOVE EIBRESP TO ABND-RESPCODE` [src/base/cobol_src/XFRFUN.cbl:L421] (terminal: input field)
 - abndinfo-respcode
-  - Rule: XFRFUN abend site in UPDATE-ACCOUNT-DB2 SECTION / UAD010, opened by `INITIALIZE ABNDINFO-REC` [src/base/cobol_src/XFRFUN.cbl:L533], entered on the negated branch of `IF COMM-FAIL-CODE = '1'` [src/base/cobol_src/XFRFUN.cbl:L501], whose ELSE is at line 526
-    - Condition: `IF COMM-FAIL-CODE = '1'` [src/base/cobol_src/XFRFUN.cbl:L501]
+  - Rule: XFRFUN abend site in UPDATE-ACCOUNT-DB2 SECTION / UAD010, opened by `INITIALIZE ABNDINFO-REC` [src/base/cobol_src/XFRFUN.cbl:L533]
+    - Condition: `ELSE` [src/base/cobol_src/XFRFUN.cbl:L526], the ELSE branch of `IF COMM-FAIL-CODE = '1'` [src/base/cobol_src/XFRFUN.cbl:L501]
       - Resulting Value: ABND-RESPCODE = the runtime content of EIBRESP via `MOVE EIBRESP TO ABND-RESPCODE` [src/base/cobol_src/XFRFUN.cbl:L534] (terminal: input field)
 - abndinfo-respcode
   - Rule: XFRFUN abend site in UPDATE-ACCOUNT-DB2 SECTION / UAD010, opened by `INITIALIZE ABNDINFO-REC` [src/base/cobol_src/XFRFUN.cbl:L624]
@@ -3503,8 +3519,8 @@
     - Condition: `IF WS-CICS-RESP NOT = DFHRESP(NORMAL)` [src/base/cobol_src/BNKMENU.cbl:L178]
       - Resulting Value: ABND-RESP2CODE = the runtime content of EIBRESP2 via `MOVE EIBRESP2 TO ABND-RESP2CODE` [src/base/cobol_src/BNKMENU.cbl:L187] (terminal: input field)
 - abndinfo-resp2code
-  - Rule: BNKMENU abend site in RECEIVE-MENU-MAP SECTION / RMM010, opened by `INITIALIZE ABNDINFO-REC` [src/base/cobol_src/BNKMENU.cbl:L297], entered on the negated branch of `IF WS-CICS-RESP = DFHRESP(MAPFAIL)` [src/base/cobol_src/BNKMENU.cbl:L284], whose ELSE is at line 289
-    - Condition: `IF WS-CICS-RESP = DFHRESP(MAPFAIL)` [src/base/cobol_src/BNKMENU.cbl:L284]
+  - Rule: BNKMENU abend site in RECEIVE-MENU-MAP SECTION / RMM010, opened by `INITIALIZE ABNDINFO-REC` [src/base/cobol_src/BNKMENU.cbl:L297]
+    - Condition: `ELSE` [src/base/cobol_src/BNKMENU.cbl:L289], the ELSE branch of `IF WS-CICS-RESP = DFHRESP(MAPFAIL)` [src/base/cobol_src/BNKMENU.cbl:L284]
       - Resulting Value: ABND-RESP2CODE = the runtime content of EIBRESP2 via `MOVE EIBRESP2 TO ABND-RESP2CODE` [src/base/cobol_src/BNKMENU.cbl:L299] (terminal: input field)
 - abndinfo-resp2code
   - Rule: BNKMENU abend site in INVOKE-OTHER-TXNS SECTION / IOT010, opened by `INITIALIZE ABNDINFO-REC` [src/base/cobol_src/BNKMENU.cbl:L401]
@@ -3683,8 +3699,8 @@
     - Condition: `IF WS-CICS-RESP IS NOT EQUAL TO DFHRESP(NORMAL)` [src/base/cobol_src/XFRFUN.cbl:L413]
       - Resulting Value: ABND-RESP2CODE = the runtime content of EIBRESP2 via `MOVE EIBRESP2 TO ABND-RESP2CODE` [src/base/cobol_src/XFRFUN.cbl:L422] (terminal: input field)
 - abndinfo-resp2code
-  - Rule: XFRFUN abend site in UPDATE-ACCOUNT-DB2 SECTION / UAD010, opened by `INITIALIZE ABNDINFO-REC` [src/base/cobol_src/XFRFUN.cbl:L533], entered on the negated branch of `IF COMM-FAIL-CODE = '1'` [src/base/cobol_src/XFRFUN.cbl:L501], whose ELSE is at line 526
-    - Condition: `IF COMM-FAIL-CODE = '1'` [src/base/cobol_src/XFRFUN.cbl:L501]
+  - Rule: XFRFUN abend site in UPDATE-ACCOUNT-DB2 SECTION / UAD010, opened by `INITIALIZE ABNDINFO-REC` [src/base/cobol_src/XFRFUN.cbl:L533]
+    - Condition: `ELSE` [src/base/cobol_src/XFRFUN.cbl:L526], the ELSE branch of `IF COMM-FAIL-CODE = '1'` [src/base/cobol_src/XFRFUN.cbl:L501]
       - Resulting Value: ABND-RESP2CODE = the runtime content of EIBRESP2 via `MOVE EIBRESP2 TO ABND-RESP2CODE` [src/base/cobol_src/XFRFUN.cbl:L535] (terminal: input field)
 - abndinfo-resp2code
   - Rule: XFRFUN abend site in UPDATE-ACCOUNT-DB2 SECTION / UAD010, opened by `INITIALIZE ABNDINFO-REC` [src/base/cobol_src/XFRFUN.cbl:L624]
@@ -4005,8 +4021,8 @@
     - Condition: `IF WS-CICS-RESP NOT = DFHRESP(NORMAL)` [src/base/cobol_src/BNKMENU.cbl:L178]
       - Resulting Value: ABND-SQLCODE = ZEROS via `MOVE ZEROS TO ABND-SQLCODE` [src/base/cobol_src/BNKMENU.cbl:L214] (terminal: literal)
 - abndinfo-sqlcode
-  - Rule: BNKMENU abend site in RECEIVE-MENU-MAP SECTION / RMM010, opened by `INITIALIZE ABNDINFO-REC` [src/base/cobol_src/BNKMENU.cbl:L297], entered on the negated branch of `IF WS-CICS-RESP = DFHRESP(MAPFAIL)` [src/base/cobol_src/BNKMENU.cbl:L284], whose ELSE is at line 289
-    - Condition: `IF WS-CICS-RESP = DFHRESP(MAPFAIL)` [src/base/cobol_src/BNKMENU.cbl:L284]
+  - Rule: BNKMENU abend site in RECEIVE-MENU-MAP SECTION / RMM010, opened by `INITIALIZE ABNDINFO-REC` [src/base/cobol_src/BNKMENU.cbl:L297]
+    - Condition: `ELSE` [src/base/cobol_src/BNKMENU.cbl:L289], the ELSE branch of `IF WS-CICS-RESP = DFHRESP(MAPFAIL)` [src/base/cobol_src/BNKMENU.cbl:L284]
       - Resulting Value: ABND-SQLCODE = ZEROS via `MOVE ZEROS TO ABND-SQLCODE` [src/base/cobol_src/BNKMENU.cbl:L326] (terminal: literal)
 - abndinfo-sqlcode
   - Rule: BNKMENU abend site in INVOKE-OTHER-TXNS SECTION / IOT010, opened by `INITIALIZE ABNDINFO-REC` [src/base/cobol_src/BNKMENU.cbl:L401]
@@ -4185,8 +4201,8 @@
     - Condition: `IF WS-CICS-RESP IS NOT EQUAL TO DFHRESP(NORMAL)` [src/base/cobol_src/XFRFUN.cbl:L413]
       - Resulting Value: ABND-SQLCODE = ZEROS via `MOVE ZEROS TO ABND-SQLCODE` [src/base/cobol_src/XFRFUN.cbl:L449] (terminal: literal)
 - abndinfo-sqlcode
-  - Rule: XFRFUN abend site in UPDATE-ACCOUNT-DB2 SECTION / UAD010, opened by `INITIALIZE ABNDINFO-REC` [src/base/cobol_src/XFRFUN.cbl:L533], entered on the negated branch of `IF COMM-FAIL-CODE = '1'` [src/base/cobol_src/XFRFUN.cbl:L501], whose ELSE is at line 526
-    - Condition: `IF COMM-FAIL-CODE = '1'` [src/base/cobol_src/XFRFUN.cbl:L501]
+  - Rule: XFRFUN abend site in UPDATE-ACCOUNT-DB2 SECTION / UAD010, opened by `INITIALIZE ABNDINFO-REC` [src/base/cobol_src/XFRFUN.cbl:L533]
+    - Condition: `ELSE` [src/base/cobol_src/XFRFUN.cbl:L526], the ELSE branch of `IF COMM-FAIL-CODE = '1'` [src/base/cobol_src/XFRFUN.cbl:L501]
       - Resulting Value: ABND-SQLCODE = ZEROS via `MOVE ZEROS TO ABND-SQLCODE` [src/base/cobol_src/XFRFUN.cbl:L562] (terminal: literal)
 - abndinfo-sqlcode
   - Rule: XFRFUN abend site in UPDATE-ACCOUNT-DB2 SECTION / UAD010, opened by `INITIALIZE ABNDINFO-REC` [src/base/cobol_src/XFRFUN.cbl:L624]
@@ -4507,8 +4523,8 @@
     - Condition: `IF WS-CICS-RESP NOT = DFHRESP(NORMAL)` [src/base/cobol_src/BNKMENU.cbl:L178]
       - Resulting Value: ABND-FREEFORM = the literal message prefix `A010 - RETURN TRANSID(MENU) FAIL.` concatenated with the diagnostic fields named in the statement, via `STRING 'A010 - RETURN TRANSID(MENU) FAIL.' DELIMITED BY SIZE, ' EIBRESP=' DELIMITED BY SIZE, ABND-RESPCODE DELIMITED BY SIZE, ' RESP2=' DELIMITED BY SIZE, ABND-RESP2CODE DELIMITED BY SIZE INTO ABND-FREEFORM` [src/base/cobol_src/BNKMENU.cbl:L216-L222] (terminal: input field)
 - abndinfo-freeform
-  - Rule: BNKMENU abend site in RECEIVE-MENU-MAP SECTION / RMM010, opened by `INITIALIZE ABNDINFO-REC` [src/base/cobol_src/BNKMENU.cbl:L297], entered on the negated branch of `IF WS-CICS-RESP = DFHRESP(MAPFAIL)` [src/base/cobol_src/BNKMENU.cbl:L284], whose ELSE is at line 289
-    - Condition: `IF WS-CICS-RESP = DFHRESP(MAPFAIL)` [src/base/cobol_src/BNKMENU.cbl:L284]
+  - Rule: BNKMENU abend site in RECEIVE-MENU-MAP SECTION / RMM010, opened by `INITIALIZE ABNDINFO-REC` [src/base/cobol_src/BNKMENU.cbl:L297]
+    - Condition: `ELSE` [src/base/cobol_src/BNKMENU.cbl:L289], the ELSE branch of `IF WS-CICS-RESP = DFHRESP(MAPFAIL)` [src/base/cobol_src/BNKMENU.cbl:L284]
       - Resulting Value: ABND-FREEFORM = the literal message prefix `RMM010 - RECEIVE MAP FAIL.` concatenated with the diagnostic fields named in the statement, via `STRING 'RMM010  - RECEIVE MAP FAIL.' DELIMITED BY SIZE, ' EIBRESP=' DELIMITED BY SIZE, ABND-RESPCODE DELIMITED BY SIZE, ' RESP2=' DELIMITED BY SIZE, ABND-RESP2CODE DELIMITED BY SIZE INTO ABND-FREEFORM` [src/base/cobol_src/BNKMENU.cbl:L328-L334] (terminal: input field)
 - abndinfo-freeform
   - Rule: BNKMENU abend site in INVOKE-OTHER-TXNS SECTION / IOT010, opened by `INITIALIZE ABNDINFO-REC` [src/base/cobol_src/BNKMENU.cbl:L401]
@@ -4687,8 +4703,8 @@
     - Condition: `IF WS-CICS-RESP IS NOT EQUAL TO DFHRESP(NORMAL)` [src/base/cobol_src/XFRFUN.cbl:L413]
       - Resulting Value: ABND-FREEFORM = the literal message prefix `UAD010(2) - Error on SYNCPOINT` concatenated with the diagnostic fields named in the statement, via `STRING 'UAD010(2) - Error on SYNCPOINT' DELIMITED BY SIZE, ' ROLLBACK' DELIMITED BY SIZE, ' after UPDATING TO account ' DELIMITED BY SIZE, ' EIBRESP=' DELIMITED BY SIZE, ABND-RESPCODE DELIMITED BY SIZE, ' RESP2=' DELIMITED BY SIZE, ABND-RESP2CODE DELIMITED BY SIZE INTO ABND-FREEFORM` [src/base/cobol_src/XFRFUN.cbl:L451-L460] (terminal: input field)
 - abndinfo-freeform
-  - Rule: XFRFUN abend site in UPDATE-ACCOUNT-DB2 SECTION / UAD010, opened by `INITIALIZE ABNDINFO-REC` [src/base/cobol_src/XFRFUN.cbl:L533], entered on the negated branch of `IF COMM-FAIL-CODE = '1'` [src/base/cobol_src/XFRFUN.cbl:L501], whose ELSE is at line 526
-    - Condition: `IF COMM-FAIL-CODE = '1'` [src/base/cobol_src/XFRFUN.cbl:L501]
+  - Rule: XFRFUN abend site in UPDATE-ACCOUNT-DB2 SECTION / UAD010, opened by `INITIALIZE ABNDINFO-REC` [src/base/cobol_src/XFRFUN.cbl:L533]
+    - Condition: `ELSE` [src/base/cobol_src/XFRFUN.cbl:L526], the ELSE branch of `IF COMM-FAIL-CODE = '1'` [src/base/cobol_src/XFRFUN.cbl:L501]
       - Resulting Value: ABND-FREEFORM = the literal message prefix `UAD010(3) - Error updating FROM account ` concatenated with the diagnostic fields named in the statement, via `STRING 'UAD010(3) - Error updating FROM account ' DELIMITED BY SIZE, ' EIBRESP=' DELIMITED BY SIZE, ABND-RESPCODE DELIMITED BY SIZE, ' RESP2=' DELIMITED BY SIZE, ABND-RESP2CODE DELIMITED BY SIZE INTO ABND-FREEFORM` [src/base/cobol_src/XFRFUN.cbl:L564-L570] (terminal: input field)
 - abndinfo-freeform
   - Rule: XFRFUN abend site in UPDATE-ACCOUNT-DB2 SECTION / UAD010, opened by `INITIALIZE ABNDINFO-REC` [src/base/cobol_src/XFRFUN.cbl:L624]
@@ -4753,13 +4769,13 @@
     - Condition: `MOVE SORTCODE TO COMM-SORTC.` [src/base/cobol_src/DBCRFUN.cbl:L211]
       - Resulting Value: COMM-SORTC takes the sort-code literal 987654 fixed by the VALUE clause of SORTCODE via `77 SORTCODE PIC 9(6) VALUE 987654.` [src/base/cobol_copy/SORTCODE.cpy:L7] (terminal: literal)
     - Condition: `MOVE SORTCODE TO DESIRED-SORT-CODE.` [src/base/cobol_src/DBCRFUN.cbl:L212]
-      - Resulting Value: COMM-SORTC takes the sort-code literal 987654 fixed by the VALUE clause of SORTCODE via `77 SORTCODE PIC 9(6) VALUE 987654.` [src/base/cobol_copy/SORTCODE.cpy:L7] (terminal: literal)
+      - Resulting Value: DESIRED-SORT-CODE, the account-key field this statement receives into, takes the sort-code literal 987654 fixed by the VALUE clause of SORTCODE via `77 SORTCODE PIC 9(6) VALUE 987654.` [src/base/cobol_copy/SORTCODE.cpy:L7]; the COMMAREA field COMM-SORTC is assigned separately by `MOVE SORTCODE TO COMM-SORTC.` [src/base/cobol_src/DBCRFUN.cbl:L211] (terminal: literal)
 - sortcode-literal
   - Rule: XFRFUN stamps the same literal into both transfer legs, in `PREMIERE SECTION.` [src/base/cobol_src/XFRFUN.cbl:L269]
     - Condition: `MOVE SORTCODE TO COMM-FSCODE COMM-TSCODE.` [src/base/cobol_src/XFRFUN.cbl:L281]
       - Resulting Value: COMM-FSCODE COMM-TSCODE takes the sort-code literal 987654 fixed by the VALUE clause of SORTCODE via `77 SORTCODE PIC 9(6) VALUE 987654.` [src/base/cobol_copy/SORTCODE.cpy:L7] (terminal: literal)
     - Condition: `MOVE SORTCODE TO DESIRED-SORT-CODE.` [src/base/cobol_src/XFRFUN.cbl:L283]
-      - Resulting Value: COMM-FSCODE COMM-TSCODE takes the sort-code literal 987654 fixed by the VALUE clause of SORTCODE via `77 SORTCODE PIC 9(6) VALUE 987654.` [src/base/cobol_copy/SORTCODE.cpy:L7] (terminal: literal)
+      - Resulting Value: DESIRED-SORT-CODE, the account-key field this statement receives into, takes the sort-code literal 987654 fixed by the VALUE clause of SORTCODE via `77 SORTCODE PIC 9(6) VALUE 987654.` [src/base/cobol_copy/SORTCODE.cpy:L7]; the two COMMAREA leg fields are assigned separately by `MOVE SORTCODE TO COMM-FSCODE COMM-TSCODE.` [src/base/cobol_src/XFRFUN.cbl:L281] (terminal: literal)
 - sortcode-literal
   - Rule: CREACC stamps the literal into the ACCOUNT row it inserts, in `WRITE-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/CREACC.cbl:L774]
     - Condition: `MOVE SORTCODE TO HV-ACCOUNT-SORTCODE.` [src/base/cobol_src/CREACC.cbl:L780]
