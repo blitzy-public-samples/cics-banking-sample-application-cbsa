@@ -1,0 +1,1912 @@
+# CBSA Indicator and Critical-Data-Element Derivation-Rule Hierarchy
+
+## proctran-type-code — PROCTRAN 3-Character Transaction-Type Code (`PIC X(3)`) [src/base/cobol_copy/PROCTRAN.cpy:L29]
+- proctran-type-code
+  - Rule: DBCRFUN counter-withdrawal discrimination on the sign of the requested amount, in `WRITE-TO-PROCTRAN-DB2 SECTION.` [src/base/cobol_src/DBCRFUN.cbl:L460]
+    - Condition: `MOVE SPACES TO HV-PROCTRAN-DESC.` [src/base/cobol_src/DBCRFUN.cbl:L489]
+    - Condition: `IF COMM-AMT < 0` [src/base/cobol_src/DBCRFUN.cbl:L491]
+      - Resulting Value: PROC-TRAN-TYPE = 'DEB' via `MOVE 'DEB' TO HV-PROCTRAN-TYPE` [src/base/cobol_src/DBCRFUN.cbl:L492] (terminal: literal)
+      - Resulting Value: PROC-TY-DEBIT condition name via `88 PROC-TY-DEBIT VALUE 'DEB'.` [src/base/cobol_copy/PROCTRAN.cpy:L35] (terminal: literal)
+      - Resulting Value: COMM-AMT supplied by the caller in the PAYDBCR COMMAREA via `03 COMM-AMT PIC S9(10)V99.` [src/base/cobol_copy/PAYDBCR.cpy:L8] (terminal: input field)
+- proctran-type-code
+  - Rule: DBCRFUN promotion of a debit to a payment debit on the FACILTYPE 496 channel, in `WRITE-TO-PROCTRAN-DB2 SECTION.` [src/base/cobol_src/DBCRFUN.cbl:L460]
+    - Condition: `IF COMM-AMT < 0` [src/base/cobol_src/DBCRFUN.cbl:L491]
+    - Condition: `IF COMM-FACILTYPE = 496` [src/base/cobol_src/DBCRFUN.cbl:L498]
+      - Resulting Value: PROC-TRAN-TYPE = 'PDR' via `MOVE 'PDR' TO HV-PROCTRAN-TYPE` [src/base/cobol_src/DBCRFUN.cbl:L499] (terminal: literal)
+      - Resulting Value: PROC-TY-PAYMENT-DEBIT condition name via `88 PROC-TY-PAYMENT-DEBIT VALUE 'PDR'.` [src/base/cobol_copy/PROCTRAN.cpy:L46] (terminal: literal)
+      - Resulting Value: COMM-FACILTYPE supplied in the COMM-ORIGIN group via `05 COMM-FACILTYPE PIC S9(8) COMP.` [src/base/cobol_copy/PAYDBCR.cpy:L17] (terminal: input field)
+- proctran-type-code
+  - Rule: DBCRFUN counter-receipt discrimination on a non-negative amount, in `WRITE-TO-PROCTRAN-DB2 SECTION.` [src/base/cobol_src/DBCRFUN.cbl:L460]
+    - Condition: `IF COMM-AMT < 0` [src/base/cobol_src/DBCRFUN.cbl:L491]
+    - Condition: `ELSE` [src/base/cobol_src/DBCRFUN.cbl:L504]
+      - Resulting Value: PROC-TRAN-TYPE = 'CRE' via `MOVE 'CRE' TO HV-PROCTRAN-TYPE` [src/base/cobol_src/DBCRFUN.cbl:L505] (terminal: literal)
+      - Resulting Value: PROC-TY-CREDIT condition name via `88 PROC-TY-CREDIT VALUE 'CRE'.` [src/base/cobol_copy/PROCTRAN.cpy:L34] (terminal: literal)
+      - Resulting Value: COMM-AMT supplied by the caller in the PAYDBCR COMMAREA via `03 COMM-AMT PIC S9(10)V99.` [src/base/cobol_copy/PAYDBCR.cpy:L8] (terminal: input field)
+- proctran-type-code
+  - Rule: DBCRFUN promotion of a credit to a payment credit on the FACILTYPE 496 channel, in `WRITE-TO-PROCTRAN-DB2 SECTION.` [src/base/cobol_src/DBCRFUN.cbl:L460]
+    - Condition: `ELSE` [src/base/cobol_src/DBCRFUN.cbl:L504]
+    - Condition: `IF COMM-FACILTYPE = 496` [src/base/cobol_src/DBCRFUN.cbl:L511]
+      - Resulting Value: PROC-TRAN-TYPE = 'PCR' via `MOVE 'PCR' TO HV-PROCTRAN-TYPE` [src/base/cobol_src/DBCRFUN.cbl:L512] (terminal: literal)
+      - Resulting Value: PROC-TY-PAYMENT-CREDIT condition name via `88 PROC-TY-PAYMENT-CREDIT VALUE 'PCR'.` [src/base/cobol_copy/PROCTRAN.cpy:L45] (terminal: literal)
+      - Resulting Value: COMM-FACILTYPE supplied in the COMM-ORIGIN group via `05 COMM-FACILTYPE PIC S9(8) COMP.` [src/base/cobol_copy/PAYDBCR.cpy:L17] (terminal: input field)
+- proctran-type-code
+  - Rule: CREACC branch account creation stamp, in `WRITE-PROCTRAN-DB2 SECTION.` [src/base/cobol_src/CREACC.cbl:L928]
+    - Condition: `MOVE 'OCA' TO HV-PROCTRAN-TYPE.` [src/base/cobol_src/CREACC.cbl:L966]
+      - Resulting Value: PROC-TRAN-TYPE = 'OCA' via `MOVE 'OCA' TO HV-PROCTRAN-TYPE.` [src/base/cobol_src/CREACC.cbl:L966] (terminal: literal)
+      - Resulting Value: PROC-TY-BRANCH-CREATE-ACCOUNT condition name via `88 PROC-TY-BRANCH-CREATE-ACCOUNT VALUE 'OCA'.` [src/base/cobol_copy/PROCTRAN.cpy:L40] (terminal: literal)
+- proctran-type-code
+  - Rule: CRECUST branch customer creation stamp, in `WRITE-PROCTRAN-DB2 SECTION.` [src/base/cobol_src/CRECUST.cbl:L1187]
+    - Condition: `MOVE 'OCC' TO HV-PROCTRAN-TYPE.` [src/base/cobol_src/CRECUST.cbl:L1223]
+      - Resulting Value: PROC-TRAN-TYPE = 'OCC' via `MOVE 'OCC' TO HV-PROCTRAN-TYPE.` [src/base/cobol_src/CRECUST.cbl:L1223] (terminal: literal)
+      - Resulting Value: PROC-TY-BRANCH-CREATE-CUSTOMER condition name via `88 PROC-TY-BRANCH-CREATE-CUSTOMER VALUE 'OCC'.` [src/base/cobol_copy/PROCTRAN.cpy:L41] (terminal: literal)
+- proctran-type-code
+  - Rule: DELACC branch account deletion stamp set through the condition name itself, in `WRITE-PROCTRAN-DB2 SECTION.` [src/base/cobol_src/DELACC.cbl:L462]
+    - Condition: `SET PROC-TY-BRANCH-DELETE-ACCOUNT OF PROCTRAN-AREA TO TRUE.` [src/base/cobol_src/DELACC.cbl:L513]
+    - Condition: `MOVE PROC-TRAN-TYPE OF PROCTRAN-AREA TO HV-PROCTRAN-TYPE.` [src/base/cobol_src/DELACC.cbl:L518]
+      - Resulting Value: PROC-TRAN-TYPE = 'ODA' via `88 PROC-TY-BRANCH-DELETE-ACCOUNT VALUE 'ODA'.` [src/base/cobol_copy/PROCTRAN.cpy:L42] (terminal: literal)
+      - Resulting Value: PROC-TY-BRANCH-DELETE-ACCOUNT condition name via `88 PROC-TY-BRANCH-DELETE-ACCOUNT VALUE 'ODA'.` [src/base/cobol_copy/PROCTRAN.cpy:L42] (terminal: literal)
+- proctran-type-code
+  - Rule: DELCUS branch customer deletion stamp, in `WRITE-PROCTRAN-CUST-DB2 SECTION.` [src/base/cobol_src/DELCUS.cbl:L597]
+    - Condition: `MOVE 'ODC' TO HV-PROCTRAN-TYPE.` [src/base/cobol_src/DELCUS.cbl:L632]
+      - Resulting Value: PROC-TRAN-TYPE = 'ODC' via `MOVE 'ODC' TO HV-PROCTRAN-TYPE.` [src/base/cobol_src/DELCUS.cbl:L632] (terminal: literal)
+      - Resulting Value: PROC-TY-BRANCH-DELETE-CUSTOMER condition name via `88 PROC-TY-BRANCH-DELETE-CUSTOMER VALUE 'ODC'.` [src/base/cobol_copy/PROCTRAN.cpy:L43] (terminal: literal)
+- proctran-type-code
+  - Rule: XFRFUN funds-transfer stamp set through the condition name itself, in `WRITE-TO-PROCTRAN-DB2 SECTION.` [src/base/cobol_src/XFRFUN.cbl:L1571]
+    - Condition: `SET PROC-TY-TRANSFER IN PROCTRAN-AREA TO TRUE` [src/base/cobol_src/XFRFUN.cbl:L1603]
+    - Condition: `MOVE PROC-TRAN-TYPE IN PROCTRAN-AREA TO HV-PROCTRAN-TYPE.` [src/base/cobol_src/XFRFUN.cbl:L1605]
+      - Resulting Value: PROC-TRAN-TYPE = 'TFR' via `88 PROC-TY-TRANSFER VALUE 'TFR'.` [src/base/cobol_copy/PROCTRAN.cpy:L47] (terminal: literal)
+      - Resulting Value: PROC-TY-TRANSFER condition name via `88 PROC-TY-TRANSFER VALUE 'TFR'.` [src/base/cobol_copy/PROCTRAN.cpy:L47] (terminal: literal)
+- proctran-type-code
+  - Rule: Declaration-only transaction types with no in-repository producer, established by exhaustive case-sensitive search of every program in src/base/cobol_src/, in `05 PROC-TRAN-TYPE PIC X(3).` [src/base/cobol_copy/PROCTRAN.cpy:L29]
+    - Condition: `88 PROC-TY-CHEQUE-ACKNOWLEDGED VALUE 'CHA'.` [src/base/cobol_copy/PROCTRAN.cpy:L30]
+      - Resulting Value: PROC-TY-CHEQUE-ACKNOWLEDGED = 'CHA', never moved by any in-repository program via `88 PROC-TY-CHEQUE-ACKNOWLEDGED VALUE 'CHA'.` [src/base/cobol_copy/PROCTRAN.cpy:L30] (terminal: literal)
+    - Condition: `88 PROC-TY-CHEQUE-FAILURE VALUE 'CHF'.` [src/base/cobol_copy/PROCTRAN.cpy:L31]
+      - Resulting Value: PROC-TY-CHEQUE-FAILURE = 'CHF', never moved by any in-repository program via `88 PROC-TY-CHEQUE-FAILURE VALUE 'CHF'.` [src/base/cobol_copy/PROCTRAN.cpy:L31] (terminal: literal)
+    - Condition: `88 PROC-TY-CHEQUE-PAID-IN VALUE 'CHI'.` [src/base/cobol_copy/PROCTRAN.cpy:L32]
+      - Resulting Value: PROC-TY-CHEQUE-PAID-IN = 'CHI', never moved by any in-repository program via `88 PROC-TY-CHEQUE-PAID-IN VALUE 'CHI'.` [src/base/cobol_copy/PROCTRAN.cpy:L32] (terminal: literal)
+    - Condition: `88 PROC-TY-CHEQUE-PAID-OUT VALUE 'CHO'.` [src/base/cobol_copy/PROCTRAN.cpy:L33]
+      - Resulting Value: PROC-TY-CHEQUE-PAID-OUT = 'CHO', never moved by any in-repository program via `88 PROC-TY-CHEQUE-PAID-OUT VALUE 'CHO'.` [src/base/cobol_copy/PROCTRAN.cpy:L33] (terminal: literal)
+    - Condition: `88 PROC-TY-WEB-CREATE-ACCOUNT VALUE 'ICA'.` [src/base/cobol_copy/PROCTRAN.cpy:L36]
+      - Resulting Value: PROC-TY-WEB-CREATE-ACCOUNT = 'ICA', never moved by any in-repository program via `88 PROC-TY-WEB-CREATE-ACCOUNT VALUE 'ICA'.` [src/base/cobol_copy/PROCTRAN.cpy:L36] (terminal: literal)
+    - Condition: `88 PROC-TY-WEB-CREATE-CUSTOMER VALUE 'ICC'.` [src/base/cobol_copy/PROCTRAN.cpy:L37]
+      - Resulting Value: PROC-TY-WEB-CREATE-CUSTOMER = 'ICC', never moved by any in-repository program via `88 PROC-TY-WEB-CREATE-CUSTOMER VALUE 'ICC'.` [src/base/cobol_copy/PROCTRAN.cpy:L37] (terminal: literal)
+    - Condition: `88 PROC-TY-WEB-DELETE-ACCOUNT VALUE 'IDA'.` [src/base/cobol_copy/PROCTRAN.cpy:L38]
+      - Resulting Value: PROC-TY-WEB-DELETE-ACCOUNT = 'IDA', never moved by any in-repository program via `88 PROC-TY-WEB-DELETE-ACCOUNT VALUE 'IDA'.` [src/base/cobol_copy/PROCTRAN.cpy:L38] (terminal: literal)
+    - Condition: `88 PROC-TY-WEB-DELETE-CUSTOMER VALUE 'IDC'.` [src/base/cobol_copy/PROCTRAN.cpy:L39]
+      - Resulting Value: PROC-TY-WEB-DELETE-CUSTOMER = 'IDC', never moved by any in-repository program via `88 PROC-TY-WEB-DELETE-CUSTOMER VALUE 'IDC'.` [src/base/cobol_copy/PROCTRAN.cpy:L39] (terminal: literal)
+    - Condition: `88 PROC-TY-CREATE-SODD VALUE 'OCS'.` [src/base/cobol_copy/PROCTRAN.cpy:L44]
+      - Resulting Value: PROC-TY-CREATE-SODD = 'OCS', never moved by any in-repository program via `88 PROC-TY-CREATE-SODD VALUE 'OCS'.` [src/base/cobol_copy/PROCTRAN.cpy:L44] (terminal: literal)
+
+## proctran-logical-delete-flag — PROCTRAN Logical-Delete Flag Overlaying Byte 1 of the Eye-Catcher (`PIC X`) [src/base/cobol_copy/PROCTRAN.cpy:L12]
+- proctran-logical-delete-flag
+  - Rule: Copybook REDEFINES overlay that makes byte 1 of the eye-catcher double as the logical-delete flag, in `03 PROC-TRAN-DATA.` [src/base/cobol_copy/PROCTRAN.cpy:L7]
+    - Condition: `05 PROC-TRAN-EYE-CATCHER PIC X(4).` [src/base/cobol_copy/PROCTRAN.cpy:L8]
+    - Condition: `05 PROC-TRAN-LOGICAL-DELETE-AREA REDEFINES PROC-TRAN-EYE-CATCHER.` [src/base/cobol_copy/PROCTRAN.cpy:L10-L11]
+    - Condition: `07 PROC-TRAN-LOGICAL-DELETE-FLAG PIC X.` [src/base/cobol_copy/PROCTRAN.cpy:L12]
+    - Condition: `88 PROC-TRAN-LOGICALLY-DELETED VALUE X'FF'.` [src/base/cobol_copy/PROCTRAN.cpy:L13]
+      - Resulting Value: PROC-TRAN-LOGICALLY-DELETED = X'FF' via `88 PROC-TRAN-LOGICALLY-DELETED VALUE X'FF'.` [src/base/cobol_copy/PROCTRAN.cpy:L13] (terminal: literal)
+- proctran-logical-delete-flag
+  - Rule: Read-path predicate: a logically deleted row fails the eye-catcher validity condition because the flag occupies the same byte, in `03 PROC-TRAN-DATA.` [src/base/cobol_copy/PROCTRAN.cpy:L7]
+    - Condition: `88 PROC-TRAN-VALID VALUE 'PRTR'.` [src/base/cobol_copy/PROCTRAN.cpy:L9]
+    - Condition: `05 PROC-TRAN-LOGICAL-DELETE-AREA REDEFINES PROC-TRAN-EYE-CATCHER.` [src/base/cobol_copy/PROCTRAN.cpy:L10-L11]
+      - Resulting Value: PROC-TRAN-VALID = 'PRTR', which a row carrying X'FF' in byte 1 cannot satisfy via `88 PROC-TRAN-VALID VALUE 'PRTR'.` [src/base/cobol_copy/PROCTRAN.cpy:L9] (terminal: literal)
+- proctran-logical-delete-flag
+  - Rule: Write path in every PROCTRAN writer leaves the flag byte as the first character of the 'PRTR' eye-catcher, so no in-repository program sets X'FF' - established by exhaustive search for LOGICALLY-DELETED and X'FF' across src/base/cobol_src/, in `WRITE-TO-PROCTRAN-DB2 SECTION.` [src/base/cobol_src/DBCRFUN.cbl:L460]
+    - Condition: `MOVE 'PRTR' TO HV-PROCTRAN-EYECATCHER.` [src/base/cobol_src/DBCRFUN.cbl:L466]
+      - Resulting Value: PROC-TRAN-LOGICAL-DELETE-FLAG = 'P', byte 1 of the 'PRTR' literal via `MOVE 'PRTR' TO HV-PROCTRAN-EYECATCHER.` [src/base/cobol_src/DBCRFUN.cbl:L466] (terminal: literal)
+      - Resulting Value: declared flag value X'FF' remains unreachable from COBOL in this repository via `88 PROC-TRAN-LOGICALLY-DELETED VALUE X'FF'.` [src/base/cobol_copy/PROCTRAN.cpy:L13] (terminal: literal)
+
+## newaccno-function-flag — NEWACCNO Account-Number Allocator Function Flag (G/R/C) (`PIC X`) [src/base/cobol_copy/NEWACCNO.cpy:L7]
+- newaccno-function-flag
+  - Rule: Copybook declaration of the three-valued allocator protocol, in `03 NEWACCNO-FUNCTION PIC X.` [src/base/cobol_copy/NEWACCNO.cpy:L7]
+    - Condition: `03 NEWACCNO-FUNCTION PIC X.` [src/base/cobol_copy/NEWACCNO.cpy:L7]
+    - Condition: `88 NEWACCNO-FUNCTION-GETNEW VALUE 'G'.` [src/base/cobol_copy/NEWACCNO.cpy:L8]
+      - Resulting Value: NEWACCNO-FUNCTION-GETNEW = 'G' via `88 NEWACCNO-FUNCTION-GETNEW VALUE 'G'.` [src/base/cobol_copy/NEWACCNO.cpy:L8] (terminal: literal)
+    - Condition: `88 NEWACCNO-FUNCTION-ROLLBACK VALUE 'R'.` [src/base/cobol_copy/NEWACCNO.cpy:L9]
+      - Resulting Value: NEWACCNO-FUNCTION-ROLLBACK = 'R' via `88 NEWACCNO-FUNCTION-ROLLBACK VALUE 'R'.` [src/base/cobol_copy/NEWACCNO.cpy:L9] (terminal: literal)
+    - Condition: `88 NEWACCNO-FUNCTION-CURRENT VALUE 'C'.` [src/base/cobol_copy/NEWACCNO.cpy:L10]
+      - Resulting Value: NEWACCNO-FUNCTION-CURRENT = 'C' via `88 NEWACCNO-FUNCTION-CURRENT VALUE 'C'.` [src/base/cobol_copy/NEWACCNO.cpy:L10] (terminal: literal)
+- newaccno-function-flag
+  - Rule: IBM Record Generator commarea consumer in the webui tier, which restates the three protocol values as Java constants over an 11-byte buffer, in `public static final int COBOL_LANGUAGE_STRUCTURE_LEN = 11;` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/NewAccountNumber.java:L19]
+    - Condition: `protected static final StringField NEWACCNO_FUNCTION = factory.getStringField(1);` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/NewAccountNumber.java:L23]
+    - Condition: `public static final String NEWACCNO_FUNCTION_GETNEW = "G";` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/NewAccountNumber.java:L27]
+      - Resulting Value: NEWACCNO_FUNCTION_GETNEW = "G" via `public static final String NEWACCNO_FUNCTION_GETNEW = "G";` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/NewAccountNumber.java:L27] (terminal: literal)
+    - Condition: `public static final String NEWACCNO_FUNCTION_ROLLBACK = "R";` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/NewAccountNumber.java:L31]
+      - Resulting Value: NEWACCNO_FUNCTION_ROLLBACK = "R" via `public static final String NEWACCNO_FUNCTION_ROLLBACK = "R";` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/NewAccountNumber.java:L31] (terminal: literal)
+    - Condition: `public static final String NEWACCNO_FUNCTION_CURRENT = "C";` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/NewAccountNumber.java:L35]
+      - Resulting Value: NEWACCNO_FUNCTION_CURRENT = "C" via `public static final String NEWACCNO_FUNCTION_CURRENT = "C";` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/NewAccountNumber.java:L35] (terminal: literal)
+    - Condition: `return getNewaccnoFunction().equals(NEWACCNO_FUNCTION_GETNEW);` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/NewAccountNumber.java:L87]
+      - Resulting Value: isNewaccnoFunctionGetnew() true only when the buffer byte equals the "G" constant via `return getNewaccnoFunction().equals(NEWACCNO_FUNCTION_GETNEW);` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/NewAccountNumber.java:L87] (terminal: literal)
+- newaccno-function-flag
+  - Rule: 'G' GETNEW semantics as implemented in this repository by CREACC, since no NEWACCNO.cbl exists in src/base/cobol_src/ - the allocator contract is served by an ENQ-serialised increment of the DB2 CONTROL row, in `ENQ-NAMED-COUNTER SECTION.` [src/base/cobol_src/CREACC.cbl:L385]
+    - Condition: `EXEC CICS ENQ RESOURCE(NCS-ACC-NO-NAME) LENGTH(16) RESP(WS-CICS-RESP) RESP2(WS-CICS-RESP2) END-EXEC.` [src/base/cobol_src/CREACC.cbl:L390-L395]
+    - Condition: `EXEC SQL SELECT CONTROL_NAME, CONTROL_VALUE_NUM, CONTROL_VALUE_STR INTO :HV-CONTROL-NAME, :HV-CONTROL-VALUE-NUM, :HV-CONTROL-VALUE-STR FROM CONTROL WHERE CONTROL_NAME = :HV-CONTROL-NAME END-EXEC.` [src/base/cobol_src/CREACC.cbl:L444-L453]
+    - Condition: `ADD 1 TO HV-CONTROL-VALUE-NUM GIVING COMM-NUMBER ACCOUNT-NUMBER REQUIRED-ACCT-NUMBER3 NCS-ACC-NO-VALUE HV-CONTROL-VALUE-NUM` [src/base/cobol_src/CREACC.cbl:L525-L527]
+      - Resulting Value: allocated account number = previous CONTROL_VALUE_NUM plus the literal increment 1 via `ADD 1 TO HV-CONTROL-VALUE-NUM GIVING COMM-NUMBER ACCOUNT-NUMBER REQUIRED-ACCT-NUMBER3 NCS-ACC-NO-VALUE HV-CONTROL-VALUE-NUM` [src/base/cobol_src/CREACC.cbl:L525-L527] (terminal: literal)
+      - Resulting Value: previous value read from the CONTROL row named by the sort code via `STRING REQUIRED-SORT-CODE DELIMITED BY SIZE '-' DELIMITED BY SIZE 'ACCOUNT-LAST' DELIMITED BY SIZE INTO HV-CONTROL-NAME` [src/base/cobol_src/CREACC.cbl:L440-L443] (terminal: input field)
+- newaccno-function-flag
+  - Rule: 'R' ROLLBACK and 'C' CURRENT semantics as implemented in this repository by CREACC's paired DEQ of the same named resource, in `DEQ-NAMED-COUNTER SECTION.` [src/base/cobol_src/CREACC.cbl:L407]
+    - Condition: `EXEC CICS DEQ RESOURCE(NCS-ACC-NO-NAME) LENGTH(16) RESP(WS-CICS-RESP) RESP2(WS-CICS-RESP2) END-EXEC.` [src/base/cobol_src/CREACC.cbl:L412-L417]
+    - Condition: `IF WS-CICS-RESP NOT = DFHRESP(NORMAL)` [src/base/cobol_src/CREACC.cbl:L419]
+      - Resulting Value: COMM-FAIL-CODE = '5' when the DEQ that releases the allocator fails via `MOVE '5' TO COMM-FAIL-CODE IN DFHCOMMAREA` [src/base/cobol_src/CREACC.cbl:L421] (terminal: literal)
+
+## newcusno-function-flag — NEWCUSNO Customer-Number Allocator Function Flag (G/R/C) (`PIC X`) [src/base/cobol_copy/NEWCUSNO.cpy:L7]
+- newcusno-function-flag
+  - Rule: Copybook declaration of the three-valued allocator protocol, in `03 NEWCUSNO-FUNCTION PIC X.` [src/base/cobol_copy/NEWCUSNO.cpy:L7]
+    - Condition: `03 NEWCUSNO-FUNCTION PIC X.` [src/base/cobol_copy/NEWCUSNO.cpy:L7]
+    - Condition: `88 NEWCUSNO-FUNCTION-GETNEW VALUE 'G'.` [src/base/cobol_copy/NEWCUSNO.cpy:L8]
+      - Resulting Value: NEWCUSNO-FUNCTION-GETNEW = 'G' via `88 NEWCUSNO-FUNCTION-GETNEW VALUE 'G'.` [src/base/cobol_copy/NEWCUSNO.cpy:L8] (terminal: literal)
+    - Condition: `88 NEWCUSNO-FUNCTION-ROLLBACK VALUE 'R'.` [src/base/cobol_copy/NEWCUSNO.cpy:L9]
+      - Resulting Value: NEWCUSNO-FUNCTION-ROLLBACK = 'R' via `88 NEWCUSNO-FUNCTION-ROLLBACK VALUE 'R'.` [src/base/cobol_copy/NEWCUSNO.cpy:L9] (terminal: literal)
+    - Condition: `88 NEWCUSNO-FUNCTION-CURRENT VALUE 'C'.` [src/base/cobol_copy/NEWCUSNO.cpy:L10]
+      - Resulting Value: NEWCUSNO-FUNCTION-CURRENT = 'C' via `88 NEWCUSNO-FUNCTION-CURRENT VALUE 'C'.` [src/base/cobol_copy/NEWCUSNO.cpy:L10] (terminal: literal)
+- newcusno-function-flag
+  - Rule: IBM Record Generator commarea consumer in the webui tier, which restates the three protocol values as Java constants over a 13-byte buffer, in `public static final int COBOL_LANGUAGE_STRUCTURE_LEN = 13;` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/NewCustomerNumber.java:L19]
+    - Condition: `protected static final StringField NEWCUSNO_FUNCTION = factory.getStringField(1);` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/NewCustomerNumber.java:L23]
+    - Condition: `public static final String NEWCUSNO_FUNCTION_GETNEW = "G";` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/NewCustomerNumber.java:L27]
+      - Resulting Value: NEWCUSNO_FUNCTION_GETNEW = "G" via `public static final String NEWCUSNO_FUNCTION_GETNEW = "G";` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/NewCustomerNumber.java:L27] (terminal: literal)
+    - Condition: `public static final String NEWCUSNO_FUNCTION_ROLLBACK = "R";` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/NewCustomerNumber.java:L31]
+      - Resulting Value: NEWCUSNO_FUNCTION_ROLLBACK = "R" via `public static final String NEWCUSNO_FUNCTION_ROLLBACK = "R";` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/NewCustomerNumber.java:L31] (terminal: literal)
+    - Condition: `public static final String NEWCUSNO_FUNCTION_CURRENT = "C";` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/NewCustomerNumber.java:L35]
+      - Resulting Value: NEWCUSNO_FUNCTION_CURRENT = "C" via `public static final String NEWCUSNO_FUNCTION_CURRENT = "C";` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/NewCustomerNumber.java:L35] (terminal: literal)
+- newcusno-function-flag
+  - Rule: 'G' GETNEW semantics as implemented in this repository by CRECUST, since no NEWCUSNO.cbl exists in src/base/cobol_src/ - the allocator contract is served by an ENQ-serialised increment of the CUSTOMER control record, in `ENQ-NAMED-COUNTER SECTION.` [src/base/cobol_src/CRECUST.cbl:L499]
+    - Condition: `EXEC CICS ENQ RESOURCE(NCS-CUST-NO-NAME) LENGTH(16) RESP(WS-CICS-RESP) RESP2(WS-CICS-RESP2) END-EXEC.` [src/base/cobol_src/CRECUST.cbl:L504-L509]
+    - Condition: `ADD 1 TO LAST-CUSTOMER-NUMBER IN CUSTOMER-CONTROL GIVING LAST-CUSTOMER-NUMBER IN CUSTOMER-CONTROL` [src/base/cobol_src/CRECUST.cbl:L1381-L1382]
+      - Resulting Value: allocated customer number = LAST-CUSTOMER-NUMBER plus the literal increment 1 via `ADD 1 TO LAST-CUSTOMER-NUMBER IN CUSTOMER-CONTROL GIVING LAST-CUSTOMER-NUMBER IN CUSTOMER-CONTROL` [src/base/cobol_src/CRECUST.cbl:L1381-L1382] (terminal: literal)
+      - Resulting Value: previous value read from the control record keyed by all nines via `MOVE ALL '9' TO CUSTOMER-CONTROL-NUMBER` [src/base/cobol_src/CRECUST.cbl:L1346] (terminal: input field)
+- newcusno-function-flag
+  - Rule: 'R' ROLLBACK and 'C' CURRENT semantics as implemented in this repository by CRECUST's paired DEQ of the same named resource, in `DEQ-NAMED-COUNTER SECTION.` [src/base/cobol_src/CRECUST.cbl:L521]
+    - Condition: `EXEC CICS DEQ RESOURCE(NCS-CUST-NO-NAME) LENGTH(16) RESP(WS-CICS-RESP) RESP2(WS-CICS-RESP2) END-EXEC.` [src/base/cobol_src/CRECUST.cbl:L529-L534]
+    - Condition: `IF WS-CICS-RESP NOT = DFHRESP(NORMAL)` [src/base/cobol_src/CRECUST.cbl:L536]
+      - Resulting Value: COMM-FAIL-CODE = '5' when the DEQ that releases the allocator fails via `MOVE '5' TO COMM-FAIL-CODE` [src/base/cobol_src/CRECUST.cbl:L538] (terminal: literal)
+
+## crecust-success-flag — CRECUST COMMAREA Success Flag COMM-SUCCESS (`PIC X`) [src/base/cobol_copy/CRECUST.cpy:L24]
+- crecust-success-flag
+  - Rule: Invalid customer title rejected before any datastore access, in `PREMIERE SECTION.` [src/base/cobol_src/CRECUST.cbl:L357]
+    - Condition: `END-EVALUATE.` [src/base/cobol_src/CRECUST.cbl:L406]
+    - Condition: `IF WS-TITLE-VALID = 'N'` [src/base/cobol_src/CRECUST.cbl:L408]
+      - Resulting Value: COMM-SUCCESS = 'N' via `MOVE 'N' TO COMM-SUCCESS` [src/base/cobol_src/CRECUST.cbl:L409] (terminal: literal)
+- crecust-success-flag
+  - Rule: Credit-check fan-out returned no usable score, in `PREMIERE SECTION.` [src/base/cobol_src/CRECUST.cbl:L357]
+    - Condition: `IF WS-CREDIT-CHECK-ERROR = 'Y'` [src/base/cobol_src/CRECUST.cbl:L429]
+      - Resulting Value: COMM-SUCCESS = 'N' via `MOVE 'N' TO COMM-SUCCESS` [src/base/cobol_src/CRECUST.cbl:L438] (terminal: literal)
+- crecust-success-flag
+  - Rule: Date-of-birth validation failed, in `PREMIERE SECTION.` [src/base/cobol_src/CRECUST.cbl:L357]
+    - Condition: `IF WS-DATE-OF-BIRTH-ERROR = 'Y'` [src/base/cobol_src/CRECUST.cbl:L452]
+      - Resulting Value: COMM-SUCCESS = 'N' via `MOVE 'N' TO COMM-SUCCESS` [src/base/cobol_src/CRECUST.cbl:L454] (terminal: literal)
+- crecust-success-flag
+  - Rule: ENQ on the customer-number named resource failed, in `ENQ-NAMED-COUNTER SECTION.` [src/base/cobol_src/CRECUST.cbl:L499]
+    - Condition: `EXEC CICS ENQ RESOURCE(NCS-CUST-NO-NAME) LENGTH(16) RESP(WS-CICS-RESP) RESP2(WS-CICS-RESP2) END-EXEC.` [src/base/cobol_src/CRECUST.cbl:L504-L509]
+    - Condition: `IF WS-CICS-RESP NOT = DFHRESP(NORMAL)` [src/base/cobol_src/CRECUST.cbl:L511]
+      - Resulting Value: COMM-SUCCESS = 'N' via `MOVE 'N' TO COMM-SUCCESS` [src/base/cobol_src/CRECUST.cbl:L512] (terminal: literal)
+- crecust-success-flag
+  - Rule: DEQ on the customer-number named resource failed, in `DEQ-NAMED-COUNTER SECTION.` [src/base/cobol_src/CRECUST.cbl:L521]
+    - Condition: `EXEC CICS DEQ RESOURCE(NCS-CUST-NO-NAME) LENGTH(16) RESP(WS-CICS-RESP) RESP2(WS-CICS-RESP2) END-EXEC.` [src/base/cobol_src/CRECUST.cbl:L529-L534]
+    - Condition: `IF WS-CICS-RESP NOT = DFHRESP(NORMAL)` [src/base/cobol_src/CRECUST.cbl:L536]
+      - Resulting Value: COMM-SUCCESS = 'N' via `MOVE 'N' TO COMM-SUCCESS` [src/base/cobol_src/CRECUST.cbl:L537] (terminal: literal)
+- crecust-success-flag
+  - Rule: PUT CONTAINER to a credit-agency child transaction failed, in `CREDIT-CHECK SECTION.` [src/base/cobol_src/CRECUST.cbl:L563]
+    - Condition: `IF WS-CICS-RESP NOT = DFHRESP(NORMAL)` [src/base/cobol_src/CRECUST.cbl:L623]
+      - Resulting Value: COMM-SUCCESS = 'N' via `MOVE 'N' TO COMM-SUCCESS` [src/base/cobol_src/CRECUST.cbl:L624] (terminal: literal)
+- crecust-success-flag
+  - Rule: RUN TRANSID of a credit-agency child transaction failed, in `CREDIT-CHECK SECTION.` [src/base/cobol_src/CRECUST.cbl:L563]
+    - Condition: `IF WS-CICS-RESP NOT = DFHRESP(NORMAL)` [src/base/cobol_src/CRECUST.cbl:L647]
+      - Resulting Value: COMM-SUCCESS = 'N' via `MOVE 'N' TO COMM-SUCCESS` [src/base/cobol_src/CRECUST.cbl:L648] (terminal: literal)
+- crecust-success-flag
+  - Rule: FETCH ANY returned NOTFINISHED with nothing retrieved from any agency, in `CREDIT-CHECK SECTION.` [src/base/cobol_src/CRECUST.cbl:L563]
+    - Condition: `IF WS-CICS-RESP = DFHRESP(NOTFINISHED) AND WS-CICS-RESP2 = 52` [src/base/cobol_src/CRECUST.cbl:L715-L716]
+    - Condition: `IF WS-RETRIEVED-CNT = 0` [src/base/cobol_src/CRECUST.cbl:L722]
+      - Resulting Value: COMM-SUCCESS = 'N' via `MOVE 'N' TO COMM-SUCCESS` [src/base/cobol_src/CRECUST.cbl:L733] (terminal: literal)
+- crecust-success-flag
+  - Rule: FETCH ANY returned INVREQ, meaning no child transaction was ever started, in `CREDIT-CHECK SECTION.` [src/base/cobol_src/CRECUST.cbl:L563]
+    - Condition: `IF WS-CICS-RESP = DFHRESP(INVREQ) AND WS-CICS-RESP2 = 1` [src/base/cobol_src/CRECUST.cbl:L805-L806]
+      - Resulting Value: COMM-SUCCESS = 'N' via `MOVE 'N' TO COMM-SUCCESS` [src/base/cobol_src/CRECUST.cbl:L816] (terminal: literal)
+- crecust-success-flag
+  - Rule: GET CONTAINER of a child reply failed, in `CREDIT-CHECK SECTION.` [src/base/cobol_src/CRECUST.cbl:L563]
+    - Condition: `IF WS-CICS-RESP NOT = DFHRESP(NORMAL)` [src/base/cobol_src/CRECUST.cbl:L958]
+      - Resulting Value: COMM-SUCCESS = 'N' via `MOVE 'N' TO COMM-SUCCESS` [src/base/cobol_src/CRECUST.cbl:L967] (terminal: literal)
+- crecust-success-flag
+  - Rule: Child transaction completion status was ABEND, in `CREDIT-CHECK SECTION.` [src/base/cobol_src/CRECUST.cbl:L563]
+    - Condition: `WHEN DFHVALUE(ABEND)` [src/base/cobol_src/CRECUST.cbl:L990]
+      - Resulting Value: COMM-SUCCESS = 'N' via `MOVE 'N' TO COMM-SUCCESS` [src/base/cobol_src/CRECUST.cbl:L1003] (terminal: literal)
+- crecust-success-flag
+  - Rule: Child transaction completion status was SECERROR, in `CREDIT-CHECK SECTION.` [src/base/cobol_src/CRECUST.cbl:L563]
+    - Condition: `WHEN DFHVALUE(SECERROR)` [src/base/cobol_src/CRECUST.cbl:L1009]
+      - Resulting Value: COMM-SUCCESS = 'N' via `MOVE 'N' TO COMM-SUCCESS` [src/base/cobol_src/CRECUST.cbl:L1022] (terminal: literal)
+- crecust-success-flag
+  - Rule: Child transaction completion status was any other value, in `CREDIT-CHECK SECTION.` [src/base/cobol_src/CRECUST.cbl:L563]
+    - Condition: `WHEN OTHER` [src/base/cobol_src/CRECUST.cbl:L1034]
+      - Resulting Value: COMM-SUCCESS = 'N' via `MOVE 'N' TO COMM-SUCCESS` [src/base/cobol_src/CRECUST.cbl:L1047] (terminal: literal)
+- crecust-success-flag
+  - Rule: WRITE of the CUSTOMER VSAM record failed, in `WRITE-CUSTOMER-VSAM SECTION.` [src/base/cobol_src/CRECUST.cbl:L1069]
+    - Condition: `IF WS-CICS-RESP NOT = DFHRESP(NORMAL)` [src/base/cobol_src/CRECUST.cbl:L1122]
+      - Resulting Value: COMM-SUCCESS = 'N' via `MOVE 'N' TO COMM-SUCCESS` [src/base/cobol_src/CRECUST.cbl:L1123] (terminal: literal)
+- crecust-success-flag
+  - Rule: STARTBR or READNEXT on the CUSTOMER control record failed, in `GET-LAST-CUSTOMER-VSAM SECTION.` [src/base/cobol_src/CRECUST.cbl:L1341]
+    - Condition: `IF WS-CICS-RESP IS NOT = DFHRESP(NORMAL)` [src/base/cobol_src/CRECUST.cbl:L1374]
+      - Resulting Value: COMM-SUCCESS = 'N' via `MOVE 'N' TO COMM-SUCCESS` [src/base/cobol_src/CRECUST.cbl:L1375] (terminal: literal)
+- crecust-success-flag
+  - Rule: REWRITE of the CUSTOMER control record failed, in `GET-LAST-CUSTOMER-VSAM SECTION.` [src/base/cobol_src/CRECUST.cbl:L1341]
+    - Condition: `IF WS-CICS-RESP IS NOT EQUAL TO DFHRESP(NORMAL)` [src/base/cobol_src/CRECUST.cbl:L1405]
+      - Resulting Value: COMM-SUCCESS = 'N' via `MOVE 'N' TO COMM-SUCCESS` [src/base/cobol_src/CRECUST.cbl:L1406] (terminal: literal)
+- crecust-success-flag
+  - Rule: All validation, allocation, credit checking and persistence succeeded, in `WRITE-CUSTOMER-VSAM SECTION.` [src/base/cobol_src/CRECUST.cbl:L1069]
+    - Condition: `MOVE CUSTOMER-SORTCODE OF OUTPUT-DATA TO COMM-SORTCODE. MOVE CUSTOMER-NUMBER OF OUTPUT-DATA TO COMM-NUMBER` [src/base/cobol_src/CRECUST.cbl:L1167-L1170]
+    - Condition: `MOVE 'Y' TO COMM-SUCCESS.` [src/base/cobol_src/CRECUST.cbl:L1172]
+      - Resulting Value: COMM-SUCCESS = 'Y' via `MOVE 'Y' TO COMM-SUCCESS.` [src/base/cobol_src/CRECUST.cbl:L1172] (terminal: literal)
+
+## crecust-fail-code — CRECUST COMMAREA Fail Code COMM-FAIL-CODE (`PIC X`) [src/base/cobol_copy/CRECUST.cpy:L25]
+- crecust-fail-code
+  - Rule: CRECUST code 'T' - invalid customer title, in `PREMIERE SECTION.` [src/base/cobol_src/CRECUST.cbl:L357]
+    - Condition: `IF WS-TITLE-VALID = 'N'` [src/base/cobol_src/CRECUST.cbl:L408]
+      - Resulting Value: COMM-FAIL-CODE = 'T', scoped to CRECUST only via `MOVE 'T' TO COMM-FAIL-CODE` [src/base/cobol_src/CRECUST.cbl:L410] (terminal: literal)
+- crecust-fail-code
+  - Rule: CRECUST code 'G' at the credit-check gate - no usable credit score, in `PREMIERE SECTION.` [src/base/cobol_src/CRECUST.cbl:L357]
+    - Condition: `IF WS-CREDIT-CHECK-ERROR = 'Y'` [src/base/cobol_src/CRECUST.cbl:L429]
+      - Resulting Value: COMM-FAIL-CODE = 'G', scoped to CRECUST only via `MOVE 'G' TO COMM-FAIL-CODE` [src/base/cobol_src/CRECUST.cbl:L439] (terminal: literal)
+- crecust-fail-code
+  - Rule: CRECUST code '3' - ENQ on the customer-number named resource failed, in `ENQ-NAMED-COUNTER SECTION.` [src/base/cobol_src/CRECUST.cbl:L499]
+    - Condition: `IF WS-CICS-RESP NOT = DFHRESP(NORMAL)` [src/base/cobol_src/CRECUST.cbl:L511]
+      - Resulting Value: COMM-FAIL-CODE = '3', scoped to CRECUST only via `MOVE '3' TO COMM-FAIL-CODE` [src/base/cobol_src/CRECUST.cbl:L513] (terminal: literal)
+- crecust-fail-code
+  - Rule: CRECUST code '5' - DEQ on the customer-number named resource failed, in `DEQ-NAMED-COUNTER SECTION.` [src/base/cobol_src/CRECUST.cbl:L521]
+    - Condition: `IF WS-CICS-RESP NOT = DFHRESP(NORMAL)` [src/base/cobol_src/CRECUST.cbl:L536]
+      - Resulting Value: COMM-FAIL-CODE = '5', scoped to CRECUST only via `MOVE '5' TO COMM-FAIL-CODE` [src/base/cobol_src/CRECUST.cbl:L538] (terminal: literal)
+- crecust-fail-code
+  - Rule: CRECUST code 'A' - PUT CONTAINER to a credit-agency child failed, in `CREDIT-CHECK SECTION.` [src/base/cobol_src/CRECUST.cbl:L563]
+    - Condition: `IF WS-CICS-RESP NOT = DFHRESP(NORMAL)` [src/base/cobol_src/CRECUST.cbl:L623]
+      - Resulting Value: COMM-FAIL-CODE = 'A', scoped to CRECUST only via `MOVE 'A' TO COMM-FAIL-CODE` [src/base/cobol_src/CRECUST.cbl:L625] (terminal: literal)
+- crecust-fail-code
+  - Rule: CRECUST code 'B' - RUN TRANSID of a credit-agency child failed, in `CREDIT-CHECK SECTION.` [src/base/cobol_src/CRECUST.cbl:L563]
+    - Condition: `IF WS-CICS-RESP NOT = DFHRESP(NORMAL)` [src/base/cobol_src/CRECUST.cbl:L647]
+      - Resulting Value: COMM-FAIL-CODE = 'B', scoped to CRECUST only via `MOVE 'B' TO COMM-FAIL-CODE` [src/base/cobol_src/CRECUST.cbl:L649] (terminal: literal)
+- crecust-fail-code
+  - Rule: CRECUST code 'C' - FETCH ANY NOTFINISHED with nothing retrieved, in `CREDIT-CHECK SECTION.` [src/base/cobol_src/CRECUST.cbl:L563]
+    - Condition: `IF WS-CICS-RESP = DFHRESP(NOTFINISHED) AND WS-CICS-RESP2 = 52` [src/base/cobol_src/CRECUST.cbl:L715-L716]
+    - Condition: `IF WS-RETRIEVED-CNT = 0` [src/base/cobol_src/CRECUST.cbl:L722]
+      - Resulting Value: COMM-FAIL-CODE = 'C', scoped to CRECUST only via `MOVE 'C' TO COMM-FAIL-CODE` [src/base/cobol_src/CRECUST.cbl:L734] (terminal: literal)
+- crecust-fail-code
+  - Rule: CRECUST code 'D' - FETCH ANY INVREQ, no child transaction started, in `CREDIT-CHECK SECTION.` [src/base/cobol_src/CRECUST.cbl:L563]
+    - Condition: `IF WS-CICS-RESP = DFHRESP(INVREQ) AND WS-CICS-RESP2 = 1` [src/base/cobol_src/CRECUST.cbl:L805-L806]
+      - Resulting Value: COMM-FAIL-CODE = 'D', scoped to CRECUST only via `MOVE 'D' TO COMM-FAIL-CODE` [src/base/cobol_src/CRECUST.cbl:L817] (terminal: literal)
+- crecust-fail-code
+  - Rule: CRECUST code 'E' - GET CONTAINER of a child reply failed, in `CREDIT-CHECK SECTION.` [src/base/cobol_src/CRECUST.cbl:L563]
+    - Condition: `IF WS-CICS-RESP NOT = DFHRESP(NORMAL)` [src/base/cobol_src/CRECUST.cbl:L958]
+      - Resulting Value: COMM-FAIL-CODE = 'E', scoped to CRECUST only via `MOVE 'E' TO COMM-FAIL-CODE` [src/base/cobol_src/CRECUST.cbl:L968] (terminal: literal)
+- crecust-fail-code
+  - Rule: CRECUST code 'F' - child completion status ABEND, in `CREDIT-CHECK SECTION.` [src/base/cobol_src/CRECUST.cbl:L563]
+    - Condition: `WHEN DFHVALUE(ABEND)` [src/base/cobol_src/CRECUST.cbl:L990]
+      - Resulting Value: COMM-FAIL-CODE = 'F', scoped to CRECUST only via `MOVE 'F' TO COMM-FAIL-CODE` [src/base/cobol_src/CRECUST.cbl:L1004] (terminal: literal)
+- crecust-fail-code
+  - Rule: CRECUST code 'G' at the child-completion gate - status SECERROR, the same character as the credit-check gate uses, recorded as found, in `CREDIT-CHECK SECTION.` [src/base/cobol_src/CRECUST.cbl:L563]
+    - Condition: `WHEN DFHVALUE(SECERROR)` [src/base/cobol_src/CRECUST.cbl:L1009]
+      - Resulting Value: COMM-FAIL-CODE = 'G', scoped to CRECUST only via `MOVE 'G' TO COMM-FAIL-CODE` [src/base/cobol_src/CRECUST.cbl:L1023] (terminal: literal)
+- crecust-fail-code
+  - Rule: CRECUST code 'H' - any other child completion status, in `CREDIT-CHECK SECTION.` [src/base/cobol_src/CRECUST.cbl:L563]
+    - Condition: `WHEN OTHER` [src/base/cobol_src/CRECUST.cbl:L1034]
+      - Resulting Value: COMM-FAIL-CODE = 'H', scoped to CRECUST only via `MOVE 'H' TO COMM-FAIL-CODE` [src/base/cobol_src/CRECUST.cbl:L1048] (terminal: literal)
+- crecust-fail-code
+  - Rule: CRECUST code '1' - WRITE of the CUSTOMER VSAM record failed, in `WRITE-CUSTOMER-VSAM SECTION.` [src/base/cobol_src/CRECUST.cbl:L1069]
+    - Condition: `IF WS-CICS-RESP NOT = DFHRESP(NORMAL)` [src/base/cobol_src/CRECUST.cbl:L1122]
+      - Resulting Value: COMM-FAIL-CODE = '1', scoped to CRECUST only via `MOVE '1' TO COMM-FAIL-CODE` [src/base/cobol_src/CRECUST.cbl:L1124] (terminal: literal)
+- crecust-fail-code
+  - Rule: CRECUST code '4' at the control-record browse - STARTBR or READNEXT failed, in `GET-LAST-CUSTOMER-VSAM SECTION.` [src/base/cobol_src/CRECUST.cbl:L1341]
+    - Condition: `IF WS-CICS-RESP IS NOT = DFHRESP(NORMAL)` [src/base/cobol_src/CRECUST.cbl:L1374]
+      - Resulting Value: COMM-FAIL-CODE = '4', scoped to CRECUST only via `MOVE '4' TO COMM-FAIL-CODE` [src/base/cobol_src/CRECUST.cbl:L1376] (terminal: literal)
+- crecust-fail-code
+  - Rule: CRECUST code '4' at the control-record rewrite - REWRITE failed, in `GET-LAST-CUSTOMER-VSAM SECTION.` [src/base/cobol_src/CRECUST.cbl:L1341]
+    - Condition: `IF WS-CICS-RESP IS NOT EQUAL TO DFHRESP(NORMAL)` [src/base/cobol_src/CRECUST.cbl:L1405]
+      - Resulting Value: COMM-FAIL-CODE = '4', scoped to CRECUST only via `MOVE '4' TO COMM-FAIL-CODE` [src/base/cobol_src/CRECUST.cbl:L1407] (terminal: literal)
+- crecust-fail-code
+  - Rule: CRECUST code 'O' - date of birth earlier than the Lilian epoch, in `DATE-OF-BIRTH-CHECK SECTION.` [src/base/cobol_src/CRECUST.cbl:L1422]
+    - Condition: `IF COMM-BIRTH-YEAR < 1601` [src/base/cobol_src/CRECUST.cbl:L1427]
+      - Resulting Value: COMM-FAIL-CODE = 'O', scoped to CRECUST only via `MOVE 'O' TO COMM-FAIL-CODE` [src/base/cobol_src/CRECUST.cbl:L1429] (terminal: literal)
+- crecust-fail-code
+  - Rule: CRECUST code 'Z' - CEEDAYS rejected the supplied date of birth, in `DATE-OF-BIRTH-CHECK SECTION.` [src/base/cobol_src/CRECUST.cbl:L1422]
+    - Condition: `IF NOT CEE000 OF FC THEN` [src/base/cobol_src/CRECUST.cbl:L1442]
+      - Resulting Value: COMM-FAIL-CODE = 'Z', scoped to CRECUST only via `MOVE 'Z' TO COMM-FAIL-CODE` [src/base/cobol_src/CRECUST.cbl:L1444] (terminal: literal)
+- crecust-fail-code
+  - Rule: CRECUST code 'O' at the age gate - implied age over 150 years, in `DATE-OF-BIRTH-CHECK SECTION.` [src/base/cobol_src/CRECUST.cbl:L1422]
+    - Condition: `IF WS-CUSTOMER-AGE > 150` [src/base/cobol_src/CRECUST.cbl:L1466]
+      - Resulting Value: COMM-FAIL-CODE = 'O', scoped to CRECUST only via `MOVE 'O' TO COMM-FAIL-CODE` [src/base/cobol_src/CRECUST.cbl:L1468] (terminal: literal)
+- crecust-fail-code
+  - Rule: CRECUST code 'Y' - date of birth in the future, in `DATE-OF-BIRTH-CHECK SECTION.` [src/base/cobol_src/CRECUST.cbl:L1422]
+    - Condition: `IF WS-TODAY-LILLIAN < WS-DATE-OF-BIRTH-LILLIAN` [src/base/cobol_src/CRECUST.cbl:L1472]
+      - Resulting Value: COMM-FAIL-CODE = 'Y', scoped to CRECUST only via `MOVE 'Y' TO COMM-FAIL-CODE` [src/base/cobol_src/CRECUST.cbl:L1474] (terminal: literal)
+- crecust-fail-code
+  - Rule: Cleared fail code on the success path, in `WRITE-CUSTOMER-VSAM SECTION.` [src/base/cobol_src/CRECUST.cbl:L1069]
+    - Condition: `MOVE 'Y' TO COMM-SUCCESS.` [src/base/cobol_src/CRECUST.cbl:L1172]
+    - Condition: `MOVE ' ' TO COMM-FAIL-CODE.` [src/base/cobol_src/CRECUST.cbl:L1173]
+      - Resulting Value: COMM-FAIL-CODE = ' ' via `MOVE ' ' TO COMM-FAIL-CODE.` [src/base/cobol_src/CRECUST.cbl:L1173] (terminal: literal)
+
+## dbcrfun-success-flag — DBCRFUN Payment COMMAREA Success Flag COMM-SUCCESS (`PIC X`) [src/base/cobol_copy/PAYDBCR.cpy:L19]
+- dbcrfun-success-flag
+  - Rule: Pessimistic initialisation before any processing, in `PREMIERE SECTION.` [src/base/cobol_src/DBCRFUN.cbl:L199]
+    - Condition: `MOVE 'N' TO COMM-SUCCESS` [src/base/cobol_src/DBCRFUN.cbl:L201]
+      - Resulting Value: COMM-SUCCESS = 'N' via `MOVE 'N' TO COMM-SUCCESS` [src/base/cobol_src/DBCRFUN.cbl:L201] (terminal: literal)
+- dbcrfun-success-flag
+  - Rule: SELECT of the ACCOUNT row failed, in `UPDATE-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/DBCRFUN.cbl:L235]
+    - Condition: `IF SQLCODE NOT = 0` [src/base/cobol_src/DBCRFUN.cbl:L279]
+      - Resulting Value: COMM-SUCCESS = 'N' via `MOVE 'N' TO COMM-SUCCESS` [src/base/cobol_src/DBCRFUN.cbl:L281] (terminal: literal)
+- dbcrfun-success-flag
+  - Rule: Payment requested against a MORTGAGE or LOAN account on the debit path, in `UPDATE-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/DBCRFUN.cbl:L235]
+    - Condition: `IF (HV-ACCOUNT-ACC-TYPE = 'MORTGAGE' AND COMM-FACILTYPE = 496) OR (HV-ACCOUNT-ACC-TYPE = 'LOAN ' AND COMM-FACILTYPE = 496)` [src/base/cobol_src/DBCRFUN.cbl:L330-L333]
+      - Resulting Value: COMM-SUCCESS = 'N' via `MOVE 'N' TO COMM-SUCCESS` [src/base/cobol_src/DBCRFUN.cbl:L334] (terminal: literal)
+- dbcrfun-success-flag
+  - Rule: Available balance would go negative on the FACILTYPE 496 payment channel, in `UPDATE-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/DBCRFUN.cbl:L235]
+    - Condition: `COMPUTE WS-DIFFERENCE = HV-ACCOUNT-AVAIL-BAL + COMM-AMT` [src/base/cobol_src/DBCRFUN.cbl:L341-L342]
+    - Condition: `IF WS-DIFFERENCE < 0 AND COMM-FACILTYPE = 496` [src/base/cobol_src/DBCRFUN.cbl:L344]
+      - Resulting Value: COMM-SUCCESS = 'N' via `MOVE 'N' TO COMM-SUCCESS` [src/base/cobol_src/DBCRFUN.cbl:L346] (terminal: literal)
+- dbcrfun-success-flag
+  - Rule: Payment requested against a MORTGAGE or LOAN account on the credit path, in `UPDATE-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/DBCRFUN.cbl:L235]
+    - Condition: `IF (HV-ACCOUNT-ACC-TYPE = 'MORTGAGE' AND COMM-FACILTYPE = 496) OR (HV-ACCOUNT-ACC-TYPE = 'LOAN ' AND COMM-FACILTYPE = 496)` [src/base/cobol_src/DBCRFUN.cbl:L368-L371]
+      - Resulting Value: COMM-SUCCESS = 'N' via `MOVE 'N' TO COMM-SUCCESS` [src/base/cobol_src/DBCRFUN.cbl:L372] (terminal: literal)
+- dbcrfun-success-flag
+  - Rule: UPDATE of the ACCOUNT row failed, in `UPDATE-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/DBCRFUN.cbl:L235]
+    - Condition: `IF SQLCODE NOT = 0` [src/base/cobol_src/DBCRFUN.cbl:L425]
+      - Resulting Value: COMM-SUCCESS = 'N' via `MOVE 'N' TO COMM-SUCCESS` [src/base/cobol_src/DBCRFUN.cbl:L426] (terminal: literal)
+- dbcrfun-success-flag
+  - Rule: INSERT into PROCTRAN failed after the ACCOUNT row had already been updated, in `WRITE-TO-PROCTRAN-DB2 SECTION.` [src/base/cobol_src/DBCRFUN.cbl:L460]
+    - Condition: `IF SQLCODE NOT = 0` [src/base/cobol_src/DBCRFUN.cbl:L554]
+      - Resulting Value: COMM-SUCCESS = 'N' via `MOVE 'N' TO COMM-SUCCESS` [src/base/cobol_src/DBCRFUN.cbl:L636] (terminal: literal)
+- dbcrfun-success-flag
+  - Rule: ACCOUNT row updated and PROCTRAN row written, in `WRITE-TO-PROCTRAN-DB2 SECTION.` [src/base/cobol_src/DBCRFUN.cbl:L460]
+    - Condition: `ELSE` [src/base/cobol_src/DBCRFUN.cbl:L644]
+      - Resulting Value: COMM-SUCCESS = 'Y' via `MOVE 'Y' TO COMM-SUCCESS` [src/base/cobol_src/DBCRFUN.cbl:L649] (terminal: literal)
+- dbcrfun-success-flag
+  - Rule: Abend handler reached, in `ABEND-HANDLING SECTION.` [src/base/cobol_src/DBCRFUN.cbl:L701]
+    - Condition: `MOVE 'N' TO COMM-SUCCESS` [src/base/cobol_src/DBCRFUN.cbl:L825]
+      - Resulting Value: COMM-SUCCESS = 'N' via `MOVE 'N' TO COMM-SUCCESS` [src/base/cobol_src/DBCRFUN.cbl:L825] (terminal: literal)
+
+## dbcrfun-fail-code — DBCRFUN Payment COMMAREA Fail Code COMM-FAIL-CODE (`PIC X`) [src/base/cobol_copy/PAYDBCR.cpy:L20]
+- dbcrfun-fail-code
+  - Rule: DBCRFUN code '0' - pessimistic initialisation before any processing, in `PREMIERE SECTION.` [src/base/cobol_src/DBCRFUN.cbl:L199]
+    - Condition: `MOVE '0' TO COMM-FAIL-CODE` [src/base/cobol_src/DBCRFUN.cbl:L202]
+      - Resulting Value: COMM-FAIL-CODE = '0', scoped to DBCRFUN only via `MOVE '0' TO COMM-FAIL-CODE` [src/base/cobol_src/DBCRFUN.cbl:L202] (terminal: literal)
+- dbcrfun-fail-code
+  - Rule: DBCRFUN code '1' - the requested ACCOUNT row does not exist, in `UPDATE-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/DBCRFUN.cbl:L235]
+    - Condition: `IF SQLCODE NOT = 0` [src/base/cobol_src/DBCRFUN.cbl:L279]
+    - Condition: `IF SQLCODE = +100` [src/base/cobol_src/DBCRFUN.cbl:L283]
+      - Resulting Value: COMM-FAIL-CODE = '1', scoped to DBCRFUN only via `MOVE '1' TO COMM-FAIL-CODE` [src/base/cobol_src/DBCRFUN.cbl:L284] (terminal: literal)
+- dbcrfun-fail-code
+  - Rule: DBCRFUN code '2' at the SELECT gate - any other SQL error, in `UPDATE-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/DBCRFUN.cbl:L235]
+    - Condition: `ELSE` [src/base/cobol_src/DBCRFUN.cbl:L285]
+      - Resulting Value: COMM-FAIL-CODE = '2', scoped to DBCRFUN only via `MOVE '2' TO COMM-FAIL-CODE` [src/base/cobol_src/DBCRFUN.cbl:L286] (terminal: literal)
+- dbcrfun-fail-code
+  - Rule: DBCRFUN code '4' on the debit path - product restriction on the payment channel, which is a different meaning from XFRFUN's '4', in `UPDATE-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/DBCRFUN.cbl:L235]
+    - Condition: channel comment `* COMM-FACILTYPE(496 = NONE)` [src/base/cobol_src/DBCRFUN.cbl:L325]
+    - Condition: `IF (HV-ACCOUNT-ACC-TYPE = 'MORTGAGE' AND COMM-FACILTYPE = 496) OR (HV-ACCOUNT-ACC-TYPE = 'LOAN ' AND COMM-FACILTYPE = 496)` [src/base/cobol_src/DBCRFUN.cbl:L330-L333]
+      - Resulting Value: COMM-FAIL-CODE = '4', scoped to DBCRFUN only via `MOVE '4' TO COMM-FAIL-CODE` [src/base/cobol_src/DBCRFUN.cbl:L335] (terminal: literal)
+      - Resulting Value: control transferred out of the update section via `GO TO UAD999` [src/base/cobol_src/DBCRFUN.cbl:L337] (terminal: literal)
+- dbcrfun-fail-code
+  - Rule: DBCRFUN code '3' - overdraft gate, applied only on the FACILTYPE 496 payment channel, in `UPDATE-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/DBCRFUN.cbl:L235]
+    - Condition: `MOVE 0 TO WS-DIFFERENCE` [src/base/cobol_src/DBCRFUN.cbl:L340]
+    - Condition: `COMPUTE WS-DIFFERENCE = HV-ACCOUNT-AVAIL-BAL + COMM-AMT` [src/base/cobol_src/DBCRFUN.cbl:L341-L342]
+    - Condition: `IF WS-DIFFERENCE < 0 AND COMM-FACILTYPE = 496` [src/base/cobol_src/DBCRFUN.cbl:L344]
+      - Resulting Value: COMM-FAIL-CODE = '3', scoped to DBCRFUN only via `MOVE '3' TO COMM-FAIL-CODE` [src/base/cobol_src/DBCRFUN.cbl:L347] (terminal: literal)
+      - Resulting Value: COMM-AMT supplied by the caller drives the sign of the difference via `03 COMM-AMT PIC S9(10)V99.` [src/base/cobol_copy/PAYDBCR.cpy:L8] (terminal: input field)
+- dbcrfun-fail-code
+  - Rule: DBCRFUN code '4' on the credit path - the same product restriction expressed a second time for payment credits, in `UPDATE-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/DBCRFUN.cbl:L235]
+    - Condition: channel comment `* COMM-FACILTYPE(496 = NONE)` [src/base/cobol_src/DBCRFUN.cbl:L362]
+    - Condition: `IF (HV-ACCOUNT-ACC-TYPE = 'MORTGAGE' AND COMM-FACILTYPE = 496) OR (HV-ACCOUNT-ACC-TYPE = 'LOAN ' AND COMM-FACILTYPE = 496)` [src/base/cobol_src/DBCRFUN.cbl:L368-L371]
+      - Resulting Value: COMM-FAIL-CODE = '4', scoped to DBCRFUN only via `MOVE '4' TO COMM-FAIL-CODE` [src/base/cobol_src/DBCRFUN.cbl:L373] (terminal: literal)
+- dbcrfun-fail-code
+  - Rule: DBCRFUN code '2' at the UPDATE gate - SQL error on the ACCOUNT row update, in `UPDATE-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/DBCRFUN.cbl:L235]
+    - Condition: `IF SQLCODE NOT = 0` [src/base/cobol_src/DBCRFUN.cbl:L425]
+      - Resulting Value: COMM-FAIL-CODE = '2', scoped to DBCRFUN only via `MOVE '2' TO COMM-FAIL-CODE` [src/base/cobol_src/DBCRFUN.cbl:L427] (terminal: literal)
+- dbcrfun-fail-code
+  - Rule: DBCRFUN code '02' - a two-character literal moved into a single-byte PIC X field after a failed PROCTRAN INSERT, recorded exactly as found, in `WRITE-TO-PROCTRAN-DB2 SECTION.` [src/base/cobol_src/DBCRFUN.cbl:L460]
+    - Condition: `IF SQLCODE NOT = 0` [src/base/cobol_src/DBCRFUN.cbl:L554]
+      - Resulting Value: COMM-FAIL-CODE receives the two-character literal '02' and retains only its first character via `MOVE '02' TO COMM-FAIL-CODE` [src/base/cobol_src/DBCRFUN.cbl:L637] (terminal: literal)
+      - Resulting Value: declared width of the receiving field is a single byte via `03 COMM-FAIL-CODE PIC X.` [src/base/cobol_copy/PAYDBCR.cpy:L20] (terminal: input field)
+- dbcrfun-fail-code
+  - Rule: DBCRFUN code '0' on the success path, in `WRITE-TO-PROCTRAN-DB2 SECTION.` [src/base/cobol_src/DBCRFUN.cbl:L460]
+    - Condition: `ELSE` [src/base/cobol_src/DBCRFUN.cbl:L644]
+      - Resulting Value: COMM-FAIL-CODE = '0', scoped to DBCRFUN only via `MOVE '0' TO COMM-FAIL-CODE` [src/base/cobol_src/DBCRFUN.cbl:L650] (terminal: literal)
+- dbcrfun-fail-code
+  - Rule: DBCRFUN code '2' in the abend handler, in `ABEND-HANDLING SECTION.` [src/base/cobol_src/DBCRFUN.cbl:L701]
+    - Condition: handler tail `END-IF` [src/base/cobol_src/DBCRFUN.cbl:L823]
+      - Resulting Value: COMM-FAIL-CODE = '2', scoped to DBCRFUN only via `MOVE '2' TO COMM-FAIL-CODE` [src/base/cobol_src/DBCRFUN.cbl:L826] (terminal: literal)
+
+## account-available-balance — ACCOUNT Available Balance (`PIC S9(10)V99`) [src/base/cobol_copy/ACCOUNT.cpy:L34]
+- account-available-balance
+  - Rule: BANKDATA seeding of a pseudo-random opening balance, in `POPULATE-ACC SECTION.` [src/base/cobol_src/BANKDATA.cbl:L716]
+    - Condition: `COMPUTE HV-ACCOUNT-AVAILABLE-BALANCE = ((999999 - 1) * FUNCTION RANDOM) + 1.` [src/base/cobol_src/BANKDATA.cbl:L785-L787]
+      - Resulting Value: available balance between the literal bounds 1 and 999999 via `COMPUTE HV-ACCOUNT-AVAILABLE-BALANCE = ((999999 - 1) * FUNCTION RANDOM) + 1.` [src/base/cobol_src/BANKDATA.cbl:L785-L787] (terminal: literal)
+- account-available-balance
+  - Rule: BANKDATA sign inversion for LOAN and MORTGAGE products, in `POPULATE-ACC SECTION.` [src/base/cobol_src/BANKDATA.cbl:L716]
+    - Condition: `IF HV-ACCOUNT-TYPE OF HOST-ACCOUNT-ROW = 'LOAN ' OR HV-ACCOUNT-TYPE OF HOST-ACCOUNT-ROW = 'MORTGAGE'` [src/base/cobol_src/BANKDATA.cbl:L797-L798]
+      - Resulting Value: available balance negated so borrowing products carry a debit balance via `COMPUTE HV-ACCOUNT-AVAILABLE-BALANCE OF HOST-ACCOUNT-ROW = 0 - HV-ACCOUNT-AVAILABLE-BALANCE OF HOST-ACCOUNT-ROW` [src/base/cobol_src/BANKDATA.cbl:L802-L804] (terminal: literal)
+- account-available-balance
+  - Rule: CREACC persistence of the balance supplied in the CREACC COMMAREA, in `WRITE-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/CREACC.cbl:L774]
+    - Condition: `MOVE COMM-AVAIL-BAL IN DFHCOMMAREA TO HV-ACCOUNT-AVAIL-BAL.` [src/base/cobol_src/CREACC.cbl:L787]
+    - Condition: INSERT column list entry `:HV-ACCOUNT-AVAIL-BAL,` [src/base/cobol_src/CREACC.cbl:L851]
+      - Resulting Value: available balance taken from COMM-AVAIL-BAL supplied by the caller via `03 COMM-AVAIL-BAL PIC S9(10)V99.` [src/base/cobol_copy/CREACC.cpy:L30] (terminal: input field)
+- account-available-balance
+  - Rule: DBCRFUN overdraft gate reads the stored available balance as the predicate, in `UPDATE-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/DBCRFUN.cbl:L235]
+    - Condition: `MOVE 0 TO WS-DIFFERENCE` [src/base/cobol_src/DBCRFUN.cbl:L340]
+    - Condition: `COMPUTE WS-DIFFERENCE = HV-ACCOUNT-AVAIL-BAL + COMM-AMT` [src/base/cobol_src/DBCRFUN.cbl:L341-L342]
+    - Condition: `IF WS-DIFFERENCE < 0 AND COMM-FACILTYPE = 496` [src/base/cobol_src/DBCRFUN.cbl:L344]
+      - Resulting Value: HV-ACCOUNT-AVAIL-BAL read from the ACCOUNT row by the preceding SELECT via `:HV-ACCOUNT-AVAIL-BAL,` [src/base/cobol_src/DBCRFUN.cbl:L268] (terminal: input field)
+      - Resulting Value: COMM-AMT supplied by the caller decides whether the gate trips via `03 COMM-AMT PIC S9(10)V99.` [src/base/cobol_copy/PAYDBCR.cpy:L8] (terminal: input field)
+- account-available-balance
+  - Rule: DBCRFUN post-payment available balance, in `UPDATE-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/DBCRFUN.cbl:L235]
+    - Condition: `COMPUTE HV-ACCOUNT-AVAIL-BAL = HV-ACCOUNT-AVAIL-BAL + COMM-AMT.` [src/base/cobol_src/DBCRFUN.cbl:L384-L385]
+    - Condition: UPDATE SET clause `ACCOUNT_AVAILABLE_BALANCE = :HV-ACCOUNT-AVAIL-BAL,` [src/base/cobol_src/DBCRFUN.cbl:L404]
+      - Resulting Value: available balance = previous available balance plus COMM-AMT via `COMPUTE HV-ACCOUNT-AVAIL-BAL = HV-ACCOUNT-AVAIL-BAL + COMM-AMT.` [src/base/cobol_src/DBCRFUN.cbl:L384-L385] (terminal: literal)
+      - Resulting Value: COMM-AMT supplied by the caller in the PAYDBCR COMMAREA via `03 COMM-AMT PIC S9(10)V99.` [src/base/cobol_copy/PAYDBCR.cpy:L8] (terminal: input field)
+- account-available-balance
+  - Rule: XFRFUN from-leg debit of the available balance, in `UPDATE-ACCOUNT-DB2-FROM SECTION.` [src/base/cobol_src/XFRFUN.cbl:L919]
+    - Condition: `COMPUTE HV-ACCOUNT-AVAIL-BAL = HV-ACCOUNT-AVAIL-BAL - COMM-AMT.` [src/base/cobol_src/XFRFUN.cbl:L986-L987]
+    - Condition: UPDATE SET clause `ACCOUNT_AVAILABLE_BALANCE = :HV-ACCOUNT-AVAIL-BAL,` [src/base/cobol_src/XFRFUN.cbl:L1004]
+      - Resulting Value: available balance = previous available balance minus COMM-AMT via `COMPUTE HV-ACCOUNT-AVAIL-BAL = HV-ACCOUNT-AVAIL-BAL - COMM-AMT.` [src/base/cobol_src/XFRFUN.cbl:L986-L987] (terminal: literal)
+      - Resulting Value: COMM-AMT supplied by the caller in the XFRFUN COMMAREA via `03 COMM-AMT PIC S9(10)V99.` [src/base/cobol_copy/XFRFUN.cpy:L11] (terminal: input field)
+- account-available-balance
+  - Rule: XFRFUN to-leg credit of the available balance, a separate ACCOUNT instantiation from the from-leg, in `UPDATE-ACCOUNT-DB2-TO SECTION.` [src/base/cobol_src/XFRFUN.cbl:L1041]
+    - Condition: second layout instantiation `COPY ACCOUNT REPLACING "ACCOUNT" BY "ACCOUNT2".` [src/base/cobol_src/XFRFUN.cbl:L128]
+    - Condition: `COMPUTE HV-ACCOUNT-AVAIL-BAL = HV-ACCOUNT-AVAIL-BAL + COMM-AMT.` [src/base/cobol_src/XFRFUN.cbl:L1357-L1358]
+      - Resulting Value: available balance = previous available balance plus COMM-AMT via `COMPUTE HV-ACCOUNT-AVAIL-BAL = HV-ACCOUNT-AVAIL-BAL + COMM-AMT.` [src/base/cobol_src/XFRFUN.cbl:L1357-L1358] (terminal: literal)
+      - Resulting Value: COMM-AMT supplied by the caller in the XFRFUN COMMAREA via `03 COMM-AMT PIC S9(10)V99.` [src/base/cobol_copy/XFRFUN.cpy:L11] (terminal: input field)
+- account-available-balance
+  - Rule: INQACC read-out of the stored available balance into the inquiry COMMAREA, in `PREMIERE SECTION.` [src/base/cobol_src/INQACC.cbl:L203]
+    - Condition: `IF ACCOUNT-TYPE = SPACES OR LOW-VALUES` [src/base/cobol_src/INQACC.cbl:L229]
+    - Condition: `ELSE` [src/base/cobol_src/INQACC.cbl:L231]
+      - Resulting Value: INQACC-AVAIL-BAL copied from the stored ACCOUNT field via `MOVE ACCOUNT-AVAILABLE-BALANCE TO INQACC-AVAIL-BAL` [src/base/cobol_src/INQACC.cbl:L242] (terminal: input field)
+- account-available-balance
+  - Rule: UPDACC deliberately excludes the balance columns from its UPDATE, so an account update cannot change the available balance, in `UPDATE-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/UPDACC.cbl:L180]
+    - Condition: `EXEC SQL UPDATE ACCOUNT SET ACCOUNT_TYPE = :HV-ACCOUNT-ACC-TYPE, ACCOUNT_INTEREST_RATE = :HV-ACCOUNT-INT-RATE, ACCOUNT_OVERDRAFT_LIMIT = :HV-ACCOUNT-OVERDRAFT-LIM WHERE (ACCOUNT_SORTCODE = :HV-ACCOUNT-SORTCODE AND ACCOUNT_NUMBER = :HV-ACCOUNT-ACC-NO) END-EXEC.` [src/base/cobol_src/UPDACC.cbl:L278-L285]
+      - Resulting Value: available balance is echoed back unchanged from the row just read via `MOVE HV-ACCOUNT-AVAIL-BAL TO COMM-AVAIL-BAL.` [src/base/cobol_src/UPDACC.cbl:L324] (terminal: input field)
+- account-available-balance
+  - Rule: DELACC read-out of the stored available balance before deletion, in `READ-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/DELACC.cbl:L236]
+    - Condition: `MOVE ACCOUNT-AVAILABLE-BALANCE TO DELACC-AVAIL-BAL.` [src/base/cobol_src/DELACC.cbl:L423]
+      - Resulting Value: DELACC-AVAIL-BAL copied from the stored ACCOUNT field via `MOVE ACCOUNT-AVAILABLE-BALANCE TO DELACC-AVAIL-BAL.` [src/base/cobol_src/DELACC.cbl:L423] (terminal: input field)
+
+## account-actual-balance — ACCOUNT Actual Balance (`PIC S9(10)V99`) [src/base/cobol_copy/ACCOUNT.cpy:L35]
+- account-actual-balance
+  - Rule: BANKDATA seeding of the actual balance from the available balance, in `POPULATE-ACC SECTION.` [src/base/cobol_src/BANKDATA.cbl:L716]
+    - Condition: `COMPUTE HV-ACCOUNT-AVAILABLE-BALANCE = ((999999 - 1) * FUNCTION RANDOM) + 1.` [src/base/cobol_src/BANKDATA.cbl:L785-L787]
+    - Condition: `MOVE HV-ACCOUNT-AVAILABLE-BALANCE TO HV-ACCOUNT-ACTUAL-BALANCE.` [src/base/cobol_src/BANKDATA.cbl:L788-L789]
+      - Resulting Value: actual balance equals the seeded available balance via `MOVE HV-ACCOUNT-AVAILABLE-BALANCE TO HV-ACCOUNT-ACTUAL-BALANCE.` [src/base/cobol_src/BANKDATA.cbl:L788-L789] (terminal: literal)
+- account-actual-balance
+  - Rule: BANKDATA sign inversion for LOAN and MORTGAGE products, in `POPULATE-ACC SECTION.` [src/base/cobol_src/BANKDATA.cbl:L716]
+    - Condition: `IF HV-ACCOUNT-TYPE OF HOST-ACCOUNT-ROW = 'LOAN ' OR HV-ACCOUNT-TYPE OF HOST-ACCOUNT-ROW = 'MORTGAGE'` [src/base/cobol_src/BANKDATA.cbl:L797-L798]
+      - Resulting Value: actual balance negated so borrowing products carry a debit balance via `COMPUTE HV-ACCOUNT-ACTUAL-BALANCE = 0 - HV-ACCOUNT-ACTUAL-BALANCE OF HOST-ACCOUNT-ROW` [src/base/cobol_src/BANKDATA.cbl:L799-L800] (terminal: literal)
+- account-actual-balance
+  - Rule: CREACC persistence of the actual balance supplied in the CREACC COMMAREA, in `WRITE-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/CREACC.cbl:L774]
+    - Condition: `MOVE COMM-ACT-BAL TO HV-ACCOUNT-ACTUAL-BAL.` [src/base/cobol_src/CREACC.cbl:L788]
+    - Condition: INSERT column list entry `:HV-ACCOUNT-ACTUAL-BAL` [src/base/cobol_src/CREACC.cbl:L852]
+      - Resulting Value: actual balance taken from COMM-ACT-BAL supplied by the caller via `03 COMM-ACT-BAL PIC S9(10)V99.` [src/base/cobol_copy/CREACC.cpy:L31] (terminal: input field)
+- account-actual-balance
+  - Rule: DBCRFUN post-payment actual balance, moved in step with the available balance and without any overdraft gate of its own, in `UPDATE-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/DBCRFUN.cbl:L235]
+    - Condition: `COMPUTE HV-ACCOUNT-ACTUAL-BAL = HV-ACCOUNT-ACTUAL-BAL + COMM-AMT.` [src/base/cobol_src/DBCRFUN.cbl:L386-L387]
+    - Condition: UPDATE SET clause `ACCOUNT_ACTUAL_BALANCE = :HV-ACCOUNT-ACTUAL-BAL` [src/base/cobol_src/DBCRFUN.cbl:L405]
+      - Resulting Value: actual balance = previous actual balance plus COMM-AMT via `COMPUTE HV-ACCOUNT-ACTUAL-BAL = HV-ACCOUNT-ACTUAL-BAL + COMM-AMT.` [src/base/cobol_src/DBCRFUN.cbl:L386-L387] (terminal: literal)
+      - Resulting Value: COMM-AMT supplied by the caller in the PAYDBCR COMMAREA via `03 COMM-AMT PIC S9(10)V99.` [src/base/cobol_copy/PAYDBCR.cpy:L8] (terminal: input field)
+- account-actual-balance
+  - Rule: XFRFUN from-leg debit of the actual balance, in `UPDATE-ACCOUNT-DB2-FROM SECTION.` [src/base/cobol_src/XFRFUN.cbl:L919]
+    - Condition: `COMPUTE HV-ACCOUNT-ACTUAL-BAL = HV-ACCOUNT-ACTUAL-BAL - COMM-AMT.` [src/base/cobol_src/XFRFUN.cbl:L989-L990]
+    - Condition: UPDATE SET clause `ACCOUNT_ACTUAL_BALANCE = :HV-ACCOUNT-ACTUAL-BAL` [src/base/cobol_src/XFRFUN.cbl:L1005]
+      - Resulting Value: actual balance = previous actual balance minus COMM-AMT via `COMPUTE HV-ACCOUNT-ACTUAL-BAL = HV-ACCOUNT-ACTUAL-BAL - COMM-AMT.` [src/base/cobol_src/XFRFUN.cbl:L989-L990] (terminal: literal)
+      - Resulting Value: COMM-AMT supplied by the caller in the XFRFUN COMMAREA via `03 COMM-AMT PIC S9(10)V99.` [src/base/cobol_copy/XFRFUN.cpy:L11] (terminal: input field)
+- account-actual-balance
+  - Rule: XFRFUN to-leg credit of the actual balance, in `UPDATE-ACCOUNT-DB2-TO SECTION.` [src/base/cobol_src/XFRFUN.cbl:L1041]
+    - Condition: `COMPUTE HV-ACCOUNT-ACTUAL-BAL = HV-ACCOUNT-ACTUAL-BAL + COMM-AMT.` [src/base/cobol_src/XFRFUN.cbl:L1359-L1360]
+    - Condition: UPDATE SET clause `ACCOUNT_ACTUAL_BALANCE = :HV-ACCOUNT-ACTUAL-BAL` [src/base/cobol_src/XFRFUN.cbl:L1375]
+      - Resulting Value: actual balance = previous actual balance plus COMM-AMT via `COMPUTE HV-ACCOUNT-ACTUAL-BAL = HV-ACCOUNT-ACTUAL-BAL + COMM-AMT.` [src/base/cobol_src/XFRFUN.cbl:L1359-L1360] (terminal: literal)
+      - Resulting Value: COMM-AMT supplied by the caller in the XFRFUN COMMAREA via `03 COMM-AMT PIC S9(10)V99.` [src/base/cobol_copy/XFRFUN.cpy:L11] (terminal: input field)
+- account-actual-balance
+  - Rule: DELACC carries the terminal actual balance into the PROCTRAN amount, so the deletion record preserves the closing position, in `READ-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/DELACC.cbl:L236]
+    - Condition: `MOVE ACCOUNT-ACTUAL-BALANCE TO ACCOUNT-ACT-BAL-STORE.` [src/base/cobol_src/DELACC.cbl:L425]
+    - Condition: `MOVE ACCOUNT-ACT-BAL-STORE TO HV-PROCTRAN-AMOUNT.` [src/base/cobol_src/DELACC.cbl:L519]
+      - Resulting Value: PROCTRAN amount = actual balance at the moment of deletion via `MOVE ACCOUNT-ACT-BAL-STORE TO HV-PROCTRAN-AMOUNT.` [src/base/cobol_src/DELACC.cbl:L519] (terminal: input field)
+- account-actual-balance
+  - Rule: INQACC read-out of the stored actual balance into the inquiry COMMAREA, in `PREMIERE SECTION.` [src/base/cobol_src/INQACC.cbl:L203]
+    - Condition: `ELSE` [src/base/cobol_src/INQACC.cbl:L231]
+      - Resulting Value: INQACC-ACTUAL-BAL copied from the stored ACCOUNT field via `MOVE ACCOUNT-ACTUAL-BALANCE TO INQACC-ACTUAL-BAL` [src/base/cobol_src/INQACC.cbl:L243] (terminal: input field)
+- account-actual-balance
+  - Rule: UPDACC excludes the balance columns from its UPDATE, so an account update cannot change the actual balance, in `UPDATE-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/UPDACC.cbl:L180]
+    - Condition: `EXEC SQL UPDATE ACCOUNT SET ACCOUNT_TYPE = :HV-ACCOUNT-ACC-TYPE, ACCOUNT_INTEREST_RATE = :HV-ACCOUNT-INT-RATE, ACCOUNT_OVERDRAFT_LIMIT = :HV-ACCOUNT-OVERDRAFT-LIM WHERE (ACCOUNT_SORTCODE = :HV-ACCOUNT-SORTCODE AND ACCOUNT_NUMBER = :HV-ACCOUNT-ACC-NO) END-EXEC.` [src/base/cobol_src/UPDACC.cbl:L278-L285]
+      - Resulting Value: actual balance is echoed back unchanged from the row just read via `MOVE HV-ACCOUNT-ACTUAL-BAL TO COMM-ACTUAL-BAL.` [src/base/cobol_src/UPDACC.cbl:L325] (terminal: input field)
+
+## customer-credit-score — CUSTOMER Credit Score (`PIC 999`) [src/base/cobol_copy/CUSTOMER.cpy:L28]
+- customer-credit-score
+  - Rule: CRDTAGY1 pseudo-random agency score, container CIPA, in `PREMIERE SECTION.` [src/base/cobol_src/CRDTAGY1.cbl:L113]
+    - Condition: `MOVE 'CIPA ' TO WS-CONTAINER-NAME.` [src/base/cobol_src/CRDTAGY1.cbl:L120]
+    - Condition: `MOVE EIBTASKN TO WS-SEED.` [src/base/cobol_src/CRDTAGY1.cbl:L122]
+    - Condition: `COMPUTE WS-NEW-CREDSCORE = ((999 - 1) * FUNCTION RANDOM) + 1.` [src/base/cobol_src/CRDTAGY1.cbl:L215-L216]
+      - Resulting Value: score between the literal bounds 1 and 999 via `COMPUTE WS-NEW-CREDSCORE = ((999 - 1) * FUNCTION RANDOM) + 1.` [src/base/cobol_src/CRDTAGY1.cbl:L215-L216] (terminal: literal)
+      - Resulting Value: EIBTASKN supplied by CICS as the random seed via `MOVE EIBTASKN TO WS-SEED.` [src/base/cobol_src/CRDTAGY1.cbl:L122] (terminal: input field)
+      - Resulting Value: score returned to CRECUST in the container via `EXEC CICS PUT CONTAINER(WS-CONTAINER-NAME) FROM(WS-CONT-IN) FLENGTH(WS-CONTAINER-LEN) CHANNEL(WS-CHANNEL-NAME)` [src/base/cobol_src/CRDTAGY1.cbl:L225-L228] (terminal: literal)
+- customer-credit-score
+  - Rule: CRDTAGY2 pseudo-random agency score, container CIPB, in `PREMIERE SECTION.` [src/base/cobol_src/CRDTAGY2.cbl:L112]
+    - Condition: `MOVE 'CIPB ' TO WS-CONTAINER-NAME.` [src/base/cobol_src/CRDTAGY2.cbl:L119]
+    - Condition: `MOVE EIBTASKN TO WS-SEED.` [src/base/cobol_src/CRDTAGY2.cbl:L121]
+    - Condition: `COMPUTE WS-NEW-CREDSCORE = ((999 - 1) * FUNCTION RANDOM) + 1.` [src/base/cobol_src/CRDTAGY2.cbl:L215-L216]
+      - Resulting Value: score between the literal bounds 1 and 999 via `COMPUTE WS-NEW-CREDSCORE = ((999 - 1) * FUNCTION RANDOM) + 1.` [src/base/cobol_src/CRDTAGY2.cbl:L215-L216] (terminal: literal)
+      - Resulting Value: EIBTASKN supplied by CICS as the random seed via `MOVE EIBTASKN TO WS-SEED.` [src/base/cobol_src/CRDTAGY2.cbl:L121] (terminal: input field)
+- customer-credit-score
+  - Rule: CRDTAGY3 pseudo-random agency score, container CIPC, in `PREMIERE SECTION.` [src/base/cobol_src/CRDTAGY3.cbl:L112]
+    - Condition: `MOVE 'CIPC ' TO WS-CONTAINER-NAME.` [src/base/cobol_src/CRDTAGY3.cbl:L119]
+    - Condition: `MOVE EIBTASKN TO WS-SEED.` [src/base/cobol_src/CRDTAGY3.cbl:L121]
+    - Condition: `COMPUTE WS-NEW-CREDSCORE = ((999 - 1) * FUNCTION RANDOM) + 1.` [src/base/cobol_src/CRDTAGY3.cbl:L213-L214]
+      - Resulting Value: score between the literal bounds 1 and 999 via `COMPUTE WS-NEW-CREDSCORE = ((999 - 1) * FUNCTION RANDOM) + 1.` [src/base/cobol_src/CRDTAGY3.cbl:L213-L214] (terminal: literal)
+      - Resulting Value: EIBTASKN supplied by CICS as the random seed via `MOVE EIBTASKN TO WS-SEED.` [src/base/cobol_src/CRDTAGY3.cbl:L121] (terminal: input field)
+- customer-credit-score
+  - Rule: CRDTAGY4 pseudo-random agency score, container CIPD, in `PREMIERE SECTION.` [src/base/cobol_src/CRDTAGY4.cbl:L113]
+    - Condition: `MOVE 'CIPD ' TO WS-CONTAINER-NAME.` [src/base/cobol_src/CRDTAGY4.cbl:L120]
+    - Condition: `MOVE EIBTASKN TO WS-SEED.` [src/base/cobol_src/CRDTAGY4.cbl:L122]
+    - Condition: `COMPUTE WS-NEW-CREDSCORE = ((999 - 1) * FUNCTION RANDOM) + 1.` [src/base/cobol_src/CRDTAGY4.cbl:L217-L218]
+      - Resulting Value: score between the literal bounds 1 and 999 via `COMPUTE WS-NEW-CREDSCORE = ((999 - 1) * FUNCTION RANDOM) + 1.` [src/base/cobol_src/CRDTAGY4.cbl:L217-L218] (terminal: literal)
+      - Resulting Value: EIBTASKN supplied by CICS as the random seed via `MOVE EIBTASKN TO WS-SEED.` [src/base/cobol_src/CRDTAGY4.cbl:L122] (terminal: input field)
+- customer-credit-score
+  - Rule: CRDTAGY5 pseudo-random agency score, container CIPE, in `PREMIERE SECTION.` [src/base/cobol_src/CRDTAGY5.cbl:L111]
+    - Condition: `MOVE 'CIPE ' TO WS-CONTAINER-NAME.` [src/base/cobol_src/CRDTAGY5.cbl:L119]
+    - Condition: `MOVE EIBTASKN TO WS-SEED.` [src/base/cobol_src/CRDTAGY5.cbl:L121]
+    - Condition: `COMPUTE WS-NEW-CREDSCORE = ((999 - 1) * FUNCTION RANDOM) + 1.` [src/base/cobol_src/CRDTAGY5.cbl:L216-L217]
+      - Resulting Value: score between the literal bounds 1 and 999 via `COMPUTE WS-NEW-CREDSCORE = ((999 - 1) * FUNCTION RANDOM) + 1.` [src/base/cobol_src/CRDTAGY5.cbl:L216-L217] (terminal: literal)
+      - Resulting Value: EIBTASKN supplied by CICS as the random seed via `MOVE EIBTASKN TO WS-SEED.` [src/base/cobol_src/CRDTAGY5.cbl:L121] (terminal: input field)
+- customer-credit-score
+  - Rule: CRECUST average of the agency scores that answered within the fetch window, NOTFINISHED branch, in `CREDIT-CHECK SECTION.` [src/base/cobol_src/CRECUST.cbl:L563]
+    - Condition: `IF WS-CICS-RESP = DFHRESP(NOTFINISHED) AND WS-CICS-RESP2 = 52` [src/base/cobol_src/CRECUST.cbl:L715-L716]
+    - Condition: `ELSE` [src/base/cobol_src/CRECUST.cbl:L743]
+    - Condition: `COMPUTE WS-ACTUAL-CS-SCR = WS-TOTAL-CS-SCR / WS-RETRIEVED-CNT` [src/base/cobol_src/CRECUST.cbl:L757-L758]
+      - Resulting Value: COMM-CREDIT-SCORE = total of the returned scores divided by the number returned via `MOVE WS-ACTUAL-CS-SCR TO COMM-CREDIT-SCORE` [src/base/cobol_src/CRECUST.cbl:L759] (terminal: input field)
+- customer-credit-score
+  - Rule: CRECUST average of the agency scores that answered within the fetch window, NOTFND branch, in `CREDIT-CHECK SECTION.` [src/base/cobol_src/CRECUST.cbl:L563]
+    - Condition: `IF WS-CICS-RESP = DFHRESP(NOTFND) AND WS-CICS-RESP2 = 1` [src/base/cobol_src/CRECUST.cbl:L831-L832]
+    - Condition: `ELSE` [src/base/cobol_src/CRECUST.cbl:L849]
+    - Condition: `COMPUTE WS-ACTUAL-CS-SCR = WS-TOTAL-CS-SCR / WS-RETRIEVED-CNT` [src/base/cobol_src/CRECUST.cbl:L862-L863]
+      - Resulting Value: COMM-CREDIT-SCORE = total of the returned scores divided by the number returned via `MOVE WS-ACTUAL-CS-SCR TO COMM-CREDIT-SCORE` [src/base/cobol_src/CRECUST.cbl:L864] (terminal: input field)
+- customer-credit-score
+  - Rule: CRECUST zero score whenever no agency answered, in `CREDIT-CHECK SECTION.` [src/base/cobol_src/CRECUST.cbl:L563]
+    - Condition: `IF WS-RETRIEVED-CNT = 0` [src/base/cobol_src/CRECUST.cbl:L722]
+      - Resulting Value: COMM-CREDIT-SCORE = 0 via `MOVE 0 TO COMM-CREDIT-SCORE` [src/base/cobol_src/CRECUST.cbl:L724] (terminal: literal)
+- customer-credit-score
+  - Rule: CRECUST persistence of the credit score onto the CUSTOMER VSAM record, in `WRITE-CUSTOMER-VSAM SECTION.` [src/base/cobol_src/CRECUST.cbl:L1069]
+    - Condition: `MOVE COMM-CREDIT-SCORE TO CUSTOMER-CREDIT-SCORE.` [src/base/cobol_src/CRECUST.cbl:L1082]
+      - Resulting Value: CUSTOMER-CREDIT-SCORE = COMM-CREDIT-SCORE as computed by the credit check via `MOVE COMM-CREDIT-SCORE TO CUSTOMER-CREDIT-SCORE.` [src/base/cobol_src/CRECUST.cbl:L1082] (terminal: input field)
+- customer-credit-score
+  - Rule: BANKDATA seeding of a pseudo-random credit score, bypassing the agency fan-out entirely, in `PREMIERE SECTION.` [src/base/cobol_src/BANKDATA.cbl:L369]
+    - Condition: `COMPUTE CUSTOMER-CREDIT-SCORE = ((999 - 1) * FUNCTION RANDOM) + 1` [src/base/cobol_src/BANKDATA.cbl:L534-L535]
+      - Resulting Value: CUSTOMER-CREDIT-SCORE between the literal bounds 1 and 999 via `COMPUTE CUSTOMER-CREDIT-SCORE = ((999 - 1) * FUNCTION RANDOM) + 1` [src/base/cobol_src/BANKDATA.cbl:L534-L535] (terminal: literal)
+- customer-credit-score
+  - Rule: UPDCUST never updates the credit score - it only echoes the stored value back to the caller, in `UPDATE-CUSTOMER-VSAM SECTION.` [src/base/cobol_src/UPDCUST.cbl:L211]
+    - Condition: `MOVE CUSTOMER-CREDIT-SCORE OF WS-CUST-DATA TO COMM-CREDIT-SCORE.` [src/base/cobol_src/UPDCUST.cbl:L328-L329]
+      - Resulting Value: COMM-CREDIT-SCORE echoed from the record just read via `MOVE CUSTOMER-CREDIT-SCORE OF WS-CUST-DATA TO COMM-CREDIT-SCORE.` [src/base/cobol_src/UPDCUST.cbl:L328-L329] (terminal: input field)
+
+## customer-cs-review-date — CUSTOMER Credit-Score Review Date (`PIC 9(8)`) [src/base/cobol_copy/CUSTOMER.cpy:L29]
+- customer-cs-review-date
+  - Rule: CRECUST random review date within the next 21 days, NOTFINISHED branch, in `CREDIT-CHECK SECTION.` [src/base/cobol_src/CRECUST.cbl:L563]
+    - Condition: `IF WS-CICS-RESP = DFHRESP(NOTFINISHED) AND WS-CICS-RESP2 = 52` [src/base/cobol_src/CRECUST.cbl:L715-L716]
+    - Condition: `MOVE EIBTASKN TO WS-SEED` [src/base/cobol_src/CRECUST.cbl:L777]
+    - Condition: `COMPUTE WS-REVIEW-DATE-ADD = ((21 - 1) * FUNCTION RANDOM(WS-SEED)) + 1` [src/base/cobol_src/CRECUST.cbl:L779-L780]
+    - Condition: `COMPUTE WS-NEW-REVIEW-DATE-INT = WS-TODAY-INT + WS-REVIEW-DATE-ADD` [src/base/cobol_src/CRECUST.cbl:L782-L783]
+    - Condition: `COMPUTE WS-NEW-REVIEW-YYYYMMDD = FUNCTION DATE-OF-INTEGER (WS-NEW-REVIEW-DATE-INT)` [src/base/cobol_src/CRECUST.cbl:L789-L790]
+      - Resulting Value: offset between the literal bounds 1 and 21 via `COMPUTE WS-REVIEW-DATE-ADD = ((21 - 1) * FUNCTION RANDOM(WS-SEED)) + 1` [src/base/cobol_src/CRECUST.cbl:L779-L780] (terminal: literal)
+      - Resulting Value: today's integer date supplied by FUNCTION CURRENT-DATE via `COMPUTE WS-TODAY-INT = FUNCTION INTEGER-OF-DATE (WS-CURRENT-DATE-9)` [src/base/cobol_src/CRECUST.cbl:L770-L771] (terminal: input field)
+      - Resulting Value: EIBTASKN supplied by CICS as the random seed via `MOVE EIBTASKN TO WS-SEED` [src/base/cobol_src/CRECUST.cbl:L777] (terminal: input field)
+      - Resulting Value: review date stored as DDMMYYYY components via `MOVE WS-NEW-REVIEW-YYYYMMDD(1:4) TO COMM-CS-REVIEW-DATE(5:4)` [src/base/cobol_src/CRECUST.cbl:L792-L793] (terminal: literal)
+- customer-cs-review-date
+  - Rule: CRECUST random review date within the next 21 days, NOTFND branch, in `CREDIT-CHECK SECTION.` [src/base/cobol_src/CRECUST.cbl:L563]
+    - Condition: `IF WS-CICS-RESP = DFHRESP(NOTFND) AND WS-CICS-RESP2 = 1` [src/base/cobol_src/CRECUST.cbl:L831-L832]
+    - Condition: `MOVE EIBTASKN TO WS-SEED` [src/base/cobol_src/CRECUST.cbl:L881]
+    - Condition: `COMPUTE WS-REVIEW-DATE-ADD = ((21 - 1) * FUNCTION RANDOM(WS-SEED)) + 1` [src/base/cobol_src/CRECUST.cbl:L883-L884]
+    - Condition: `COMPUTE WS-NEW-REVIEW-DATE-INT = WS-TODAY-INT + WS-REVIEW-DATE-ADD` [src/base/cobol_src/CRECUST.cbl:L886-L887]
+    - Condition: `COMPUTE WS-NEW-REVIEW-YYYYMMDD = FUNCTION DATE-OF-INTEGER (WS-NEW-REVIEW-DATE-INT)` [src/base/cobol_src/CRECUST.cbl:L893-L894]
+      - Resulting Value: offset between the literal bounds 1 and 21 via `COMPUTE WS-REVIEW-DATE-ADD = ((21 - 1) * FUNCTION RANDOM(WS-SEED)) + 1` [src/base/cobol_src/CRECUST.cbl:L883-L884] (terminal: literal)
+      - Resulting Value: today's integer date supplied by FUNCTION CURRENT-DATE via `COMPUTE WS-TODAY-INT = FUNCTION INTEGER-OF-DATE (WS-CURRENT-DATE-9)` [src/base/cobol_src/CRECUST.cbl:L875-L876] (terminal: input field)
+      - Resulting Value: review date stored as DDMMYYYY components via `COMM-CS-REVIEW-DATE(5:4) MOVE WS-NEW-REVIEW-YYYYMMDD(5:2) TO` [src/base/cobol_src/CRECUST.cbl:L897-L898] (terminal: literal)
+- customer-cs-review-date
+  - Rule: CRECUST fallback to today's date whenever the credit check failed, in `CREDIT-CHECK SECTION.` [src/base/cobol_src/CRECUST.cbl:L563]
+    - Condition: `IF WS-CREDIT-CHECK-ERROR = 'Y'` [src/base/cobol_src/CRECUST.cbl:L429]
+    - Condition: `STRING WS-ORIG-DATE-DD DELIMITED BY SIZE, WS-ORIG-DATE-MM DELIMITED BY SIZE, WS-ORIG-DATE-YYYY DELIMITED BY SIZE INTO COMM-CS-REVIEW-DATE` [src/base/cobol_src/CRECUST.cbl:L432-L435]
+      - Resulting Value: review date = today's date components as supplied by the CICS clock via `STRING WS-ORIG-DATE-DD DELIMITED BY SIZE, WS-ORIG-DATE-MM DELIMITED BY SIZE, WS-ORIG-DATE-YYYY DELIMITED BY SIZE INTO COMM-CS-REVIEW-DATE` [src/base/cobol_src/CRECUST.cbl:L432-L435] (terminal: input field)
+- customer-cs-review-date
+  - Rule: CRECUST persistence of the review date onto the CUSTOMER VSAM record, in `WRITE-CUSTOMER-VSAM SECTION.` [src/base/cobol_src/CRECUST.cbl:L1069]
+    - Condition: `MOVE COMM-CS-REVIEW-DATE TO CUSTOMER-CS-REVIEW-DATE.` [src/base/cobol_src/CRECUST.cbl:L1083]
+      - Resulting Value: CUSTOMER-CS-REVIEW-DATE = COMM-CS-REVIEW-DATE as computed by the credit check via `MOVE COMM-CS-REVIEW-DATE TO CUSTOMER-CS-REVIEW-DATE.` [src/base/cobol_src/CRECUST.cbl:L1083] (terminal: input field)
+- customer-cs-review-date
+  - Rule: BANKDATA seeding of a random review date within the next 21 days, in `PREMIERE SECTION.` [src/base/cobol_src/BANKDATA.cbl:L369]
+    - Condition: `COMPUTE WS-REVIEW-DATE-ADD = ((21 - 1) * FUNCTION RANDOM) + 1` [src/base/cobol_src/BANKDATA.cbl:L542-L543]
+    - Condition: `COMPUTE WS-NEW-REVIEW-DATE-INT = WS-TODAY-INT + WS-REVIEW-DATE-ADD` [src/base/cobol_src/BANKDATA.cbl:L545-L546]
+    - Condition: `COMPUTE WS-NEW-REVIEW-YYYYMMDD = FUNCTION DATE-OF-INTEGER (WS-NEW-REVIEW-DATE-INT)` [src/base/cobol_src/BANKDATA.cbl:L552-L553]
+      - Resulting Value: offset between the literal bounds 1 and 21 via `COMPUTE WS-REVIEW-DATE-ADD = ((21 - 1) * FUNCTION RANDOM) + 1` [src/base/cobol_src/BANKDATA.cbl:L542-L543] (terminal: literal)
+      - Resulting Value: review-date components written to the CUSTOMER record via `MOVE WS-NEW-REVIEW-YYYYMMDD(1:4) TO CUSTOMER-CS-REVIEW-YEAR` [src/base/cobol_src/BANKDATA.cbl:L555-L556] (terminal: literal)
+- customer-cs-review-date
+  - Rule: UPDCUST never updates the review date - it only echoes the stored value back to the caller, in `UPDATE-CUSTOMER-VSAM SECTION.` [src/base/cobol_src/UPDCUST.cbl:L211]
+    - Condition: `MOVE CUSTOMER-CS-REVIEW-DATE OF WS-CUST-DATA TO COMM-CS-REVIEW-DATE.` [src/base/cobol_src/UPDCUST.cbl:L330-L331]
+      - Resulting Value: COMM-CS-REVIEW-DATE echoed from the record just read via `MOVE CUSTOMER-CS-REVIEW-DATE OF WS-CUST-DATA TO COMM-CS-REVIEW-DATE.` [src/base/cobol_src/UPDCUST.cbl:L330-L331] (terminal: input field)
+
+## dbcrfun-faciltype-channel-discriminator — DBCRFUN FACILTYPE Channel Discriminator COMM-FACILTYPE Within COMM-ORIGIN (`PIC S9(8) COMP`) [src/base/cobol_copy/PAYDBCR.cpy:L17]
+- dbcrfun-faciltype-channel-discriminator
+  - Rule: Root path 1 - API-tier route binding, which currently originates from a client-side DTO field initialiser rather than from a controller route binding, recorded as a governance gap and not as compliant behaviour, in `@JsonProperty("CommFaciltype")` [src/Z-OS-Connect-Payment-Interface/src/main/java/com/ibm/cics/cip/bank/springboot/paymentinterface/jsonclasses/paymentinterface/OriginJson.java:L27]
+    - Condition: `private String commFaciltype = "0496";` [src/Z-OS-Connect-Payment-Interface/src/main/java/com/ibm/cics/cip/bank/springboot/paymentinterface/jsonclasses/paymentinterface/OriginJson.java:L28]
+    - Condition: accessor `public String getCommFacilType() { return commFaciltype; }` [src/Z-OS-Connect-Payment-Interface/src/main/java/com/ibm/cics/cip/bank/springboot/paymentinterface/jsonclasses/paymentinterface/OriginJson.java:L100-L103]
+      - Resulting Value: commFaciltype = "0496" as a four-character String on the wire via `private String commFaciltype = "0496";` [src/Z-OS-Connect-Payment-Interface/src/main/java/com/ibm/cics/cip/bank/springboot/paymentinterface/jsonclasses/paymentinterface/OriginJson.java:L28] (terminal: literal)
+      - Resulting Value: representation hop: the same value is a packed binary field in the COBOL COMMAREA via `05 COMM-FACILTYPE PIC S9(8) COMP.` [src/base/cobol_copy/PAYDBCR.cpy:L17] (terminal: input field)
+- dbcrfun-faciltype-channel-discriminator
+  - Rule: Root path 2 - legacy CICS terminal-facility origin, where the value arrives inside the COMM-ORIGIN group populated from the facility of the invoking transaction, in `03 COMM-ORIGIN.` [src/base/cobol_copy/PAYDBCR.cpy:L12]
+    - Condition: `03 COMM-ORIGIN.` [src/base/cobol_copy/PAYDBCR.cpy:L12]
+    - Condition: `05 COMM-FACILTYPE PIC S9(8) COMP.` [src/base/cobol_copy/PAYDBCR.cpy:L17]
+    - Condition: channel comment `* COMM-FACILTYPE(496 = NONE)` [src/base/cobol_src/DBCRFUN.cbl:L325]
+      - Resulting Value: COMM-FACILTYPE supplied by the invoking CICS facility, 496 meaning no terminal facility via `05 COMM-FACILTYPE PIC S9(8) COMP.` [src/base/cobol_copy/PAYDBCR.cpy:L17] (terminal: input field)
+      - Resulting Value: the value is compared against the literal 496 at every channel gate via `IF WS-DIFFERENCE < 0 AND COMM-FACILTYPE = 496` [src/base/cobol_src/DBCRFUN.cbl:L344] (terminal: literal)
+
+## proctran-eye-catcher — PROCTRAN Eye-Catcher (`PIC X(4)`) [src/base/cobol_copy/PROCTRAN.cpy:L8]
+- proctran-eye-catcher
+  - Rule: Copybook declaration and validity condition, in `03 PROC-TRAN-DATA.` [src/base/cobol_copy/PROCTRAN.cpy:L7]
+    - Condition: `05 PROC-TRAN-EYE-CATCHER PIC X(4).` [src/base/cobol_copy/PROCTRAN.cpy:L8]
+    - Condition: `88 PROC-TRAN-VALID VALUE 'PRTR'.` [src/base/cobol_copy/PROCTRAN.cpy:L9]
+      - Resulting Value: PROC-TRAN-VALID = 'PRTR' via `88 PROC-TRAN-VALID VALUE 'PRTR'.` [src/base/cobol_copy/PROCTRAN.cpy:L9] (terminal: literal)
+- proctran-eye-catcher
+  - Rule: DBCRFUN stamps the eye-catcher with the literal rather than through the condition name, in `WRITE-TO-PROCTRAN-DB2 SECTION.` [src/base/cobol_src/DBCRFUN.cbl:L460]
+    - Condition: `MOVE 'PRTR' TO HV-PROCTRAN-EYECATCHER.` [src/base/cobol_src/DBCRFUN.cbl:L466]
+      - Resulting Value: PROCTRAN_EYECATCHER = 'PRTR' via `MOVE 'PRTR' TO HV-PROCTRAN-EYECATCHER.` [src/base/cobol_src/DBCRFUN.cbl:L466] (terminal: literal)
+- proctran-eye-catcher
+  - Rule: CREACC stamps the eye-catcher on account creation, in `WRITE-PROCTRAN-DB2 SECTION.` [src/base/cobol_src/CREACC.cbl:L928]
+    - Condition: `MOVE 'PRTR' TO HV-PROCTRAN-EYECATCHER.` [src/base/cobol_src/CREACC.cbl:L937]
+      - Resulting Value: PROCTRAN_EYECATCHER = 'PRTR' via `MOVE 'PRTR' TO HV-PROCTRAN-EYECATCHER.` [src/base/cobol_src/CREACC.cbl:L937] (terminal: literal)
+- proctran-eye-catcher
+  - Rule: CRECUST stamps the eye-catcher on customer creation, in `WRITE-PROCTRAN-DB2 SECTION.` [src/base/cobol_src/CRECUST.cbl:L1187]
+    - Condition: `MOVE 'PRTR' TO HV-PROCTRAN-EYECATCHER.` [src/base/cobol_src/CRECUST.cbl:L1195]
+      - Resulting Value: PROCTRAN_EYECATCHER = 'PRTR' via `MOVE 'PRTR' TO HV-PROCTRAN-EYECATCHER.` [src/base/cobol_src/CRECUST.cbl:L1195] (terminal: literal)
+- proctran-eye-catcher
+  - Rule: DELACC stamps the eye-catcher on account deletion, in `WRITE-PROCTRAN-DB2 SECTION.` [src/base/cobol_src/DELACC.cbl:L462]
+    - Condition: `MOVE 'PRTR' TO HV-PROCTRAN-EYECATCHER.` [src/base/cobol_src/DELACC.cbl:L472]
+      - Resulting Value: PROCTRAN_EYECATCHER = 'PRTR' via `MOVE 'PRTR' TO HV-PROCTRAN-EYECATCHER.` [src/base/cobol_src/DELACC.cbl:L472] (terminal: literal)
+- proctran-eye-catcher
+  - Rule: DELCUS stamps the eye-catcher on customer deletion, in `WRITE-PROCTRAN-CUST-DB2 SECTION.` [src/base/cobol_src/DELCUS.cbl:L597]
+    - Condition: `MOVE 'PRTR' TO HV-PROCTRAN-EYECATCHER.` [src/base/cobol_src/DELCUS.cbl:L603]
+      - Resulting Value: PROCTRAN_EYECATCHER = 'PRTR' via `MOVE 'PRTR' TO HV-PROCTRAN-EYECATCHER.` [src/base/cobol_src/DELCUS.cbl:L603] (terminal: literal)
+- proctran-eye-catcher
+  - Rule: XFRFUN stamps the eye-catcher on funds transfer, in `WRITE-TO-PROCTRAN-DB2 SECTION.` [src/base/cobol_src/XFRFUN.cbl:L1571]
+    - Condition: `MOVE 'PRTR' TO HV-PROCTRAN-EYECATCHER.` [src/base/cobol_src/XFRFUN.cbl:L1580]
+      - Resulting Value: PROCTRAN_EYECATCHER = 'PRTR' via `MOVE 'PRTR' TO HV-PROCTRAN-EYECATCHER.` [src/base/cobol_src/XFRFUN.cbl:L1580] (terminal: literal)
+- proctran-eye-catcher
+  - Rule: Determination: the PROC-TRAN-VALID condition name is never referenced by any program in src/base/cobol_src/, established by exhaustive case-sensitive search - all six writers move the literal directly, in `88 PROC-TRAN-VALID VALUE 'PRTR'.` [src/base/cobol_copy/PROCTRAN.cpy:L9]
+    - Condition: `88 PROC-TRAN-VALID VALUE 'PRTR'.` [src/base/cobol_copy/PROCTRAN.cpy:L9]
+      - Resulting Value: 'PRTR' reachable only as a literal in the six writing programs via `MOVE 'PRTR' TO HV-PROCTRAN-EYECATCHER.` [src/base/cobol_src/DBCRFUN.cbl:L466] (terminal: literal)
+
+## proctran-desc-xfr-flag — PROCTRAN Descriptor Transfer Discriminator PROC-TRAN-DESC-XFR-FLAG ('TRANSFER') (`PIC X(26)`) [src/base/cobol_copy/PROCTRAN.cpy:L50-L52]
+- proctran-desc-xfr-flag
+  - Rule: Copybook transfer overlay on the 40-byte descriptor, in `05 PROC-TRAN-DESC PIC X(40).` [src/base/cobol_copy/PROCTRAN.cpy:L48]
+    - Condition: `05 PROC-TRAN-DESC-XFR REDEFINES PROC-TRAN-DESC.` [src/base/cobol_copy/PROCTRAN.cpy:L49]
+    - Condition: `07 PROC-TRAN-DESC-XFR-HEADER PIC X(26).` [src/base/cobol_copy/PROCTRAN.cpy:L50]
+    - Condition: `88 PROC-TRAN-DESC-XFR-FLAG VALUE 'TRANSFER'.` [src/base/cobol_copy/PROCTRAN.cpy:L51-L52]
+      - Resulting Value: PROC-TRAN-DESC-XFR-FLAG = 'TRANSFER' via `88 PROC-TRAN-DESC-XFR-FLAG VALUE 'TRANSFER'.` [src/base/cobol_copy/PROCTRAN.cpy:L51-L52] (terminal: literal)
+- proctran-desc-xfr-flag
+  - Rule: XFRFUN sets the discriminator through the condition name and fills the overlay with the destination leg, in `WRITE-TO-PROCTRAN-DB2 SECTION.` [src/base/cobol_src/XFRFUN.cbl:L1571]
+    - Condition: `SET PROC-TRAN-DESC-XFR-FLAG IN PROCTRAN-AREA TO TRUE.` [src/base/cobol_src/XFRFUN.cbl:L1609]
+    - Condition: `MOVE COMM-TSCODE TO PROC-TRAN-DESC-XFR-SORTCODE IN PROCTRAN-AREA.` [src/base/cobol_src/XFRFUN.cbl:L1610-L1611]
+    - Condition: `MOVE COMM-TACCNO TO PROC-TRAN-DESC-XFR-ACCOUNT IN PROCTRAN-AREA.` [src/base/cobol_src/XFRFUN.cbl:L1612-L1613]
+    - Condition: `MOVE PROC-TRAN-DESC IN PROCTRAN-AREA TO HV-PROCTRAN-DESC.` [src/base/cobol_src/XFRFUN.cbl:L1614]
+      - Resulting Value: descriptor header = 'TRANSFER' via `88 PROC-TRAN-DESC-XFR-FLAG VALUE 'TRANSFER'.` [src/base/cobol_copy/PROCTRAN.cpy:L51-L52] (terminal: literal)
+      - Resulting Value: destination sort code and account number supplied in the XFRFUN COMMAREA via `03 COMM-TACCNO PIC 9(8).` [src/base/cobol_copy/XFRFUN.cpy:L9] (terminal: input field)
+
+## proctran-desc-creacc-flag — PROCTRAN Descriptor Create-Account Discriminator PROC-DESC-CREACC-FLAG ('CREATE') (`PIC X(6)`) [src/base/cobol_copy/PROCTRAN.cpy:L78-L80]
+- proctran-desc-creacc-flag
+  - Rule: Copybook create-account overlay on the 40-byte descriptor, in `05 PROC-TRAN-DESC PIC X(40).` [src/base/cobol_copy/PROCTRAN.cpy:L48]
+    - Condition: `05 PROC-TRAN-DESC-CREACC REDEFINES PROC-TRAN-DESC.` [src/base/cobol_copy/PROCTRAN.cpy:L69]
+    - Condition: `07 PROC-DESC-CREACC-FOOTER PIC X(6).` [src/base/cobol_copy/PROCTRAN.cpy:L78]
+    - Condition: `88 PROC-DESC-CREACC-FLAG VALUE 'CREATE'.` [src/base/cobol_copy/PROCTRAN.cpy:L79-L80]
+      - Resulting Value: PROC-DESC-CREACC-FLAG = 'CREATE' via `88 PROC-DESC-CREACC-FLAG VALUE 'CREATE'.` [src/base/cobol_copy/PROCTRAN.cpy:L79-L80] (terminal: literal)
+- proctran-desc-creacc-flag
+  - Rule: Determination: CREACC never sets the discriminator - it writes the descriptor by displacement and leaves the footer bytes that carry the flag as spaces, so the declared value is unreachable in this repository, in `WRITE-PROCTRAN-DB2 SECTION.` [src/base/cobol_src/CREACC.cbl:L928]
+    - Condition: `MOVE STORED-CUSTNO TO HV-PROCTRAN-DESC(1:10).` [src/base/cobol_src/CREACC.cbl:L960]
+    - Condition: `MOVE STORED-ACCTYPE TO HV-PROCTRAN-DESC(11:8).` [src/base/cobol_src/CREACC.cbl:L961]
+    - Condition: `MOVE SPACES TO HV-PROCTRAN-DESC(35:6).` [src/base/cobol_src/CREACC.cbl:L964]
+      - Resulting Value: descriptor bytes 35 to 40 left as SPACES where the 6-byte footer sits via `MOVE SPACES TO HV-PROCTRAN-DESC(35:6).` [src/base/cobol_src/CREACC.cbl:L964] (terminal: literal)
+      - Resulting Value: declared value 'CREATE' never written by any program in src/base/cobol_src/ via `88 PROC-DESC-CREACC-FLAG VALUE 'CREATE'.` [src/base/cobol_copy/PROCTRAN.cpy:L79-L80] (terminal: literal)
+
+## proctran-desc-delacc-flag — PROCTRAN Descriptor Delete-Account Discriminator PROC-DESC-DELACC-FLAG ('DELETE') (`PIC X(6)`) [src/base/cobol_copy/PROCTRAN.cpy:L66-L68]
+- proctran-desc-delacc-flag
+  - Rule: Copybook delete-account overlay on the 40-byte descriptor, in `05 PROC-TRAN-DESC PIC X(40).` [src/base/cobol_copy/PROCTRAN.cpy:L48]
+    - Condition: `05 PROC-TRAN-DESC-DELACC REDEFINES PROC-TRAN-DESC.` [src/base/cobol_copy/PROCTRAN.cpy:L57]
+    - Condition: `07 PROC-DESC-DELACC-FOOTER PIC X(6).` [src/base/cobol_copy/PROCTRAN.cpy:L66]
+    - Condition: `88 PROC-DESC-DELACC-FLAG VALUE 'DELETE'.` [src/base/cobol_copy/PROCTRAN.cpy:L67-L68]
+      - Resulting Value: PROC-DESC-DELACC-FLAG = 'DELETE' via `88 PROC-DESC-DELACC-FLAG VALUE 'DELETE'.` [src/base/cobol_copy/PROCTRAN.cpy:L67-L68] (terminal: literal)
+- proctran-desc-delacc-flag
+  - Rule: DELACC sets the discriminator through the condition name after filling the overlay from the account row being deleted, in `WRITE-PROCTRAN-DB2 SECTION.` [src/base/cobol_src/DELACC.cbl:L462]
+    - Condition: `MOVE ACCOUNT-CUST-NO TO PROC-DESC-DELACC-CUSTOMER` [src/base/cobol_src/DELACC.cbl:L495]
+    - Condition: `MOVE ACCOUNT-TYPE TO PROC-DESC-DELACC-ACCTYPE` [src/base/cobol_src/DELACC.cbl:L497]
+    - Condition: `SET PROC-DESC-DELACC-FLAG OF PROCTRAN-AREA TO TRUE.` [src/base/cobol_src/DELACC.cbl:L512]
+    - Condition: `MOVE PROC-TRAN-DESC OF PROCTRAN-AREA TO HV-PROCTRAN-DESC` [src/base/cobol_src/DELACC.cbl:L515]
+      - Resulting Value: descriptor footer = 'DELETE' via `88 PROC-DESC-DELACC-FLAG VALUE 'DELETE'.` [src/base/cobol_copy/PROCTRAN.cpy:L67-L68] (terminal: literal)
+      - Resulting Value: customer number, account type and statement dates taken from the stored ACCOUNT row via `05 ACCOUNT-EYE-CATCHER PIC X(4).` [src/base/cobol_copy/ACCOUNT.cpy:L8] (terminal: input field)
+
+## proctran-desc-crecus-separator — PROCTRAN Descriptor Create-Customer Date Separator PROC-DESC-CRECUS-FILLER-SET ('-') (`PIC X`) [src/base/cobol_copy/PROCTRAN.cpy:L97-L98]
+- proctran-desc-crecus-separator
+  - Rule: Copybook create-customer overlay declaring both date separators, in `05 PROC-TRAN-DESC PIC X(40).` [src/base/cobol_copy/PROCTRAN.cpy:L48]
+    - Condition: `05 PROC-TRAN-DESC-CRECUS REDEFINES PROC-TRAN-DESC.` [src/base/cobol_copy/PROCTRAN.cpy:L92]
+    - Condition: `07 PROC-DESC-CRECUS-FILLER PIC X.` [src/base/cobol_copy/PROCTRAN.cpy:L97]
+    - Condition: `88 PROC-DESC-CRECUS-FILLER-SET VALUE '-'.` [src/base/cobol_copy/PROCTRAN.cpy:L98]
+      - Resulting Value: PROC-DESC-CRECUS-FILLER-SET = '-' via `88 PROC-DESC-CRECUS-FILLER-SET VALUE '-'.` [src/base/cobol_copy/PROCTRAN.cpy:L98] (terminal: literal)
+    - Condition: `07 PROC-DESC-CRECUS-FILLER2 PIC X.` [src/base/cobol_copy/PROCTRAN.cpy:L100]
+    - Condition: `88 PROC-DESC-CRECUS-FILLER2-SET VALUE '-'.` [src/base/cobol_copy/PROCTRAN.cpy:L101]
+      - Resulting Value: PROC-DESC-CRECUS-FILLER2-SET = '-' via `88 PROC-DESC-CRECUS-FILLER2-SET VALUE '-'.` [src/base/cobol_copy/PROCTRAN.cpy:L101] (terminal: literal)
+- proctran-desc-crecus-separator
+  - Rule: Determination: CRECUST writes a '/' separator into the same byte positions, so the declared '-' value is never satisfied - the divergence is recorded as found and not normalised, in `WRITE-CUSTOMER-VSAM SECTION.` [src/base/cobol_src/CRECUST.cbl:L1069]
+    - Condition: `MOVE CUSTOMER-DATE-OF-BIRTH(1:2) TO STORED-DOB(1:2).` [src/base/cobol_src/CRECUST.cbl:L1154]
+    - Condition: `MOVE '/' TO STORED-DOB(3:1).` [src/base/cobol_src/CRECUST.cbl:L1155]
+    - Condition: `MOVE '/' TO STORED-DOB(6:1).` [src/base/cobol_src/CRECUST.cbl:L1157]
+    - Condition: `MOVE STORED-DOB TO HV-PROCTRAN-DESC(31:10).` [src/base/cobol_src/CRECUST.cbl:L1221]
+      - Resulting Value: separator byte written as '/' rather than the declared '-' via `MOVE '/' TO STORED-DOB(3:1).` [src/base/cobol_src/CRECUST.cbl:L1155] (terminal: literal)
+      - Resulting Value: date-of-birth digits taken from the stored CUSTOMER record via `MOVE CUSTOMER-DATE-OF-BIRTH(1:2) TO STORED-DOB(1:2).` [src/base/cobol_src/CRECUST.cbl:L1154] (terminal: input field)
+
+## proctran-desc-delcus-separator — PROCTRAN Descriptor Delete-Customer Date Separator PROC-DESC-DELCUS-FILLER-SET ('-') (`PIC X`) [src/base/cobol_copy/PROCTRAN.cpy:L86-L87]
+- proctran-desc-delcus-separator
+  - Rule: Copybook delete-customer overlay declaring both date separators, in `05 PROC-TRAN-DESC PIC X(40).` [src/base/cobol_copy/PROCTRAN.cpy:L48]
+    - Condition: `05 PROC-TRAN-DESC-DELCUS REDEFINES PROC-TRAN-DESC.` [src/base/cobol_copy/PROCTRAN.cpy:L81]
+    - Condition: `07 PROC-DESC-DELCUS-FILLER PIC X.` [src/base/cobol_copy/PROCTRAN.cpy:L86]
+    - Condition: `88 PROC-DESC-DELCUS-FILLER-SET VALUE '-'.` [src/base/cobol_copy/PROCTRAN.cpy:L87]
+      - Resulting Value: PROC-DESC-DELCUS-FILLER-SET = '-' via `88 PROC-DESC-DELCUS-FILLER-SET VALUE '-'.` [src/base/cobol_copy/PROCTRAN.cpy:L87] (terminal: literal)
+    - Condition: `07 PROC-DESC-DELCUS-FILLER2 PIC X.` [src/base/cobol_copy/PROCTRAN.cpy:L89]
+    - Condition: `88 PROC-DESC-DELCUS-FILLER2-SET VALUE '-'.` [src/base/cobol_copy/PROCTRAN.cpy:L90]
+      - Resulting Value: PROC-DESC-DELCUS-FILLER2-SET = '-' via `88 PROC-DESC-DELCUS-FILLER2-SET VALUE '-'.` [src/base/cobol_copy/PROCTRAN.cpy:L90] (terminal: literal)
+- proctran-desc-delcus-separator
+  - Rule: Determination: DELCUS writes a '/' separator into the same byte positions, so the declared '-' value is never satisfied - the divergence is recorded as found and not normalised, in `DEL-CUST-VSAM SECTION.` [src/base/cobol_src/DELCUS.cbl:L343]
+    - Condition: `TO WS-STOREDC-DATE-OF-BIRTH(1:2)` [src/base/cobol_src/DELCUS.cbl:L465]
+    - Condition: `MOVE '/' TO WS-STOREDC-DATE-OF-BIRTH(3:1).` [src/base/cobol_src/DELCUS.cbl:L467]
+    - Condition: `MOVE '/' TO WS-STOREDC-DATE-OF-BIRTH(6:1).` [src/base/cobol_src/DELCUS.cbl:L471]
+    - Condition: `MOVE WS-STOREDC-DATE-OF-BIRTH TO HV-PROCTRAN-DESC(31:10).` [src/base/cobol_src/DELCUS.cbl:L630]
+      - Resulting Value: separator byte written as '/' rather than the declared '-' via `MOVE '/' TO WS-STOREDC-DATE-OF-BIRTH(3:1).` [src/base/cobol_src/DELCUS.cbl:L467] (terminal: literal)
+      - Resulting Value: date-of-birth digits taken from the stored CUSTOMER record via `TO WS-STOREDC-DATE-OF-BIRTH(1:2)` [src/base/cobol_src/DELCUS.cbl:L465] (terminal: input field)
+
+## account-eye-catcher — ACCOUNT Eye-Catcher (`PIC X(4)`) [src/base/cobol_copy/ACCOUNT.cpy:L8]
+- account-eye-catcher
+  - Rule: Copybook declaration and validity condition, in `03 ACCOUNT-DATA.` [src/base/cobol_copy/ACCOUNT.cpy:L7]
+    - Condition: `05 ACCOUNT-EYE-CATCHER PIC X(4).` [src/base/cobol_copy/ACCOUNT.cpy:L8]
+    - Condition: `88 ACCOUNT-EYECATCHER-VALUE VALUE 'ACCT'.` [src/base/cobol_copy/ACCOUNT.cpy:L9]
+      - Resulting Value: ACCOUNT-EYECATCHER-VALUE = 'ACCT' via `88 ACCOUNT-EYECATCHER-VALUE VALUE 'ACCT'.` [src/base/cobol_copy/ACCOUNT.cpy:L9] (terminal: literal)
+- account-eye-catcher
+  - Rule: BANKDATA stamps the eye-catcher on every seeded ACCOUNT row, in `POPULATE-ACC SECTION.` [src/base/cobol_src/BANKDATA.cbl:L716]
+    - Condition: `MOVE 'ACCT' TO HV-ACCOUNT-EYECATCHER OF HOST-ACCOUNT-ROW.` [src/base/cobol_src/BANKDATA.cbl:L740-L741]
+      - Resulting Value: ACCOUNT_EYECATCHER = 'ACCT' via `MOVE 'ACCT' TO HV-ACCOUNT-EYECATCHER OF HOST-ACCOUNT-ROW.` [src/base/cobol_src/BANKDATA.cbl:L740-L741] (terminal: literal)
+- account-eye-catcher
+  - Rule: CREACC stamps the eye-catcher on the row it inserts, in `WRITE-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/CREACC.cbl:L774]
+    - Condition: `MOVE 'ACCT' TO HV-ACCOUNT-EYECATCHER.` [src/base/cobol_src/CREACC.cbl:L778]
+    - Condition: INSERT column list entry `VALUES (:HV-ACCOUNT-EYECATCHER,` [src/base/cobol_src/CREACC.cbl:L841]
+      - Resulting Value: ACCOUNT_EYECATCHER = 'ACCT' via `MOVE 'ACCT' TO HV-ACCOUNT-EYECATCHER.` [src/base/cobol_src/CREACC.cbl:L778] (terminal: literal)
+- account-eye-catcher
+  - Rule: CREACC stamps the same literal into the reply COMMAREA, in `WRITE-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/CREACC.cbl:L774]
+    - Condition: `MOVE 'ACCT' TO COMM-EYECATCHER.` [src/base/cobol_src/CREACC.cbl:L912]
+      - Resulting Value: COMM-EYECATCHER = 'ACCT' via `MOVE 'ACCT' TO COMM-EYECATCHER.` [src/base/cobol_src/CREACC.cbl:L912] (terminal: literal)
+- account-eye-catcher
+  - Rule: INQACC copies the stored eye-catcher into the inquiry COMMAREA, in `PREMIERE SECTION.` [src/base/cobol_src/INQACC.cbl:L203]
+    - Condition: `ELSE` [src/base/cobol_src/INQACC.cbl:L231]
+      - Resulting Value: INQACC-EYE copied from the stored ACCOUNT field via `MOVE ACCOUNT-EYE-CATCHER TO INQACC-EYE` [src/base/cobol_src/INQACC.cbl:L232] (terminal: input field)
+- account-eye-catcher
+  - Rule: DELACC copies the stored eye-catcher into the delete COMMAREA, in `READ-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/DELACC.cbl:L236]
+    - Condition: `MOVE ACCOUNT-EYE-CATCHER TO DELACC-EYE.` [src/base/cobol_src/DELACC.cbl:L413]
+      - Resulting Value: DELACC-EYE copied from the stored ACCOUNT field via `MOVE ACCOUNT-EYE-CATCHER TO DELACC-EYE.` [src/base/cobol_src/DELACC.cbl:L413] (terminal: input field)
+- account-eye-catcher
+  - Rule: Determination: the ACCOUNT-EYECATCHER-VALUE condition name is never referenced by any program in src/base/cobol_src/, established by exhaustive case-sensitive search, in `88 ACCOUNT-EYECATCHER-VALUE VALUE 'ACCT'.` [src/base/cobol_copy/ACCOUNT.cpy:L9]
+    - Condition: `88 ACCOUNT-EYECATCHER-VALUE VALUE 'ACCT'.` [src/base/cobol_copy/ACCOUNT.cpy:L9]
+      - Resulting Value: 'ACCT' reachable only as a literal in BANKDATA and CREACC via `MOVE 'ACCT' TO HV-ACCOUNT-EYECATCHER OF HOST-ACCOUNT-ROW.` [src/base/cobol_src/BANKDATA.cbl:L740-L741] (terminal: literal)
+
+## account-type-code — ACCOUNT Product Type Code (`PIC X(8)`) [src/base/cobol_copy/ACCOUNT.cpy:L14]
+- account-type-code
+  - Rule: CREACC product allowlist that decides whether an account may be created at all, in `ACCOUNT-TYPE-CHECK SECTION.` [src/base/cobol_src/CREACC.cbl:L1209]
+    - Condition: `EVALUATE TRUE` [src/base/cobol_src/CREACC.cbl:L1215]
+    - Condition: `WHEN COMM-ACC-TYPE IN DFHCOMMAREA(1:3) = 'ISA'` [src/base/cobol_src/CREACC.cbl:L1216]
+    - Condition: `WHEN COMM-ACC-TYPE IN DFHCOMMAREA(1:8) = 'MORTGAGE'` [src/base/cobol_src/CREACC.cbl:L1217]
+    - Condition: `WHEN COMM-ACC-TYPE IN DFHCOMMAREA(1:6) = 'SAVING'` [src/base/cobol_src/CREACC.cbl:L1218]
+    - Condition: `WHEN COMM-ACC-TYPE IN DFHCOMMAREA(1:7) = 'CURRENT'` [src/base/cobol_src/CREACC.cbl:L1219]
+    - Condition: `WHEN COMM-ACC-TYPE IN DFHCOMMAREA(1:4) = 'LOAN'` [src/base/cobol_src/CREACC.cbl:L1220]
+      - Resulting Value: COMM-SUCCESS = 'Y' for ISA, MORTGAGE, SAVING, CURRENT and LOAN only via `MOVE 'Y' TO COMM-SUCCESS OF DFHCOMMAREA` [src/base/cobol_src/CREACC.cbl:L1221] (terminal: literal)
+- account-type-code
+  - Rule: CREACC rejection of any other product code, in `ACCOUNT-TYPE-CHECK SECTION.` [src/base/cobol_src/CREACC.cbl:L1209]
+    - Condition: `WHEN OTHER` [src/base/cobol_src/CREACC.cbl:L1222]
+      - Resulting Value: COMM-SUCCESS = 'N' via `MOVE 'N' TO COMM-SUCCESS OF DFHCOMMAREA` [src/base/cobol_src/CREACC.cbl:L1223] (terminal: literal)
+      - Resulting Value: COMM-FAIL-CODE = 'A', scoped to CREACC only via `MOVE 'A' TO COMM-FAIL-CODE IN DFHCOMMAREA` [src/base/cobol_src/CREACC.cbl:L1224] (terminal: literal)
+- account-type-code
+  - Rule: CREACC persistence of the accepted product code, in `WRITE-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/CREACC.cbl:L774]
+    - Condition: `MOVE COMM-ACC-TYPE IN DFHCOMMAREA TO HV-ACCOUNT-ACC-TYPE.` [src/base/cobol_src/CREACC.cbl:L784]
+    - Condition: INSERT column list entry `:HV-ACCOUNT-ACC-TYPE,` [src/base/cobol_src/CREACC.cbl:L845]
+      - Resulting Value: ACCOUNT_TYPE taken from COMM-ACC-TYPE supplied by the caller via `03 COMM-ACC-TYPE PIC X(8).` [src/base/cobol_copy/CREACC.cpy:L12] (terminal: input field)
+- account-type-code
+  - Rule: BANKDATA seeding cycles a fixed five-entry product table, in `INITIALISE-ARRAYS SECTION.` [src/base/cobol_src/BANKDATA.cbl:L930]
+    - Condition: `MOVE 5 TO ACCOUNT-TYPES-COUNT.` [src/base/cobol_src/BANKDATA.cbl:L1151]
+    - Condition: `MOVE 'ISA ' TO WS-ACCOUNT-TYPE(1).` [src/base/cobol_src/BANKDATA.cbl:L1153]
+    - Condition: `MOVE 'SAVING ' TO WS-ACCOUNT-TYPE(2).` [src/base/cobol_src/BANKDATA.cbl:L1154]
+    - Condition: `MOVE 'CURRENT ' TO WS-ACCOUNT-TYPE(3).` [src/base/cobol_src/BANKDATA.cbl:L1155]
+    - Condition: `MOVE 'LOAN ' TO WS-ACCOUNT-TYPE(4).` [src/base/cobol_src/BANKDATA.cbl:L1156]
+    - Condition: `MOVE 'MORTGAGE' TO WS-ACCOUNT-TYPE(5).` [src/base/cobol_src/BANKDATA.cbl:L1157]
+      - Resulting Value: product codes 'ISA     ', 'SAVING  ', 'CURRENT ', 'LOAN    ' and 'MORTGAGE' via `MOVE 'ISA ' TO WS-ACCOUNT-TYPE(1). MOVE 'SAVING ' TO WS-ACCOUNT-TYPE(2). MOVE 'CURRENT ' TO WS-ACCOUNT-TYPE(3). MOVE 'LOAN ' TO WS-ACCOUNT-TYPE(4). MOVE 'MORTGAGE' TO WS-ACCOUNT-TYPE(5).` [src/base/cobol_src/BANKDATA.cbl:L1153-L1157] (terminal: literal)
+      - Resulting Value: table entry selected by the row counter via `MOVE WS-ACCOUNT-TYPE(WS-CNT) TO HV-ACCOUNT-TYPE OF HOST-ACCOUNT-ROW.` [src/base/cobol_src/BANKDATA.cbl:L755-L756] (terminal: input field)
+- account-type-code
+  - Rule: UPDACC refuses an update that does not supply a product code, in `UPDATE-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/UPDACC.cbl:L180]
+    - Condition: `IF (COMM-ACC-TYPE = SPACES OR COMM-ACC-TYPE(1:1) = ' ')` [src/base/cobol_src/UPDACC.cbl:L267]
+      - Resulting Value: COMM-SUCCESS = 'N' via `MOVE 'N' TO COMM-SUCCESS` [src/base/cobol_src/UPDACC.cbl:L268] (terminal: literal)
+- account-type-code
+  - Rule: UPDACC persistence of a supplied product code, in `UPDATE-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/UPDACC.cbl:L180]
+    - Condition: `MOVE COMM-ACC-TYPE TO HV-ACCOUNT-ACC-TYPE.` [src/base/cobol_src/UPDACC.cbl:L274]
+    - Condition: UPDATE SET clause `SET ACCOUNT_TYPE = :HV-ACCOUNT-ACC-TYPE,` [src/base/cobol_src/UPDACC.cbl:L280]
+      - Resulting Value: ACCOUNT_TYPE taken from COMM-ACC-TYPE supplied by the caller via `03 COMM-ACC-TYPE PIC X(8).` [src/base/cobol_copy/UPDACC.cpy:L11] (terminal: input field)
+- account-type-code
+  - Rule: DBCRFUN reads the product code as the payment-channel restriction predicate, in `UPDATE-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/DBCRFUN.cbl:L235]
+    - Condition: `IF (HV-ACCOUNT-ACC-TYPE = 'MORTGAGE' AND COMM-FACILTYPE = 496) OR (HV-ACCOUNT-ACC-TYPE = 'LOAN ' AND COMM-FACILTYPE = 496)` [src/base/cobol_src/DBCRFUN.cbl:L330-L333]
+      - Resulting Value: payment refused when the stored product is 'MORTGAGE' or 'LOAN    ' via `MOVE '4' TO COMM-FAIL-CODE` [src/base/cobol_src/DBCRFUN.cbl:L335] (terminal: literal)
+- account-type-code
+  - Rule: INQACC copies the stored product code into the inquiry COMMAREA, and treats an empty product code as a non-existent account, in `PREMIERE SECTION.` [src/base/cobol_src/INQACC.cbl:L203]
+    - Condition: `IF ACCOUNT-TYPE = SPACES OR LOW-VALUES` [src/base/cobol_src/INQACC.cbl:L229]
+      - Resulting Value: INQACC-SUCCESS = 'N' when the stored product code is blank via `MOVE 'N' TO INQACC-SUCCESS` [src/base/cobol_src/INQACC.cbl:L230] (terminal: literal)
+      - Resulting Value: INQACC-ACC-TYPE copied from the stored ACCOUNT field via `MOVE ACCOUNT-TYPE TO INQACC-ACC-TYPE` [src/base/cobol_src/INQACC.cbl:L236] (terminal: input field)
+
+## account-overdraft-limit — ACCOUNT Overdraft Limit Governing Available-Versus-Actual Divergence (`PIC 9(8)`) [src/base/cobol_copy/ACCOUNT.cpy:L21]
+- account-overdraft-limit
+  - Rule: CREACC persistence of the overdraft limit supplied in the CREACC COMMAREA, in `WRITE-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/CREACC.cbl:L774]
+    - Condition: `MOVE COMM-OVERDR-LIM TO HV-ACCOUNT-OVERDRAFT-LIM.` [src/base/cobol_src/CREACC.cbl:L786]
+    - Condition: INSERT column list entry `:HV-ACCOUNT-OVERDRAFT-LIM,` [src/base/cobol_src/CREACC.cbl:L848]
+      - Resulting Value: ACCOUNT_OVERDRAFT_LIMIT taken from COMM-OVERDR-LIM supplied by the caller via `03 COMM-OVERDR-LIM PIC 9(8).` [src/base/cobol_copy/CREACC.cpy:L19] (terminal: input field)
+- account-overdraft-limit
+  - Rule: BANKDATA seeding cycles a fixed five-entry overdraft table in which only the CURRENT product carries a non-zero limit, in `INITIALISE-ARRAYS SECTION.` [src/base/cobol_src/BANKDATA.cbl:L930]
+    - Condition: `MOVE 5 TO ACCOUNT-OVERDRAFT-COUNT.` [src/base/cobol_src/BANKDATA.cbl:L1168]
+    - Condition: `MOVE 0 TO WS-ACCOUNT-OVERDRAFT-LIM(1).` [src/base/cobol_src/BANKDATA.cbl:L1170]
+    - Condition: `MOVE 00000100 TO WS-ACCOUNT-OVERDRAFT-LIM(3).` [src/base/cobol_src/BANKDATA.cbl:L1172]
+    - Condition: `MOVE 0 TO WS-ACCOUNT-OVERDRAFT-LIM(5).` [src/base/cobol_src/BANKDATA.cbl:L1174]
+      - Resulting Value: overdraft limits 0, 0, 00000100, 0 and 0 for the five seeded products via `MOVE 0 TO WS-ACCOUNT-OVERDRAFT-LIM(1). MOVE 0 TO WS-ACCOUNT-OVERDRAFT-LIM(2). MOVE 00000100 TO WS-ACCOUNT-OVERDRAFT-LIM(3). MOVE 0 TO WS-ACCOUNT-OVERDRAFT-LIM(4). MOVE 0 TO WS-ACCOUNT-OVERDRAFT-LIM(5).` [src/base/cobol_src/BANKDATA.cbl:L1170-L1174] (terminal: literal)
+      - Resulting Value: table entry selected by the row counter via `MOVE WS-ACCOUNT-OVERDRAFT-LIM(WS-CNT) TO WS-OVERDRAFT-CONVERSION. MOVE WS-OVERDRAFT-CONVERSION TO HV-ACCOUNT-OVERDRAFT-LIMIT OF HOST-ACCOUNT-ROW.` [src/base/cobol_src/BANKDATA.cbl:L765-L768] (terminal: input field)
+- account-overdraft-limit
+  - Rule: UPDACC persistence of a supplied overdraft limit, in `UPDATE-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/UPDACC.cbl:L180]
+    - Condition: `MOVE COMM-OVERDRAFT TO HV-ACCOUNT-OVERDRAFT-LIM.` [src/base/cobol_src/UPDACC.cbl:L275]
+    - Condition: UPDATE SET clause `ACCOUNT_OVERDRAFT_LIMIT = :HV-ACCOUNT-OVERDRAFT-LIM` [src/base/cobol_src/UPDACC.cbl:L282]
+      - Resulting Value: ACCOUNT_OVERDRAFT_LIMIT taken from COMM-OVERDRAFT supplied by the caller via `03 COMM-OVERDRAFT PIC 9(8).` [src/base/cobol_copy/UPDACC.cpy:L18] (terminal: input field)
+- account-overdraft-limit
+  - Rule: INQACC copies the stored overdraft limit into the inquiry COMMAREA, in `PREMIERE SECTION.` [src/base/cobol_src/INQACC.cbl:L203]
+    - Condition: `MOVE ACCOUNT-OVERDRAFT-LIMIT TO INQACC-OVERDRAFT` [src/base/cobol_src/INQACC.cbl:L239]
+      - Resulting Value: INQACC-OVERDRAFT copied from the stored ACCOUNT field via `MOVE ACCOUNT-OVERDRAFT-LIMIT TO INQACC-OVERDRAFT` [src/base/cobol_src/INQACC.cbl:L239] (terminal: input field)
+- account-overdraft-limit
+  - Rule: Determination: DBCRFUN carries the overdraft limit through its SELECT and UPDATE but never reads it in a predicate - the overdraft gate tests the sign of the available balance instead, in `UPDATE-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/DBCRFUN.cbl:L235]
+    - Condition: SELECT host variable `:HV-ACCOUNT-OVERDRAFT-LIM,` [src/base/cobol_src/DBCRFUN.cbl:L265]
+    - Condition: `IF WS-DIFFERENCE < 0 AND COMM-FACILTYPE = 496` [src/base/cobol_src/DBCRFUN.cbl:L344]
+      - Resulting Value: overdraft limit rewritten unchanged by the payment update via `ACCOUNT_OVERDRAFT_LIMIT = :HV-ACCOUNT-OVERDRAFT-LIM,` [src/base/cobol_src/DBCRFUN.cbl:L401] (terminal: literal)
+      - Resulting Value: gate decided by the computed available balance, not by the limit via `COMPUTE WS-DIFFERENCE = HV-ACCOUNT-AVAIL-BAL + COMM-AMT` [src/base/cobol_src/DBCRFUN.cbl:L341-L342] (terminal: input field)
+
+## customer-eye-catcher — CUSTOMER Eye-Catcher (`PIC X(4)`) [src/base/cobol_copy/CUSTOMER.cpy:L8]
+- customer-eye-catcher
+  - Rule: Copybook declaration and validity condition, in `03 CUSTOMER-RECORD.` [src/base/cobol_copy/CUSTOMER.cpy:L7]
+    - Condition: `05 CUSTOMER-EYECATCHER PIC X(4).` [src/base/cobol_copy/CUSTOMER.cpy:L8]
+    - Condition: `88 CUSTOMER-EYECATCHER-VALUE VALUE 'CUST'.` [src/base/cobol_copy/CUSTOMER.cpy:L9]
+      - Resulting Value: CUSTOMER-EYECATCHER-VALUE = 'CUST' via `88 CUSTOMER-EYECATCHER-VALUE VALUE 'CUST'.` [src/base/cobol_copy/CUSTOMER.cpy:L9] (terminal: literal)
+- customer-eye-catcher
+  - Rule: BANKDATA sets the eye-catcher through the condition name on every seeded CUSTOMER record, in `PREMIERE SECTION.` [src/base/cobol_src/BANKDATA.cbl:L369]
+    - Condition: `INITIALIZE CUSTOMER-RECORD IN CUSTOMER-RECORD-STRUCTURE` [src/base/cobol_src/BANKDATA.cbl:L471]
+    - Condition: `SET CUSTOMER-EYECATCHER-VALUE TO TRUE` [src/base/cobol_src/BANKDATA.cbl:L473]
+      - Resulting Value: CUSTOMER-EYECATCHER = 'CUST' via `88 CUSTOMER-EYECATCHER-VALUE VALUE 'CUST'.` [src/base/cobol_copy/CUSTOMER.cpy:L9] (terminal: literal)
+- customer-eye-catcher
+  - Rule: CRECUST stamps the literal into the reply COMMAREA after the VSAM write, in `WRITE-CUSTOMER-VSAM SECTION.` [src/base/cobol_src/CRECUST.cbl:L1069]
+    - Condition: `MOVE 'CUST' TO COMM-EYECATCHER.` [src/base/cobol_src/CRECUST.cbl:L1171]
+      - Resulting Value: COMM-EYECATCHER = 'CUST' via `MOVE 'CUST' TO COMM-EYECATCHER.` [src/base/cobol_src/CRECUST.cbl:L1171] (terminal: literal)
+- customer-eye-catcher
+  - Rule: INQCUST copies the stored eye-catcher into the inquiry COMMAREA, in `PREMIERE SECTION.` [src/base/cobol_src/INQCUST.cbl:L166]
+    - Condition: `IF INQCUST-INQ-SUCCESS = 'Y'` [src/base/cobol_src/INQCUST.cbl:L220]
+    - Condition: `MOVE CUSTOMER-EYECATCHER OF OUTPUT-DATA TO INQCUST-EYE` [src/base/cobol_src/INQCUST.cbl:L222-L223]
+      - Resulting Value: INQCUST-EYE copied from the stored CUSTOMER record via `MOVE CUSTOMER-EYECATCHER OF OUTPUT-DATA TO INQCUST-EYE` [src/base/cobol_src/INQCUST.cbl:L222-L223] (terminal: input field)
+- customer-eye-catcher
+  - Rule: DELCUS copies the stored eye-catcher into both its work area and the delete COMMAREA, in `DEL-CUST-VSAM SECTION.` [src/base/cobol_src/DELCUS.cbl:L343]
+    - Condition: `MOVE CUSTOMER-EYECATCHER TO WS-STOREDC-EYECATCHER COMM-EYE IN DFHCOMMAREA.` [src/base/cobol_src/DELCUS.cbl:L454-L455]
+      - Resulting Value: COMM-EYE copied from the stored CUSTOMER record via `MOVE CUSTOMER-EYECATCHER TO WS-STOREDC-EYECATCHER COMM-EYE IN DFHCOMMAREA.` [src/base/cobol_src/DELCUS.cbl:L454-L455] (terminal: input field)
+
+## acctctrl-eye-catcher — ACCOUNT Control-Record Eye-Catcher (`PIC X(4)`) [src/base/cobol_copy/ACCTCTRL.cpy:L8]
+- acctctrl-eye-catcher
+  - Rule: Copybook declaration and validity condition on the ACCOUNT control record, in `03 ACCOUNT-CONTROL-RECORD.` [src/base/cobol_copy/ACCTCTRL.cpy:L7]
+    - Condition: `05 ACCOUNT-CONTROL-EYE-CATCHER PIC X(4).` [src/base/cobol_copy/ACCTCTRL.cpy:L8]
+    - Condition: `88 ACCOUNT-CONTROL-EYECATCHER-V VALUE 'CTRL'.` [src/base/cobol_copy/ACCTCTRL.cpy:L9]
+      - Resulting Value: ACCOUNT-CONTROL-EYECATCHER-V = 'CTRL' via `88 ACCOUNT-CONTROL-EYECATCHER-V VALUE 'CTRL'.` [src/base/cobol_copy/ACCTCTRL.cpy:L9] (terminal: literal)
+- acctctrl-eye-catcher
+  - Rule: Determination: neither the eye-catcher field nor its condition name is referenced by any program in src/base/cobol_src/, established by exhaustive case-sensitive search - the two programs that COPY the layout use only its counter fields, in `88 ACCOUNT-CONTROL-EYECATCHER-V VALUE 'CTRL'.` [src/base/cobol_copy/ACCTCTRL.cpy:L9]
+    - Condition: layout instantiated at `COPY ACCTCTRL.` [src/base/cobol_src/BANKDATA.cbl:L329]
+    - Condition: layout instantiated at `COPY ACCTCTRL.` [src/base/cobol_src/CREACC.cbl:L266]
+      - Resulting Value: 'CTRL' unreachable from COBOL in this repository via `88 ACCOUNT-CONTROL-EYECATCHER-V VALUE 'CTRL'.` [src/base/cobol_copy/ACCTCTRL.cpy:L9] (terminal: literal)
+
+## acctctrl-number-of-accounts — ACCOUNT Control-Record Account Population Counter (`PIC 9(8)`) [src/base/cobol_copy/ACCTCTRL.cpy:L14]
+- acctctrl-number-of-accounts
+  - Rule: BANKDATA initialises the account population counter to zero before seeding, in `PREMIERE SECTION.` [src/base/cobol_src/BANKDATA.cbl:L369]
+    - Condition: `MOVE ZERO TO LAST-ACCOUNT-NUMBER NUMBER-OF-ACCOUNTS` [src/base/cobol_src/BANKDATA.cbl:L466]
+      - Resulting Value: NUMBER-OF-ACCOUNTS = 0 via `MOVE ZERO TO LAST-ACCOUNT-NUMBER NUMBER-OF-ACCOUNTS` [src/base/cobol_src/BANKDATA.cbl:L466] (terminal: literal)
+- acctctrl-number-of-accounts
+  - Rule: BANKDATA increments the counter once per inserted ACCOUNT row, in `POPULATE-ACC SECTION.` [src/base/cobol_src/BANKDATA.cbl:L716]
+    - Condition: `ADD 1 TO NUMBER-OF-ACCOUNTS GIVING NUMBER-OF-ACCOUNTS` [src/base/cobol_src/BANKDATA.cbl:L871]
+      - Resulting Value: NUMBER-OF-ACCOUNTS = previous value plus the literal increment 1 via `ADD 1 TO NUMBER-OF-ACCOUNTS GIVING NUMBER-OF-ACCOUNTS` [src/base/cobol_src/BANKDATA.cbl:L871] (terminal: literal)
+      - Resulting Value: a second, commented-out increment remains in the source and is recorded as found via `* ADD 1 TO NUMBER-OF-ACCOUNTS GIVING NUMBER-OF-ACCOUNTS` [src/base/cobol_src/BANKDATA.cbl:L751] (terminal: literal)
+- acctctrl-number-of-accounts
+  - Rule: BANKDATA copies the counter into the DB2 CONTROL row that the online programs actually read, which is the representation hop for this counter, in `PREMIERE SECTION.` [src/base/cobol_src/BANKDATA.cbl:L369]
+    - Condition: `MOVE SPACES TO HV-CONTROL-NAME` [src/base/cobol_src/BANKDATA.cbl:L635]
+    - Condition: `MOVE NUMBER-OF-ACCOUNTS TO HV-CONTROL-VALUE-NUM` [src/base/cobol_src/BANKDATA.cbl:L636]
+    - Condition: `STRING SORTCODE DELIMITED BY SIZE '-' DELIMITED BY SIZE 'ACCOUNT-COUNT' DELIMITED BY SIZE` [src/base/cobol_src/BANKDATA.cbl:L638-L640]
+      - Resulting Value: CONTROL_VALUE_NUM for the ACCOUNT-COUNT row = NUMBER-OF-ACCOUNTS via `MOVE NUMBER-OF-ACCOUNTS TO HV-CONTROL-VALUE-NUM` [src/base/cobol_src/BANKDATA.cbl:L636] (terminal: input field)
+- acctctrl-number-of-accounts
+  - Rule: Determination: no online program updates this VSAM counter - CREACC enforces its account-capacity rule against the INQACCCU array counter instead, in `05 NUMBER-OF-ACCOUNTS PIC 9(8).` [src/base/cobol_copy/ACCTCTRL.cpy:L14]
+    - Condition: name disambiguated at `COPY INQACCCU REPLACING ==NUMBER-OF-ACCOUNTS.== BY ==NUMBER-OF-ACCOUNTS IN INQACCCU-COMMAREA.==.` [src/base/cobol_src/CREACC.cbl:L260-L261]
+    - Condition: `IF NUMBER-OF-ACCOUNTS IN INQACCCU-COMMAREA > 9` [src/base/cobol_src/CREACC.cbl:L347]
+      - Resulting Value: capacity gate reads the INQACCCU account-array counter, not this field via `03 NUMBER-OF-ACCOUNTS PIC S9(8) BINARY.` [src/base/cobol_copy/INQACCCU.cpy:L7] (terminal: input field)
+
+## acctctrl-last-account-number — ACCOUNT Control-Record Last Allocated Account Number (`PIC 9(8)`) [src/base/cobol_copy/ACCTCTRL.cpy:L15]
+- acctctrl-last-account-number
+  - Rule: BANKDATA initialises the last allocated account number to zero before seeding, in `PREMIERE SECTION.` [src/base/cobol_src/BANKDATA.cbl:L369]
+    - Condition: `MOVE ZERO TO LAST-ACCOUNT-NUMBER NUMBER-OF-ACCOUNTS` [src/base/cobol_src/BANKDATA.cbl:L466]
+      - Resulting Value: LAST-ACCOUNT-NUMBER = 0 via `MOVE ZERO TO LAST-ACCOUNT-NUMBER NUMBER-OF-ACCOUNTS` [src/base/cobol_src/BANKDATA.cbl:L466] (terminal: literal)
+- acctctrl-last-account-number
+  - Rule: BANKDATA records the highest account number it has written, in `POPULATE-ACC SECTION.` [src/base/cobol_src/BANKDATA.cbl:L716]
+    - Condition: `MOVE WS-ACCOUNT-NUMBER TO LAST-ACCOUNT-NUMBER` [src/base/cobol_src/BANKDATA.cbl:L870]
+      - Resulting Value: LAST-ACCOUNT-NUMBER = the account number just inserted via `MOVE WS-ACCOUNT-NUMBER TO LAST-ACCOUNT-NUMBER` [src/base/cobol_src/BANKDATA.cbl:L870] (terminal: input field)
+- acctctrl-last-account-number
+  - Rule: BANKDATA copies the high-water mark into the DB2 CONTROL row that CREACC reads, in `PREMIERE SECTION.` [src/base/cobol_src/BANKDATA.cbl:L369]
+    - Condition: `MOVE SPACES TO HV-CONTROL-NAME` [src/base/cobol_src/BANKDATA.cbl:L606]
+    - Condition: `MOVE LAST-ACCOUNT-NUMBER TO HV-CONTROL-VALUE-NUM` [src/base/cobol_src/BANKDATA.cbl:L607]
+    - Condition: `STRING SORTCODE DELIMITED BY SIZE '-' DELIMITED BY SIZE 'ACCOUNT-LAST' DELIMITED BY SIZE` [src/base/cobol_src/BANKDATA.cbl:L609-L611]
+      - Resulting Value: CONTROL_VALUE_NUM for the ACCOUNT-LAST row = LAST-ACCOUNT-NUMBER via `MOVE LAST-ACCOUNT-NUMBER TO HV-CONTROL-VALUE-NUM` [src/base/cobol_src/BANKDATA.cbl:L607] (terminal: input field)
+- acctctrl-last-account-number
+  - Rule: CREACC allocates the next account number from the CONTROL row rather than from this VSAM field, which is the representation hop for the allocator, in `FIND-NEXT-ACCOUNT SECTION.` [src/base/cobol_src/CREACC.cbl:L429]
+    - Condition: `EXEC SQL SELECT CONTROL_NAME, CONTROL_VALUE_NUM, CONTROL_VALUE_STR INTO :HV-CONTROL-NAME, :HV-CONTROL-VALUE-NUM, :HV-CONTROL-VALUE-STR FROM CONTROL WHERE CONTROL_NAME = :HV-CONTROL-NAME END-EXEC.` [src/base/cobol_src/CREACC.cbl:L444-L453]
+    - Condition: `ADD 1 TO HV-CONTROL-VALUE-NUM GIVING COMM-NUMBER ACCOUNT-NUMBER REQUIRED-ACCT-NUMBER3 NCS-ACC-NO-VALUE HV-CONTROL-VALUE-NUM` [src/base/cobol_src/CREACC.cbl:L525-L527]
+    - Condition: UPDATE SET clause `SET CONTROL_VALUE_NUM = :HV-CONTROL-VALUE-NUM` [src/base/cobol_src/CREACC.cbl:L531]
+      - Resulting Value: next account number = CONTROL_VALUE_NUM plus the literal increment 1 via `ADD 1 TO HV-CONTROL-VALUE-NUM GIVING COMM-NUMBER ACCOUNT-NUMBER REQUIRED-ACCT-NUMBER3 NCS-ACC-NO-VALUE HV-CONTROL-VALUE-NUM` [src/base/cobol_src/CREACC.cbl:L525-L527] (terminal: literal)
+      - Resulting Value: previous high-water mark read from the CONTROL row via `INTO :HV-CONTROL-NAME, :HV-CONTROL-VALUE-NUM, :HV-CONTROL-VALUE-STR` [src/base/cobol_src/CREACC.cbl:L448-L450] (terminal: input field)
+
+## acctctrl-success-flag — ACCOUNT Control-Record Success Flag ACCOUNT-CONTROL-SUCCESS-FLAG (`PIC X`) [src/base/cobol_copy/ACCTCTRL.cpy:L16]
+- acctctrl-success-flag
+  - Rule: Copybook declaration and success condition on the ACCOUNT control record, in `03 ACCOUNT-CONTROL-RECORD.` [src/base/cobol_copy/ACCTCTRL.cpy:L7]
+    - Condition: `05 ACCOUNT-CONTROL-SUCCESS-FLAG PIC X.` [src/base/cobol_copy/ACCTCTRL.cpy:L16]
+    - Condition: `88 ACCOUNT-CONTROL-SUCCESS VALUE 'Y'.` [src/base/cobol_copy/ACCTCTRL.cpy:L17]
+      - Resulting Value: ACCOUNT-CONTROL-SUCCESS = 'Y' via `88 ACCOUNT-CONTROL-SUCCESS VALUE 'Y'.` [src/base/cobol_copy/ACCTCTRL.cpy:L17] (terminal: literal)
+- acctctrl-success-flag
+  - Rule: Determination: neither the flag field nor its condition name is referenced by any program in src/base/cobol_src/, established by exhaustive case-sensitive search, in `05 ACCOUNT-CONTROL-SUCCESS-FLAG PIC X.` [src/base/cobol_copy/ACCTCTRL.cpy:L16]
+    - Condition: layout instantiated at `COPY ACCTCTRL.` [src/base/cobol_src/BANKDATA.cbl:L329]
+    - Condition: layout instantiated at `COPY ACCTCTRL.` [src/base/cobol_src/CREACC.cbl:L266]
+      - Resulting Value: 'Y' unreachable from COBOL in this repository via `88 ACCOUNT-CONTROL-SUCCESS VALUE 'Y'.` [src/base/cobol_copy/ACCTCTRL.cpy:L17] (terminal: literal)
+
+## acctctrl-fail-code — ACCOUNT Control-Record Fail Code ACCOUNT-CONTROL-FAIL-CODE (`PIC X`) [src/base/cobol_copy/ACCTCTRL.cpy:L18]
+- acctctrl-fail-code
+  - Rule: Copybook declaration of the ACCOUNT control-record fail code, which carries no condition names, in `03 ACCOUNT-CONTROL-RECORD.` [src/base/cobol_copy/ACCTCTRL.cpy:L7]
+    - Condition: `05 ACCOUNT-CONTROL-FAIL-CODE PIC X.` [src/base/cobol_copy/ACCTCTRL.cpy:L18]
+      - Resulting Value: single-byte fail code whose value is whatever the control record image supplies via `05 ACCOUNT-CONTROL-FAIL-CODE PIC X.` [src/base/cobol_copy/ACCTCTRL.cpy:L18] (terminal: input field)
+- acctctrl-fail-code
+  - Rule: Determination: the field is never assigned by any program in src/base/cobol_src/, established by exhaustive case-sensitive search, in `05 ACCOUNT-CONTROL-FAIL-CODE PIC X.` [src/base/cobol_copy/ACCTCTRL.cpy:L18]
+    - Condition: layout instantiated at `COPY ACCTCTRL.` [src/base/cobol_src/BANKDATA.cbl:L329]
+    - Condition: layout instantiated at `COPY ACCTCTRL.` [src/base/cobol_src/CREACC.cbl:L266]
+      - Resulting Value: value passes through untouched from the stored control record via `05 ACCOUNT-CONTROL-FAIL-CODE PIC X.` [src/base/cobol_copy/ACCTCTRL.cpy:L18] (terminal: input field)
+
+## custctrl-eye-catcher — CUSTOMER Control-Record Eye-Catcher (`PIC X(4)`) [src/base/cobol_copy/CUSTCTRL.cpy:L8]
+- custctrl-eye-catcher
+  - Rule: Copybook declaration and validity condition on the CUSTOMER control record, in `03 CUSTOMER-CONTROL-RECORD.` [src/base/cobol_copy/CUSTCTRL.cpy:L7]
+    - Condition: `05 CUSTOMER-CONTROL-EYECATCHER PIC X(4).` [src/base/cobol_copy/CUSTCTRL.cpy:L8]
+    - Condition: `88 CUSTOMER-CONTROL-EYECATCHER-V VALUE 'CTRL'.` [src/base/cobol_copy/CUSTCTRL.cpy:L9]
+      - Resulting Value: CUSTOMER-CONTROL-EYECATCHER-V = 'CTRL' via `88 CUSTOMER-CONTROL-EYECATCHER-V VALUE 'CTRL'.` [src/base/cobol_copy/CUSTCTRL.cpy:L9] (terminal: literal)
+- custctrl-eye-catcher
+  - Rule: BANKDATA sets the eye-catcher through the condition name when it writes the control record, in `PREMIERE SECTION.` [src/base/cobol_src/BANKDATA.cbl:L369]
+    - Condition: `MOVE '000000' TO CUSTOMER-CONTROL-SORTCODE` [src/base/cobol_src/BANKDATA.cbl:L588]
+    - Condition: `MOVE '9999999999' TO CUSTOMER-CONTROL-NUMBER` [src/base/cobol_src/BANKDATA.cbl:L589]
+    - Condition: `SET CUSTOMER-CONTROL-EYECATCHER-V TO TRUE` [src/base/cobol_src/BANKDATA.cbl:L590]
+      - Resulting Value: CUSTOMER-CONTROL-EYECATCHER = 'CTRL' via `88 CUSTOMER-CONTROL-EYECATCHER-V VALUE 'CTRL'.` [src/base/cobol_copy/CUSTCTRL.cpy:L9] (terminal: literal)
+      - Resulting Value: control record keyed by sort code zeros and customer number all nines via `MOVE '000000' TO CUSTOMER-CONTROL-SORTCODE` [src/base/cobol_src/BANKDATA.cbl:L588] (terminal: literal)
+
+## custctrl-number-of-customers — CUSTOMER Control-Record Customer Population Counter (`PIC 9(10) DISPLAY`) [src/base/cobol_copy/CUSTCTRL.cpy:L13]
+- custctrl-number-of-customers
+  - Rule: BANKDATA initialises the customer population counter to zero before seeding, in `PREMIERE SECTION.` [src/base/cobol_src/BANKDATA.cbl:L369]
+    - Condition: `MOVE ZERO TO LAST-CUSTOMER-NUMBER NUMBER-OF-CUSTOMERS` [src/base/cobol_src/BANKDATA.cbl:L465]
+      - Resulting Value: NUMBER-OF-CUSTOMERS = 0 via `MOVE ZERO TO LAST-CUSTOMER-NUMBER NUMBER-OF-CUSTOMERS` [src/base/cobol_src/BANKDATA.cbl:L465] (terminal: literal)
+- custctrl-number-of-customers
+  - Rule: BANKDATA increments the counter once per generated CUSTOMER record, in `PREMIERE SECTION.` [src/base/cobol_src/BANKDATA.cbl:L369]
+    - Condition: `INITIALIZE CUSTOMER-RECORD IN CUSTOMER-RECORD-STRUCTURE` [src/base/cobol_src/BANKDATA.cbl:L471]
+    - Condition: `ADD 1 TO NUMBER-OF-CUSTOMERS GIVING NUMBER-OF-CUSTOMERS` [src/base/cobol_src/BANKDATA.cbl:L477]
+      - Resulting Value: NUMBER-OF-CUSTOMERS = previous value plus the literal increment 1 via `ADD 1 TO NUMBER-OF-CUSTOMERS GIVING NUMBER-OF-CUSTOMERS` [src/base/cobol_src/BANKDATA.cbl:L477] (terminal: literal)
+- custctrl-number-of-customers
+  - Rule: CRECUST increments the counter under the VSAM update lock taken on the control record, in `WRITE-CUSTOMER-VSAM SECTION.` [src/base/cobol_src/CRECUST.cbl:L1069]
+    - Condition: `INITIALIZE CUSTOMER-CONTROL MOVE ZERO TO CUSTOMER-CONTROL-SORTCODE MOVE ALL '9' TO CUSTOMER-CONTROL-NUMBER` [src/base/cobol_src/CRECUST.cbl:L1129-L1131]
+    - Condition: `EXEC CICS READ FILE('CUSTOMER') RIDFLD(CUSTOMER-CONTROL-KEY) INTO(CUSTOMER-CONTROL) UPDATE END-EXEC` [src/base/cobol_src/CRECUST.cbl:L1133-L1137]
+    - Condition: `ADD 1 TO NUMBER-OF-CUSTOMERS IN CUSTOMER-CONTROL-RECORD GIVING NUMBER-OF-CUSTOMERS IN CUSTOMER-CONTROL-RECORD` [src/base/cobol_src/CRECUST.cbl:L1139-L1140]
+    - Condition: `EXEC CICS REWRITE FILE('CUSTOMER') FROM(CUSTOMER-CONTROL) END-EXEC` [src/base/cobol_src/CRECUST.cbl:L1144-L1146]
+      - Resulting Value: NUMBER-OF-CUSTOMERS = previous value plus the literal increment 1 via `ADD 1 TO NUMBER-OF-CUSTOMERS IN CUSTOMER-CONTROL-RECORD GIVING NUMBER-OF-CUSTOMERS IN CUSTOMER-CONTROL-RECORD` [src/base/cobol_src/CRECUST.cbl:L1139-L1140] (terminal: literal)
+      - Resulting Value: previous value read from the control record keyed by all nines via `MOVE ALL '9' TO CUSTOMER-CONTROL-NUMBER` [src/base/cobol_src/CRECUST.cbl:L1131] (terminal: input field)
+
+## custctrl-last-customer-number — CUSTOMER Control-Record Last Allocated Customer Number (`PIC 9(10) DISPLAY`) [src/base/cobol_copy/CUSTCTRL.cpy:L14]
+- custctrl-last-customer-number
+  - Rule: BANKDATA initialises the last allocated customer number to zero before seeding, in `PREMIERE SECTION.` [src/base/cobol_src/BANKDATA.cbl:L369]
+    - Condition: `MOVE ZERO TO LAST-CUSTOMER-NUMBER NUMBER-OF-CUSTOMERS` [src/base/cobol_src/BANKDATA.cbl:L465]
+      - Resulting Value: LAST-CUSTOMER-NUMBER = 0 via `MOVE ZERO TO LAST-CUSTOMER-NUMBER NUMBER-OF-CUSTOMERS` [src/base/cobol_src/BANKDATA.cbl:L465] (terminal: literal)
+- custctrl-last-customer-number
+  - Rule: BANKDATA records the highest customer key it has written, in `PREMIERE SECTION.` [src/base/cobol_src/BANKDATA.cbl:L369]
+    - Condition: `MOVE NEXT-KEY TO LAST-CUSTOMER-NUMBER` [src/base/cobol_src/BANKDATA.cbl:L476]
+      - Resulting Value: LAST-CUSTOMER-NUMBER = the generated key via `MOVE NEXT-KEY TO LAST-CUSTOMER-NUMBER` [src/base/cobol_src/BANKDATA.cbl:L476] (terminal: input field)
+- custctrl-last-customer-number
+  - Rule: CRECUST stores the new customer number as the high-water mark when it rewrites the control record, in `WRITE-CUSTOMER-VSAM SECTION.` [src/base/cobol_src/CRECUST.cbl:L1069]
+    - Condition: `MOVE CUSTOMER-NUMBER OF CUSTOMER-RECORD TO LAST-CUSTOMER-NUMBER IN CUSTOMER-CONTROL-RECORD` [src/base/cobol_src/CRECUST.cbl:L1141-L1142]
+    - Condition: `EXEC CICS REWRITE FILE('CUSTOMER') FROM(CUSTOMER-CONTROL) END-EXEC` [src/base/cobol_src/CRECUST.cbl:L1144-L1146]
+      - Resulting Value: LAST-CUSTOMER-NUMBER = the customer number just written via `MOVE CUSTOMER-NUMBER OF CUSTOMER-RECORD TO LAST-CUSTOMER-NUMBER IN CUSTOMER-CONTROL-RECORD` [src/base/cobol_src/CRECUST.cbl:L1141-L1142] (terminal: input field)
+- custctrl-last-customer-number
+  - Rule: CRECUST allocates the next customer number by incrementing the high-water mark under the browse it holds on the control record, in `GET-LAST-CUSTOMER-VSAM SECTION.` [src/base/cobol_src/CRECUST.cbl:L1341]
+    - Condition: `ADD 1 TO LAST-CUSTOMER-NUMBER IN CUSTOMER-CONTROL GIVING LAST-CUSTOMER-NUMBER IN CUSTOMER-CONTROL` [src/base/cobol_src/CRECUST.cbl:L1381-L1382]
+    - Condition: `MOVE LAST-CUSTOMER-NUMBER OF CUSTOMER-CONTROL TO COMM-NUMBER CUSTOMER-NUMBER REQUIRED-CUST-NUMBER2 NCS-CUST-NO-VALUE.` [src/base/cobol_src/CRECUST.cbl:L1414-L1416]
+      - Resulting Value: next customer number = LAST-CUSTOMER-NUMBER plus the literal increment 1 via `ADD 1 TO LAST-CUSTOMER-NUMBER IN CUSTOMER-CONTROL GIVING LAST-CUSTOMER-NUMBER IN CUSTOMER-CONTROL` [src/base/cobol_src/CRECUST.cbl:L1381-L1382] (terminal: literal)
+      - Resulting Value: previous high-water mark read from the control record via `MOVE ALL '9' TO CUSTOMER-CONTROL-NUMBER` [src/base/cobol_src/CRECUST.cbl:L1346] (terminal: input field)
+
+## custctrl-success-flag — CUSTOMER Control-Record Success Flag CUSTOMER-CONTROL-SUCCESS-FLAG (`PIC X`) [src/base/cobol_copy/CUSTCTRL.cpy:L15]
+- custctrl-success-flag
+  - Rule: Copybook declaration and success condition on the CUSTOMER control record, in `03 CUSTOMER-CONTROL-RECORD.` [src/base/cobol_copy/CUSTCTRL.cpy:L7]
+    - Condition: `05 CUSTOMER-CONTROL-SUCCESS-FLAG PIC X.` [src/base/cobol_copy/CUSTCTRL.cpy:L15]
+    - Condition: `88 CUSTOMER-CONTROL-SUCCESS VALUE 'Y'.` [src/base/cobol_copy/CUSTCTRL.cpy:L16]
+      - Resulting Value: CUSTOMER-CONTROL-SUCCESS = 'Y' via `88 CUSTOMER-CONTROL-SUCCESS VALUE 'Y'.` [src/base/cobol_copy/CUSTCTRL.cpy:L16] (terminal: literal)
+- custctrl-success-flag
+  - Rule: Determination: neither the flag field nor its condition name is referenced by any program in src/base/cobol_src/, established by exhaustive case-sensitive search - CRECUST signals control-record failures through its own COMMAREA fail code instead, in `05 CUSTOMER-CONTROL-SUCCESS-FLAG PIC X.` [src/base/cobol_copy/CUSTCTRL.cpy:L15]
+    - Condition: layout instantiated at `COPY CUSTCTRL.` [src/base/cobol_src/BANKDATA.cbl:L326]
+    - Condition: layout instantiated at `01 CUSTOMER-CONTROL.` [src/base/cobol_src/CRECUST.cbl:L344]
+    - Condition: `IF WS-CICS-RESP IS NOT EQUAL TO DFHRESP(NORMAL)` [src/base/cobol_src/CRECUST.cbl:L1405]
+      - Resulting Value: 'Y' unreachable from COBOL in this repository via `88 CUSTOMER-CONTROL-SUCCESS VALUE 'Y'.` [src/base/cobol_copy/CUSTCTRL.cpy:L16] (terminal: literal)
+      - Resulting Value: COMM-FAIL-CODE = '4' used in its place on the rewrite failure path via `MOVE '4' TO COMM-FAIL-CODE` [src/base/cobol_src/CRECUST.cbl:L1407] (terminal: literal)
+
+## custctrl-fail-code — CUSTOMER Control-Record Fail Code CUSTOMER-CONTROL-FAIL-CODE (`PIC X`) [src/base/cobol_copy/CUSTCTRL.cpy:L17]
+- custctrl-fail-code
+  - Rule: Copybook declaration of the CUSTOMER control-record fail code, which carries no condition names, in `03 CUSTOMER-CONTROL-RECORD.` [src/base/cobol_copy/CUSTCTRL.cpy:L7]
+    - Condition: `05 CUSTOMER-CONTROL-FAIL-CODE PIC X.` [src/base/cobol_copy/CUSTCTRL.cpy:L17]
+      - Resulting Value: single-byte fail code whose value is whatever the control record image supplies via `05 CUSTOMER-CONTROL-FAIL-CODE PIC X.` [src/base/cobol_copy/CUSTCTRL.cpy:L17] (terminal: input field)
+- custctrl-fail-code
+  - Rule: Determination: the field is never assigned by any program in src/base/cobol_src/, established by exhaustive case-sensitive search, in `05 CUSTOMER-CONTROL-FAIL-CODE PIC X.` [src/base/cobol_copy/CUSTCTRL.cpy:L17]
+    - Condition: layout instantiated at `COPY CUSTCTRL.` [src/base/cobol_src/BANKDATA.cbl:L326]
+    - Condition: layout instantiated at `01 CUSTOMER-CONTROL.` [src/base/cobol_src/CRECUST.cbl:L344]
+      - Resulting Value: value passes through untouched from the stored control record via `05 CUSTOMER-CONTROL-FAIL-CODE PIC X.` [src/base/cobol_copy/CUSTCTRL.cpy:L17] (terminal: input field)
+
+## controli-control-counters — CONTROLI Packed-Decimal Control Counter Quartet (`PIC 9(8) PACKED-DECIMAL`) [src/base/cobol_copy/CONTROLI.cpy:L7-L10]
+- controli-control-counters
+  - Rule: Copybook declaration of the packed-decimal counter quartet, in `03 CONTROL-CUSTOMER-COUNT PIC 9(10) PACKED-DECIMAL.` [src/base/cobol_copy/CONTROLI.cpy:L7]
+    - Condition: `03 CONTROL-CUSTOMER-COUNT PIC 9(10) PACKED-DECIMAL.` [src/base/cobol_copy/CONTROLI.cpy:L7]
+    - Condition: `03 CONTROL-CUSTOMER-LAST PIC 9(10) PACKED-DECIMAL.` [src/base/cobol_copy/CONTROLI.cpy:L8]
+    - Condition: `03 CONTROL-ACCOUNT-COUNT PIC 9(8) PACKED-DECIMAL.` [src/base/cobol_copy/CONTROLI.cpy:L9]
+    - Condition: `03 CONTROL-ACCOUNT-LAST PIC 9(8) PACKED-DECIMAL.` [src/base/cobol_copy/CONTROLI.cpy:L10]
+      - Resulting Value: four packed-decimal counters whose values are whatever the control segment image supplies via `03 CONTROL-CUSTOMER-COUNT PIC 9(10) PACKED-DECIMAL. 03 CONTROL-CUSTOMER-LAST PIC 9(10) PACKED-DECIMAL. 03 CONTROL-ACCOUNT-COUNT PIC 9(8) PACKED-DECIMAL. 03 CONTROL-ACCOUNT-LAST PIC 9(8) PACKED-DECIMAL.` [src/base/cobol_copy/CONTROLI.cpy:L7-L10] (terminal: input field)
+- controli-control-counters
+  - Rule: Determination: the copybook is referenced by no program, no Java class and no service interface anywhere in the repository, established by exhaustive case-sensitive search excluding .git and node_modules - the live counters with the same meaning are the VSAM control records, in `03 CONTROL-CUSTOMER-COUNT PIC 9(10) PACKED-DECIMAL.` [src/base/cobol_copy/CONTROLI.cpy:L7]
+    - Condition: live equivalent `05 NUMBER-OF-ACCOUNTS PIC 9(8).` [src/base/cobol_copy/ACCTCTRL.cpy:L14]
+    - Condition: live equivalent `05 LAST-ACCOUNT-NUMBER PIC 9(8).` [src/base/cobol_copy/ACCTCTRL.cpy:L15]
+    - Condition: live equivalent `05 NUMBER-OF-CUSTOMERS PIC 9(10) DISPLAY.` [src/base/cobol_copy/CUSTCTRL.cpy:L13]
+    - Condition: live equivalent `05 LAST-CUSTOMER-NUMBER PIC 9(10) DISPLAY.` [src/base/cobol_copy/CUSTCTRL.cpy:L14]
+      - Resulting Value: counter values reachable only through the ACCTCTRL and CUSTCTRL records that BANKDATA writes via `MOVE ZERO TO LAST-ACCOUNT-NUMBER NUMBER-OF-ACCOUNTS` [src/base/cobol_src/BANKDATA.cbl:L466] (terminal: input field)
+
+## newaccno-success-flag — NEWACCNO Allocator Success Flag NEWACCNO-SUCCESS (`PIC X`) [src/base/cobol_copy/NEWACCNO.cpy:L12]
+- newaccno-success-flag
+  - Rule: Copybook declaration of the allocator success flag, which carries no condition names, in `03 NEWACCNO-FUNCTION PIC X.` [src/base/cobol_copy/NEWACCNO.cpy:L7]
+    - Condition: `03 NEWACCNO-SUCCESS PIC X.` [src/base/cobol_copy/NEWACCNO.cpy:L12]
+      - Resulting Value: single-byte flag whose value is whatever the allocator program returns via `03 NEWACCNO-SUCCESS PIC X.` [src/base/cobol_copy/NEWACCNO.cpy:L12] (terminal: input field)
+- newaccno-success-flag
+  - Rule: IBM Record Generator commarea consumer exposes the flag as a one-byte string field at its fixed offset, in `public static final int COBOL_LANGUAGE_STRUCTURE_LEN = 11;` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/NewAccountNumber.java:L19]
+    - Condition: `protected static final StringField NEWACCNO_SUCCESS = factory.getStringField(1);` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/NewAccountNumber.java:L43]
+      - Resulting Value: newaccnoSuccess read from the commarea buffer via `protected static final StringField NEWACCNO_SUCCESS = factory.getStringField(1);` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/NewAccountNumber.java:L43] (terminal: input field)
+- newaccno-success-flag
+  - Rule: Determination: no NEWACCNO.cbl exists in src/base/cobol_src/, so the success signalling for account-number allocation is carried by the CREACC COMMAREA instead, in `ENQ-NAMED-COUNTER SECTION.` [src/base/cobol_src/CREACC.cbl:L385]
+    - Condition: `IF WS-CICS-RESP NOT = DFHRESP(NORMAL)` [src/base/cobol_src/CREACC.cbl:L397]
+      - Resulting Value: COMM-SUCCESS = 'N' when the allocator ENQ fails via `MOVE 'N' TO COMM-SUCCESS IN DFHCOMMAREA` [src/base/cobol_src/CREACC.cbl:L398] (terminal: literal)
+      - Resulting Value: COMM-SUCCESS = 'Y' when allocation and persistence both succeed via `MOVE 'Y' TO COMM-SUCCESS IN DFHCOMMAREA.` [src/base/cobol_src/CREACC.cbl:L913] (terminal: literal)
+
+## newaccno-fail-code — NEWACCNO Allocator Fail Code NEWACCNO-FAIL-CODE (`PIC X`) [src/base/cobol_copy/NEWACCNO.cpy:L13]
+- newaccno-fail-code
+  - Rule: Copybook declaration of the allocator fail code, which carries no condition names, in `03 NEWACCNO-FUNCTION PIC X.` [src/base/cobol_copy/NEWACCNO.cpy:L7]
+    - Condition: `03 NEWACCNO-FAIL-CODE PIC X.` [src/base/cobol_copy/NEWACCNO.cpy:L13]
+      - Resulting Value: single-byte fail code whose value is whatever the allocator program returns via `03 NEWACCNO-FAIL-CODE PIC X.` [src/base/cobol_copy/NEWACCNO.cpy:L13] (terminal: input field)
+- newaccno-fail-code
+  - Rule: IBM Record Generator commarea consumer exposes the fail code as a one-byte string field at its fixed offset, in `public static final int COBOL_LANGUAGE_STRUCTURE_LEN = 11;` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/NewAccountNumber.java:L19]
+    - Condition: `protected static final StringField NEWACCNO_FAIL_CODE = factory.getStringField(1);` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/NewAccountNumber.java:L47]
+      - Resulting Value: newaccnoFailCode read from the commarea buffer via `protected static final StringField NEWACCNO_FAIL_CODE = factory.getStringField(1);` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/NewAccountNumber.java:L47] (terminal: input field)
+- newaccno-fail-code
+  - Rule: Determination: no NEWACCNO.cbl exists in src/base/cobol_src/, so allocator failures surface as CREACC fail codes instead, in `ENQ-NAMED-COUNTER SECTION.` [src/base/cobol_src/CREACC.cbl:L385]
+    - Condition: `IF WS-CICS-RESP NOT = DFHRESP(NORMAL)` [src/base/cobol_src/CREACC.cbl:L397]
+      - Resulting Value: COMM-FAIL-CODE = '3' when the allocator ENQ fails, scoped to CREACC only via `MOVE '3' TO COMM-FAIL-CODE IN DFHCOMMAREA` [src/base/cobol_src/CREACC.cbl:L399] (terminal: literal)
+    - Condition: paired release `IF WS-CICS-RESP NOT = DFHRESP(NORMAL)` [src/base/cobol_src/CREACC.cbl:L419]
+      - Resulting Value: COMM-FAIL-CODE = '5' when the allocator DEQ fails, scoped to CREACC only via `MOVE '5' TO COMM-FAIL-CODE IN DFHCOMMAREA` [src/base/cobol_src/CREACC.cbl:L421] (terminal: literal)
+
+## newcusno-success-flag — NEWCUSNO Allocator Success Flag NEWCUSNO-SUCCESS (`PIC X`) [src/base/cobol_copy/NEWCUSNO.cpy:L12]
+- newcusno-success-flag
+  - Rule: Copybook declaration of the allocator success flag, which carries no condition names, in `03 NEWCUSNO-FUNCTION PIC X.` [src/base/cobol_copy/NEWCUSNO.cpy:L7]
+    - Condition: `03 NEWCUSNO-SUCCESS PIC X.` [src/base/cobol_copy/NEWCUSNO.cpy:L12]
+      - Resulting Value: single-byte flag whose value is whatever the allocator program returns via `03 NEWCUSNO-SUCCESS PIC X.` [src/base/cobol_copy/NEWCUSNO.cpy:L12] (terminal: input field)
+- newcusno-success-flag
+  - Rule: IBM Record Generator commarea consumer exposes the flag as a one-byte string field at its fixed offset, in `public static final int COBOL_LANGUAGE_STRUCTURE_LEN = 13;` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/NewCustomerNumber.java:L19]
+    - Condition: `protected static final StringField NEWCUSNO_SUCCESS = factory.getStringField(1);` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/NewCustomerNumber.java:L43]
+      - Resulting Value: newcusnoSuccess read from the commarea buffer via `protected static final StringField NEWCUSNO_SUCCESS = factory.getStringField(1);` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/NewCustomerNumber.java:L43] (terminal: input field)
+- newcusno-success-flag
+  - Rule: Determination: no NEWCUSNO.cbl exists in src/base/cobol_src/, so the success signalling for customer-number allocation is carried by the CRECUST COMMAREA instead, in `ENQ-NAMED-COUNTER SECTION.` [src/base/cobol_src/CRECUST.cbl:L499]
+    - Condition: `IF WS-CICS-RESP NOT = DFHRESP(NORMAL)` [src/base/cobol_src/CRECUST.cbl:L511]
+      - Resulting Value: COMM-SUCCESS = 'N' when the allocator ENQ fails via `MOVE 'N' TO COMM-SUCCESS` [src/base/cobol_src/CRECUST.cbl:L512] (terminal: literal)
+      - Resulting Value: COMM-SUCCESS = 'Y' when allocation and persistence both succeed via `MOVE 'Y' TO COMM-SUCCESS.` [src/base/cobol_src/CRECUST.cbl:L1172] (terminal: literal)
+
+## newcusno-fail-code — NEWCUSNO Allocator Fail Code NEWCUSNO-FAIL-CODE (`PIC X`) [src/base/cobol_copy/NEWCUSNO.cpy:L13]
+- newcusno-fail-code
+  - Rule: Copybook declaration of the allocator fail code, which carries no condition names, in `03 NEWCUSNO-FUNCTION PIC X.` [src/base/cobol_copy/NEWCUSNO.cpy:L7]
+    - Condition: `03 NEWCUSNO-FAIL-CODE PIC X.` [src/base/cobol_copy/NEWCUSNO.cpy:L13]
+      - Resulting Value: single-byte fail code whose value is whatever the allocator program returns via `03 NEWCUSNO-FAIL-CODE PIC X.` [src/base/cobol_copy/NEWCUSNO.cpy:L13] (terminal: input field)
+- newcusno-fail-code
+  - Rule: IBM Record Generator commarea consumer declares a 13-byte buffer whose final byte is the fail code, in `public static final int COBOL_LANGUAGE_STRUCTURE_LEN = 13;` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/NewCustomerNumber.java:L19]
+    - Condition: `public static final int COBOL_LANGUAGE_STRUCTURE_LEN = 13;` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/NewCustomerNumber.java:L19]
+      - Resulting Value: buffer length fixed at the literal 13 bytes via `public static final int COBOL_LANGUAGE_STRUCTURE_LEN = 13;` [src/webui/src/main/java/com/ibm/cics/cip/bankliberty/datainterfaces/NewCustomerNumber.java:L19] (terminal: literal)
+- newcusno-fail-code
+  - Rule: Determination: no NEWCUSNO.cbl exists in src/base/cobol_src/, so allocator failures surface as CRECUST fail codes instead, in `ENQ-NAMED-COUNTER SECTION.` [src/base/cobol_src/CRECUST.cbl:L499]
+    - Condition: `IF WS-CICS-RESP NOT = DFHRESP(NORMAL)` [src/base/cobol_src/CRECUST.cbl:L511]
+      - Resulting Value: COMM-FAIL-CODE = '3' when the allocator ENQ fails, scoped to CRECUST only via `MOVE '3' TO COMM-FAIL-CODE` [src/base/cobol_src/CRECUST.cbl:L513] (terminal: literal)
+    - Condition: paired release `IF WS-CICS-RESP NOT = DFHRESP(NORMAL)` [src/base/cobol_src/CRECUST.cbl:L536]
+      - Resulting Value: COMM-FAIL-CODE = '5' when the allocator DEQ fails, scoped to CRECUST only via `MOVE '5' TO COMM-FAIL-CODE` [src/base/cobol_src/CRECUST.cbl:L538] (terminal: literal)
+
+## creacc-success-flag — CREACC COMMAREA Success Flag COMM-SUCCESS (`PIC X`) [src/base/cobol_copy/CREACC.cpy:L32]
+- creacc-success-flag
+  - Rule: Customer inquiry failed or reported that the customer does not exist, in `PREMIERE SECTION.` [src/base/cobol_src/CREACC.cbl:L287]
+    - Condition: `EXEC CICS LINK PROGRAM('INQCUST ') COMMAREA(INQCUST-COMMAREA) RESP(WS-CICS-RESP) END-EXEC.` [src/base/cobol_src/CREACC.cbl:L304-L307]
+    - Condition: `IF EIBRESP IS NOT EQUAL TO DFHRESP(NORMAL) OR INQCUST-INQ-SUCCESS IS NOT EQUAL TO 'Y'` [src/base/cobol_src/CREACC.cbl:L314-L315]
+      - Resulting Value: COMM-SUCCESS = 'N' via `MOVE 'N' TO COMM-SUCCESS IN DFHCOMMAREA` [src/base/cobol_src/CREACC.cbl:L317] (terminal: literal)
+- creacc-success-flag
+  - Rule: Account-count link failed at the CICS level, in `PREMIERE SECTION.` [src/base/cobol_src/CREACC.cbl:L287]
+    - Condition: `IF WS-CICS-RESP IS NOT EQUAL TO DFHRESP(NORMAL)` [src/base/cobol_src/CREACC.cbl:L329]
+      - Resulting Value: COMM-SUCCESS = 'N' in the CREACC COMMAREA via `MOVE 'N' to COMM-SUCCESS IN DFHCOMMAREA` [src/base/cobol_src/CREACC.cbl:L331] (terminal: literal)
+      - Resulting Value: COMM-SUCCESS = 'N' also forced into the INQACCCU COMMAREA via `MOVE 'N' to COMM-SUCCESS IN INQACCCU-COMMAREA` [src/base/cobol_src/CREACC.cbl:L332] (terminal: literal)
+- creacc-success-flag
+  - Rule: Account-count link reported its own failure, in `PREMIERE SECTION.` [src/base/cobol_src/CREACC.cbl:L287]
+    - Condition: `IF COMM-SUCCESS IN INQACCCU-COMMAREA = 'N'` [src/base/cobol_src/CREACC.cbl:L338]
+      - Resulting Value: COMM-SUCCESS = 'N' via `MOVE 'N' to COMM-SUCCESS IN DFHCOMMAREA` [src/base/cobol_src/CREACC.cbl:L340] (terminal: literal)
+- creacc-success-flag
+  - Rule: Account-capacity rule breached, in `PREMIERE SECTION.` [src/base/cobol_src/CREACC.cbl:L287]
+    - Condition: `IF NUMBER-OF-ACCOUNTS IN INQACCCU-COMMAREA > 9` [src/base/cobol_src/CREACC.cbl:L347]
+      - Resulting Value: COMM-SUCCESS = 'N' via `MOVE 'N' TO COMM-SUCCESS IN DFHCOMMAREA` [src/base/cobol_src/CREACC.cbl:L348] (terminal: literal)
+- creacc-success-flag
+  - Rule: ENQ on the account-number named resource failed, in `ENQ-NAMED-COUNTER SECTION.` [src/base/cobol_src/CREACC.cbl:L385]
+    - Condition: `EXEC CICS ENQ RESOURCE(NCS-ACC-NO-NAME) LENGTH(16) RESP(WS-CICS-RESP) RESP2(WS-CICS-RESP2) END-EXEC.` [src/base/cobol_src/CREACC.cbl:L390-L395]
+    - Condition: `IF WS-CICS-RESP NOT = DFHRESP(NORMAL)` [src/base/cobol_src/CREACC.cbl:L397]
+      - Resulting Value: COMM-SUCCESS = 'N' via `MOVE 'N' TO COMM-SUCCESS IN DFHCOMMAREA` [src/base/cobol_src/CREACC.cbl:L398] (terminal: literal)
+- creacc-success-flag
+  - Rule: DEQ on the account-number named resource failed, in `DEQ-NAMED-COUNTER SECTION.` [src/base/cobol_src/CREACC.cbl:L407]
+    - Condition: `EXEC CICS DEQ RESOURCE(NCS-ACC-NO-NAME) LENGTH(16) RESP(WS-CICS-RESP) RESP2(WS-CICS-RESP2) END-EXEC.` [src/base/cobol_src/CREACC.cbl:L412-L417]
+    - Condition: `IF WS-CICS-RESP NOT = DFHRESP(NORMAL)` [src/base/cobol_src/CREACC.cbl:L419]
+      - Resulting Value: COMM-SUCCESS = 'N' via `MOVE 'N' TO COMM-SUCCESS IN DFHCOMMAREA` [src/base/cobol_src/CREACC.cbl:L420] (terminal: literal)
+- creacc-success-flag
+  - Rule: INSERT of the ACCOUNT row failed, in `WRITE-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/CREACC.cbl:L774]
+    - Condition: `IF SQLCODE NOT = 0` [src/base/cobol_src/CREACC.cbl:L859]
+      - Resulting Value: COMM-SUCCESS = 'N' via `MOVE 'N' TO COMM-SUCCESS IN DFHCOMMAREA` [src/base/cobol_src/CREACC.cbl:L861] (terminal: literal)
+- creacc-success-flag
+  - Rule: Product code outside the allowlist, in `ACCOUNT-TYPE-CHECK SECTION.` [src/base/cobol_src/CREACC.cbl:L1209]
+    - Condition: `WHEN OTHER` [src/base/cobol_src/CREACC.cbl:L1222]
+      - Resulting Value: COMM-SUCCESS = 'N' via `MOVE 'N' TO COMM-SUCCESS OF DFHCOMMAREA` [src/base/cobol_src/CREACC.cbl:L1223] (terminal: literal)
+- creacc-success-flag
+  - Rule: Product code inside the allowlist, in `ACCOUNT-TYPE-CHECK SECTION.` [src/base/cobol_src/CREACC.cbl:L1209]
+    - Condition: `EVALUATE TRUE` [src/base/cobol_src/CREACC.cbl:L1215]
+    - Condition: `WHEN COMM-ACC-TYPE IN DFHCOMMAREA(1:4) = 'LOAN'` [src/base/cobol_src/CREACC.cbl:L1220]
+      - Resulting Value: COMM-SUCCESS = 'Y' via `MOVE 'Y' TO COMM-SUCCESS OF DFHCOMMAREA` [src/base/cobol_src/CREACC.cbl:L1221] (terminal: literal)
+- creacc-success-flag
+  - Rule: Account row inserted and PROCTRAN row written, in `WRITE-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/CREACC.cbl:L774]
+    - Condition: `MOVE 'ACCT' TO COMM-EYECATCHER.` [src/base/cobol_src/CREACC.cbl:L912]
+    - Condition: `MOVE 'Y' TO COMM-SUCCESS IN DFHCOMMAREA.` [src/base/cobol_src/CREACC.cbl:L913]
+      - Resulting Value: COMM-SUCCESS = 'Y' via `MOVE 'Y' TO COMM-SUCCESS IN DFHCOMMAREA.` [src/base/cobol_src/CREACC.cbl:L913] (terminal: literal)
+
+## creacc-fail-code — CREACC COMMAREA Fail Code COMM-FAIL-CODE (`PIC X`) [src/base/cobol_copy/CREACC.cpy:L33]
+- creacc-fail-code
+  - Rule: CREACC code '1' - the customer does not exist or the inquiry link failed, in `PREMIERE SECTION.` [src/base/cobol_src/CREACC.cbl:L287]
+    - Condition: `IF EIBRESP IS NOT EQUAL TO DFHRESP(NORMAL) OR INQCUST-INQ-SUCCESS IS NOT EQUAL TO 'Y'` [src/base/cobol_src/CREACC.cbl:L314-L315]
+      - Resulting Value: COMM-FAIL-CODE = '1', scoped to CREACC only via `MOVE '1' TO COMM-FAIL-CODE IN DFHCOMMAREA` [src/base/cobol_src/CREACC.cbl:L318] (terminal: literal)
+      - Resulting Value: corroborated in the Spring Boot tier, which maps '1' to a not-found exception via `if (responseObj.getCreAcc().getCommFailCode().equals("1"))` [src/Z-OS-Connect-Customer-Services-Interface/src/main/java/com/ibm/cics/cip/bank/springboot/customerservices/controllers/WebController.java:L463] (terminal: literal)
+- creacc-fail-code
+  - Rule: CREACC code '9' at the account-count link gate, in `PREMIERE SECTION.` [src/base/cobol_src/CREACC.cbl:L287]
+    - Condition: `IF WS-CICS-RESP IS NOT EQUAL TO DFHRESP(NORMAL)` [src/base/cobol_src/CREACC.cbl:L329]
+      - Resulting Value: COMM-FAIL-CODE = '9', scoped to CREACC only via `MOVE '9' TO COMM-FAIL-CODE IN DFHCOMMAREA` [src/base/cobol_src/CREACC.cbl:L333] (terminal: literal)
+- creacc-fail-code
+  - Rule: CREACC code '9' when the account-count link reports its own failure, in `PREMIERE SECTION.` [src/base/cobol_src/CREACC.cbl:L287]
+    - Condition: `IF COMM-SUCCESS IN INQACCCU-COMMAREA = 'N'` [src/base/cobol_src/CREACC.cbl:L338]
+      - Resulting Value: COMM-FAIL-CODE = '9', scoped to CREACC only via `MOVE '9' TO COMM-FAIL-CODE IN DFHCOMMAREA` [src/base/cobol_src/CREACC.cbl:L341] (terminal: literal)
+- creacc-fail-code
+  - Rule: CREACC code '8' - account-capacity rule, at most ten accounts per customer, in `PREMIERE SECTION.` [src/base/cobol_src/CREACC.cbl:L287]
+    - Condition: `IF NUMBER-OF-ACCOUNTS IN INQACCCU-COMMAREA > 9` [src/base/cobol_src/CREACC.cbl:L347]
+      - Resulting Value: COMM-FAIL-CODE = '8', scoped to CREACC only via `MOVE '8' TO COMM-FAIL-CODE IN DFHCOMMAREA` [src/base/cobol_src/CREACC.cbl:L349] (terminal: literal)
+      - Resulting Value: corroborated in the Spring Boot tier, which maps '8' to a too-many-accounts exception via `if (responseObj.getCreAcc().getCommFailCode().equals("8"))` [src/Z-OS-Connect-Customer-Services-Interface/src/main/java/com/ibm/cics/cip/bank/springboot/customerservices/controllers/WebController.java:L467] (terminal: literal)
+- creacc-fail-code
+  - Rule: CREACC code '3' - ENQ on the account-number named resource failed, in `ENQ-NAMED-COUNTER SECTION.` [src/base/cobol_src/CREACC.cbl:L385]
+    - Condition: `IF WS-CICS-RESP NOT = DFHRESP(NORMAL)` [src/base/cobol_src/CREACC.cbl:L397]
+      - Resulting Value: COMM-FAIL-CODE = '3', scoped to CREACC only via `MOVE '3' TO COMM-FAIL-CODE IN DFHCOMMAREA` [src/base/cobol_src/CREACC.cbl:L399] (terminal: literal)
+- creacc-fail-code
+  - Rule: CREACC code '5' - DEQ on the account-number named resource failed, in `DEQ-NAMED-COUNTER SECTION.` [src/base/cobol_src/CREACC.cbl:L407]
+    - Condition: `IF WS-CICS-RESP NOT = DFHRESP(NORMAL)` [src/base/cobol_src/CREACC.cbl:L419]
+      - Resulting Value: COMM-FAIL-CODE = '5', scoped to CREACC only via `MOVE '5' TO COMM-FAIL-CODE IN DFHCOMMAREA` [src/base/cobol_src/CREACC.cbl:L421] (terminal: literal)
+- creacc-fail-code
+  - Rule: CREACC code '7' - INSERT of the ACCOUNT row failed, in `WRITE-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/CREACC.cbl:L774]
+    - Condition: `IF SQLCODE NOT = 0` [src/base/cobol_src/CREACC.cbl:L859]
+      - Resulting Value: COMM-FAIL-CODE = '7', scoped to CREACC only via `MOVE '7' TO COMM-FAIL-CODE IN DFHCOMMAREA` [src/base/cobol_src/CREACC.cbl:L862] (terminal: literal)
+- creacc-fail-code
+  - Rule: CREACC code 'A' - product code outside the allowlist, a different meaning from the same character in CRECUST, in `ACCOUNT-TYPE-CHECK SECTION.` [src/base/cobol_src/CREACC.cbl:L1209]
+    - Condition: `WHEN OTHER` [src/base/cobol_src/CREACC.cbl:L1222]
+      - Resulting Value: COMM-FAIL-CODE = 'A', scoped to CREACC only via `MOVE 'A' TO COMM-FAIL-CODE IN DFHCOMMAREA` [src/base/cobol_src/CREACC.cbl:L1224] (terminal: literal)
+      - Resulting Value: corroborated in the Spring Boot tier, which maps 'A' to an invalid-argument exception via `if (responseObj.getCreAcc().getCommFailCode().equals("A"))` [src/Z-OS-Connect-Customer-Services-Interface/src/main/java/com/ibm/cics/cip/bank/springboot/customerservices/controllers/WebController.java:L472] (terminal: literal)
+- creacc-fail-code
+  - Rule: Cleared fail code on the success path, in `WRITE-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/CREACC.cbl:L774]
+    - Condition: `MOVE 'Y' TO COMM-SUCCESS IN DFHCOMMAREA.` [src/base/cobol_src/CREACC.cbl:L913]
+    - Condition: `MOVE ' ' TO COMM-FAIL-CODE IN DFHCOMMAREA.` [src/base/cobol_src/CREACC.cbl:L914]
+      - Resulting Value: COMM-FAIL-CODE = ' ' via `MOVE ' ' TO COMM-FAIL-CODE IN DFHCOMMAREA.` [src/base/cobol_src/CREACC.cbl:L914] (terminal: literal)
+
+## xfrfun-success-flag — XFRFUN COMMAREA Success Flag COMM-SUCCESS (`PIC X`) [src/base/cobol_copy/XFRFUN.cpy:L17]
+- xfrfun-success-flag
+  - Rule: Non-positive transfer amount rejected before any account is touched, in `PREMIERE SECTION.` [src/base/cobol_src/XFRFUN.cbl:L269]
+    - Condition: `IF COMM-AMT <= ZERO` [src/base/cobol_src/XFRFUN.cbl:L289]
+      - Resulting Value: COMM-SUCCESS = 'N' via `MOVE 'N' TO COMM-SUCCESS` [src/base/cobol_src/XFRFUN.cbl:L290] (terminal: literal)
+      - Resulting Value: COMM-SUCCESS = 'N' restated once the escape paragraph is reached via `MOVE 'N' TO COMM-SUCCESS.` [src/base/cobol_src/XFRFUN.cbl:L311] (terminal: literal)
+- xfrfun-success-flag
+  - Rule: SELECT of the from-account row failed, in `UPDATE-ACCOUNT-DB2-FROM SECTION.` [src/base/cobol_src/XFRFUN.cbl:L919]
+    - Condition: `IF SQLCODE NOT = 0` [src/base/cobol_src/XFRFUN.cbl:L964]
+      - Resulting Value: COMM-SUCCESS = 'N' via `MOVE 'N' TO COMM-SUCCESS` [src/base/cobol_src/XFRFUN.cbl:L965] (terminal: literal)
+- xfrfun-success-flag
+  - Rule: UPDATE of the from-account row failed, in `UPDATE-ACCOUNT-DB2-FROM SECTION.` [src/base/cobol_src/XFRFUN.cbl:L919]
+    - Condition: `IF SQLCODE NOT = 0` [src/base/cobol_src/XFRFUN.cbl:L1014]
+      - Resulting Value: COMM-SUCCESS = 'N' via `MOVE 'N' TO COMM-SUCCESS` [src/base/cobol_src/XFRFUN.cbl:L1016] (terminal: literal)
+- xfrfun-success-flag
+  - Rule: From-leg completed, in `UPDATE-ACCOUNT-DB2-FROM SECTION.` [src/base/cobol_src/XFRFUN.cbl:L919]
+    - Condition: `MOVE HV-ACCOUNT-AVAIL-BAL TO COMM-FAVBAL.` [src/base/cobol_src/XFRFUN.cbl:L1033]
+    - Condition: `MOVE 'Y' TO COMM-SUCCESS.` [src/base/cobol_src/XFRFUN.cbl:L1035]
+      - Resulting Value: COMM-SUCCESS = 'Y' via `MOVE 'Y' TO COMM-SUCCESS.` [src/base/cobol_src/XFRFUN.cbl:L1035] (terminal: literal)
+- xfrfun-success-flag
+  - Rule: Pessimistic initialisation at the head of the to-leg, in `UPDATE-ACCOUNT-DB2-TO SECTION.` [src/base/cobol_src/XFRFUN.cbl:L1041]
+    - Condition: `MOVE 'N' TO COMM-SUCCESS.` [src/base/cobol_src/XFRFUN.cbl:L1044]
+      - Resulting Value: COMM-SUCCESS = 'N' via `MOVE 'N' TO COMM-SUCCESS.` [src/base/cobol_src/XFRFUN.cbl:L1044] (terminal: literal)
+- xfrfun-success-flag
+  - Rule: SELECT of the to-account row failed, in `UPDATE-ACCOUNT-DB2-TO SECTION.` [src/base/cobol_src/XFRFUN.cbl:L1041]
+    - Condition: `IF SQLCODE NOT = 0` [src/base/cobol_src/XFRFUN.cbl:L1091]
+      - Resulting Value: COMM-SUCCESS = 'N' via `MOVE 'N' TO COMM-SUCCESS` [src/base/cobol_src/XFRFUN.cbl:L1092] (terminal: literal)
+- xfrfun-success-flag
+  - Rule: To-leg completed, in `UPDATE-ACCOUNT-DB2-TO SECTION.` [src/base/cobol_src/XFRFUN.cbl:L1041]
+    - Condition: `MOVE HV-ACCOUNT-AVAIL-BAL TO COMM-TAVBAL.` [src/base/cobol_src/XFRFUN.cbl:L1554]
+    - Condition: `MOVE 'Y' TO COMM-SUCCESS.` [src/base/cobol_src/XFRFUN.cbl:L1557]
+      - Resulting Value: COMM-SUCCESS = 'Y' via `MOVE 'Y' TO COMM-SUCCESS.` [src/base/cobol_src/XFRFUN.cbl:L1557] (terminal: literal)
+- xfrfun-success-flag
+  - Rule: Abend handler reached, in `ABEND-HANDLING SECTION.` [src/base/cobol_src/XFRFUN.cbl:L1769]
+    - Condition: handler tail `END-IF` [src/base/cobol_src/XFRFUN.cbl:L1887]
+      - Resulting Value: COMM-SUCCESS = 'N' via `MOVE 'N' TO COMM-SUCCESS` [src/base/cobol_src/XFRFUN.cbl:L1889] (terminal: literal)
+
+## xfrfun-fail-code — XFRFUN COMMAREA Fail Code COMM-FAIL-CODE Declared Ahead of the Success Flag (`PIC X`) [src/base/cobol_copy/XFRFUN.cpy:L16]
+- xfrfun-fail-code
+  - Rule: XFRFUN code '4' - non-positive transfer amount, which is a different meaning from DBCRFUN's '4' product restriction and proves fail codes are per-program code spaces, in `PREMIERE SECTION.` [src/base/cobol_src/XFRFUN.cbl:L269]
+    - Condition: `IF COMM-AMT <= ZERO` [src/base/cobol_src/XFRFUN.cbl:L289]
+      - Resulting Value: COMM-FAIL-CODE = '4', scoped to XFRFUN only via `MOVE '4' TO COMM-FAIL-CODE` [src/base/cobol_src/XFRFUN.cbl:L291] (terminal: literal)
+      - Resulting Value: COMM-AMT supplied by the caller in the XFRFUN COMMAREA via `03 COMM-AMT PIC S9(10)V99.` [src/base/cobol_copy/XFRFUN.cpy:L11] (terminal: input field)
+- xfrfun-fail-code
+  - Rule: XFRFUN code '1' - the from-account row does not exist, in `UPDATE-ACCOUNT-DB2-FROM SECTION.` [src/base/cobol_src/XFRFUN.cbl:L919]
+    - Condition: `IF SQLCODE NOT = 0` [src/base/cobol_src/XFRFUN.cbl:L964]
+    - Condition: `IF SQLCODE = +100` [src/base/cobol_src/XFRFUN.cbl:L967]
+      - Resulting Value: COMM-FAIL-CODE = '1', scoped to XFRFUN only via `MOVE '1' TO COMM-FAIL-CODE` [src/base/cobol_src/XFRFUN.cbl:L968] (terminal: literal)
+- xfrfun-fail-code
+  - Rule: XFRFUN code '3' at the from-leg SELECT gate - any other SQL error, in `UPDATE-ACCOUNT-DB2-FROM SECTION.` [src/base/cobol_src/XFRFUN.cbl:L919]
+    - Condition: `ELSE` [src/base/cobol_src/XFRFUN.cbl:L969]
+      - Resulting Value: COMM-FAIL-CODE = '3', scoped to XFRFUN only via `MOVE '3' TO COMM-FAIL-CODE` [src/base/cobol_src/XFRFUN.cbl:L970] (terminal: literal)
+- xfrfun-fail-code
+  - Rule: XFRFUN code '3' at the from-leg UPDATE gate, in `UPDATE-ACCOUNT-DB2-FROM SECTION.` [src/base/cobol_src/XFRFUN.cbl:L919]
+    - Condition: `IF SQLCODE NOT = 0` [src/base/cobol_src/XFRFUN.cbl:L1014]
+      - Resulting Value: COMM-FAIL-CODE = '3', scoped to XFRFUN only via `MOVE '3' TO COMM-FAIL-CODE` [src/base/cobol_src/XFRFUN.cbl:L1017] (terminal: literal)
+- xfrfun-fail-code
+  - Rule: XFRFUN code '2' - the to-account row does not exist, in `UPDATE-ACCOUNT-DB2-TO SECTION.` [src/base/cobol_src/XFRFUN.cbl:L1041]
+    - Condition: `IF SQLCODE NOT = 0` [src/base/cobol_src/XFRFUN.cbl:L1091]
+    - Condition: `IF SQLCODE = +100` [src/base/cobol_src/XFRFUN.cbl:L1102]
+      - Resulting Value: COMM-FAIL-CODE = '2', scoped to XFRFUN only via `MOVE '2' TO COMM-FAIL-CODE` [src/base/cobol_src/XFRFUN.cbl:L1103] (terminal: literal)
+- xfrfun-fail-code
+  - Rule: XFRFUN code '3' at the to-leg SELECT gate - any other SQL error, in `UPDATE-ACCOUNT-DB2-TO SECTION.` [src/base/cobol_src/XFRFUN.cbl:L1041]
+    - Condition: `ELSE` [src/base/cobol_src/XFRFUN.cbl:L1183]
+      - Resulting Value: COMM-FAIL-CODE = '3', scoped to XFRFUN only via `MOVE '3' TO COMM-FAIL-CODE` [src/base/cobol_src/XFRFUN.cbl:L1188] (terminal: literal)
+- xfrfun-fail-code
+  - Rule: XFRFUN code '2' in the abend handler, in `ABEND-HANDLING SECTION.` [src/base/cobol_src/XFRFUN.cbl:L1769]
+    - Condition: handler tail `END-IF` [src/base/cobol_src/XFRFUN.cbl:L1887]
+      - Resulting Value: COMM-FAIL-CODE = '2', scoped to XFRFUN only via `MOVE '2' TO COMM-FAIL-CODE` [src/base/cobol_src/XFRFUN.cbl:L1890] (terminal: literal)
+- xfrfun-fail-code
+  - Rule: Declaration order records the fail code ahead of the success flag, the reverse of every other COMMAREA copybook, recorded as found, in `03 COMM-FACCNO PIC 9(8).` [src/base/cobol_copy/XFRFUN.cpy:L7]
+    - Condition: `03 COMM-FAIL-CODE PIC X.` [src/base/cobol_copy/XFRFUN.cpy:L16]
+    - Condition: `03 COMM-SUCCESS PIC X.` [src/base/cobol_copy/XFRFUN.cpy:L17]
+      - Resulting Value: single-byte fail code declared immediately before the success flag via `03 COMM-FAIL-CODE PIC X.` [src/base/cobol_copy/XFRFUN.cpy:L16] (terminal: input field)
+
+## inqacc-success-flag — INQACC COMMAREA Success Flag INQACC-SUCCESS With No Companion Fail-Code Field (`PIC X`) [src/base/cobol_copy/INQACC.cpy:L32]
+- inqacc-success-flag
+  - Rule: Last-account sentinel routes the read to the high-water-mark browse, in `PREMIERE SECTION.` [src/base/cobol_src/INQACC.cbl:L203]
+    - Condition: `IF INQACC-ACCNO = 99999999` [src/base/cobol_src/INQACC.cbl:L218]
+    - Condition: `PERFORM READ-ACCOUNT-LAST` [src/base/cobol_src/INQACC.cbl:L219]
+      - Resulting Value: sentinel account number 99999999 selects the last-account path via `IF INQACC-ACCNO = 99999999` [src/base/cobol_src/INQACC.cbl:L218] (terminal: literal)
+- inqacc-success-flag
+  - Rule: Stored product code blank or low values, treated as a non-existent account, in `PREMIERE SECTION.` [src/base/cobol_src/INQACC.cbl:L203]
+    - Condition: `IF ACCOUNT-TYPE = SPACES OR LOW-VALUES` [src/base/cobol_src/INQACC.cbl:L229]
+      - Resulting Value: INQACC-SUCCESS = 'N' via `MOVE 'N' TO INQACC-SUCCESS` [src/base/cobol_src/INQACC.cbl:L230] (terminal: literal)
+- inqacc-success-flag
+  - Rule: Account row found and copied into the COMMAREA, in `PREMIERE SECTION.` [src/base/cobol_src/INQACC.cbl:L203]
+    - Condition: `ELSE` [src/base/cobol_src/INQACC.cbl:L231]
+      - Resulting Value: INQACC-SUCCESS = 'Y' via `MOVE 'Y' TO INQACC-SUCCESS` [src/base/cobol_src/INQACC.cbl:L244] (terminal: literal)
+- inqacc-success-flag
+  - Rule: Abend handler reached, in `ABEND-HANDLING SECTION.` [src/base/cobol_src/INQACC.cbl:L632]
+    - Condition: handler tail `END-IF` [src/base/cobol_src/INQACC.cbl:L754]
+      - Resulting Value: INQACC-SUCCESS = 'N' via `MOVE 'N' TO INQACC-SUCCESS` [src/base/cobol_src/INQACC.cbl:L756] (terminal: literal)
+- inqacc-success-flag
+  - Rule: Determination: the INQACC COMMAREA declares no fail-code field, so the single flag carries the entire outcome, in `01 INQACC-COMMAREA.` [src/base/cobol_copy/INQACC.cpy:L7]
+    - Condition: `03 INQACC-SUCCESS PIC X.` [src/base/cobol_copy/INQACC.cpy:L32]
+    - Condition: `03 INQACC-PCB1-POINTER POINTER.` [src/base/cobol_copy/INQACC.cpy:L33]
+      - Resulting Value: success flag is the last data field before the PCB pointer via `03 INQACC-SUCCESS PIC X.` [src/base/cobol_copy/INQACC.cpy:L32] (terminal: input field)
+
+## inqcust-inq-success-flag — INQCUST COMMAREA Inquiry Success Flag INQCUST-INQ-SUCCESS (`PIC X`) [src/base/cobol_copy/INQCUST.cpy:L21]
+- inqcust-inq-success-flag
+  - Rule: Pessimistic initialisation before any read, in `PREMIERE SECTION.` [src/base/cobol_src/INQCUST.cbl:L166]
+    - Condition: `MOVE 'N' TO INQCUST-INQ-SUCCESS` [src/base/cobol_src/INQCUST.cbl:L175]
+      - Resulting Value: INQCUST-INQ-SUCCESS = 'N' via `MOVE 'N' TO INQCUST-INQ-SUCCESS` [src/base/cobol_src/INQCUST.cbl:L175] (terminal: literal)
+- inqcust-inq-success-flag
+  - Rule: VSAM read of the CUSTOMER record succeeded, in `READ-CUSTOMER-VSAM SECTION.` [src/base/cobol_src/INQCUST.cbl:L258]
+    - Condition: `IF WS-CICS-RESP = DFHRESP(NORMAL)` [src/base/cobol_src/INQCUST.cbl:L276]
+      - Resulting Value: INQCUST-INQ-SUCCESS = 'Y' via `MOVE 'Y' TO INQCUST-INQ-SUCCESS` [src/base/cobol_src/INQCUST.cbl:L278] (terminal: literal)
+- inqcust-inq-success-flag
+  - Rule: VSAM read succeeded on a SYSIDERR retry, in `READ-CUSTOMER-VSAM SECTION.` [src/base/cobol_src/INQCUST.cbl:L258]
+    - Condition: `IF WS-CICS-RESP = DFHRESP(SYSIDERR)` [src/base/cobol_src/INQCUST.cbl:L282]
+    - Condition: `IF WS-CICS-RESP = DFHRESP(NORMAL)` [src/base/cobol_src/INQCUST.cbl:L297]
+      - Resulting Value: INQCUST-INQ-SUCCESS = 'Y' via `MOVE 'Y' TO INQCUST-INQ-SUCCESS` [src/base/cobol_src/INQCUST.cbl:L299] (terminal: literal)
+- inqcust-inq-success-flag
+  - Rule: Customer record not found on the retry path, in `READ-CUSTOMER-VSAM SECTION.` [src/base/cobol_src/INQCUST.cbl:L258]
+    - Condition: `ELSE` [src/base/cobol_src/INQCUST.cbl:L316]
+      - Resulting Value: INQCUST-INQ-SUCCESS = 'N' via `MOVE 'N' TO INQCUST-INQ-SUCCESS` [src/base/cobol_src/INQCUST.cbl:L318] (terminal: literal)
+- inqcust-inq-success-flag
+  - Rule: Customer record not found for a non-sentinel customer number, in `READ-CUSTOMER-VSAM SECTION.` [src/base/cobol_src/INQCUST.cbl:L258]
+    - Condition: `IF (WS-CICS-RESP = DFHRESP(NOTFND) AND INQCUST-CUSTNO NOT = 9999999999) AND (WS-CICS-RESP = DFHRESP(NOTFND) AND INQCUST-CUSTNO NOT = 0000000000)` [src/base/cobol_src/INQCUST.cbl:L339-L342]
+      - Resulting Value: INQCUST-INQ-SUCCESS = 'N' via `MOVE 'N' TO INQCUST-INQ-SUCCESS` [src/base/cobol_src/INQCUST.cbl:L346] (terminal: literal)
+- inqcust-inq-success-flag
+  - Rule: Abend handler reached, in `ABEND-HANDLING SECTION.` [src/base/cobol_src/INQCUST.cbl:L440]
+    - Condition: `MOVE 'N' TO INQCUST-INQ-SUCCESS` [src/base/cobol_src/INQCUST.cbl:L544]
+      - Resulting Value: INQCUST-INQ-SUCCESS = 'N' via `MOVE 'N' TO INQCUST-INQ-SUCCESS` [src/base/cobol_src/INQCUST.cbl:L544] (terminal: literal)
+- inqcust-inq-success-flag
+  - Rule: Control-record browse failed while resolving the last customer number, in `GET-LAST-CUSTOMER-VSAM SECTION.` [src/base/cobol_src/INQCUST.cbl:L564]
+    - Condition: `MOVE 'N' TO INQCUST-INQ-SUCCESS` [src/base/cobol_src/INQCUST.cbl:L604]
+      - Resulting Value: INQCUST-INQ-SUCCESS = 'N' via `MOVE 'N' TO INQCUST-INQ-SUCCESS` [src/base/cobol_src/INQCUST.cbl:L604] (terminal: literal)
+
+## inqcust-inq-fail-code — INQCUST COMMAREA Inquiry Fail Code INQCUST-INQ-FAIL-CD (`PIC X`) [src/base/cobol_copy/INQCUST.cpy:L22]
+- inqcust-inq-fail-code
+  - Rule: INQCUST code '0' - pessimistic initialisation, in `PREMIERE SECTION.` [src/base/cobol_src/INQCUST.cbl:L166]
+    - Condition: `MOVE '0' TO INQCUST-INQ-FAIL-CD` [src/base/cobol_src/INQCUST.cbl:L176]
+      - Resulting Value: INQCUST-INQ-FAIL-CD = '0', scoped to INQCUST only via `MOVE '0' TO INQCUST-INQ-FAIL-CD` [src/base/cobol_src/INQCUST.cbl:L176] (terminal: literal)
+- inqcust-inq-fail-code
+  - Rule: INQCUST code '0' on the success path, in `PREMIERE SECTION.` [src/base/cobol_src/INQCUST.cbl:L166]
+    - Condition: `IF INQCUST-INQ-SUCCESS = 'Y'` [src/base/cobol_src/INQCUST.cbl:L220]
+      - Resulting Value: INQCUST-INQ-FAIL-CD = '0', scoped to INQCUST only via `MOVE '0' TO INQCUST-INQ-FAIL-CD` [src/base/cobol_src/INQCUST.cbl:L221] (terminal: literal)
+- inqcust-inq-fail-code
+  - Rule: INQCUST code '1' - customer record not found on the retry path, in `READ-CUSTOMER-VSAM SECTION.` [src/base/cobol_src/INQCUST.cbl:L258]
+    - Condition: `ELSE` [src/base/cobol_src/INQCUST.cbl:L316]
+      - Resulting Value: INQCUST-INQ-FAIL-CD = '1', scoped to INQCUST only via `MOVE '1' TO INQCUST-INQ-FAIL-CD` [src/base/cobol_src/INQCUST.cbl:L319] (terminal: literal)
+- inqcust-inq-fail-code
+  - Rule: INQCUST code '1' - customer record not found for a non-sentinel customer number, in `READ-CUSTOMER-VSAM SECTION.` [src/base/cobol_src/INQCUST.cbl:L258]
+    - Condition: `IF (WS-CICS-RESP = DFHRESP(NOTFND) AND INQCUST-CUSTNO NOT = 9999999999) AND (WS-CICS-RESP = DFHRESP(NOTFND) AND INQCUST-CUSTNO NOT = 0000000000)` [src/base/cobol_src/INQCUST.cbl:L339-L342]
+      - Resulting Value: INQCUST-INQ-FAIL-CD = '1', scoped to INQCUST only via `MOVE '1' TO INQCUST-INQ-FAIL-CD` [src/base/cobol_src/INQCUST.cbl:L347] (terminal: literal)
+- inqcust-inq-fail-code
+  - Rule: INQCUST code '2' - abend handler reached, in `ABEND-HANDLING SECTION.` [src/base/cobol_src/INQCUST.cbl:L440]
+    - Condition: `MOVE 'N' TO INQCUST-INQ-SUCCESS` [src/base/cobol_src/INQCUST.cbl:L544]
+      - Resulting Value: INQCUST-INQ-FAIL-CD = '2', scoped to INQCUST only via `MOVE '2' TO INQCUST-INQ-FAIL-CD` [src/base/cobol_src/INQCUST.cbl:L545] (terminal: literal)
+- inqcust-inq-fail-code
+  - Rule: INQCUST code '9' - STARTBR on the CUSTOMER control record failed, in `GET-LAST-CUSTOMER-VSAM SECTION.` [src/base/cobol_src/INQCUST.cbl:L564]
+    - Condition: `MOVE 'N' TO INQCUST-INQ-SUCCESS` [src/base/cobol_src/INQCUST.cbl:L604]
+      - Resulting Value: INQCUST-INQ-FAIL-CD = '9', scoped to INQCUST only via `MOVE '9' TO INQCUST-INQ-FAIL-CD` [src/base/cobol_src/INQCUST.cbl:L605] (terminal: literal)
+- inqcust-inq-fail-code
+  - Rule: INQCUST code '9' - READPREV on the CUSTOMER control record failed, in `GET-LAST-CUSTOMER-VSAM SECTION.` [src/base/cobol_src/INQCUST.cbl:L564]
+    - Condition: `MOVE 'N' TO INQCUST-INQ-SUCCESS` [src/base/cobol_src/INQCUST.cbl:L637]
+      - Resulting Value: INQCUST-INQ-FAIL-CD = '9', scoped to INQCUST only via `MOVE '9' TO INQCUST-INQ-FAIL-CD` [src/base/cobol_src/INQCUST.cbl:L638] (terminal: literal)
+- inqcust-inq-fail-code
+  - Rule: DELCUS propagates the INQCUST fail code verbatim into its own delete fail code, so the two code spaces are joined on this path only, in `PREMIERE SECTION.` [src/base/cobol_src/DELCUS.cbl:L246]
+    - Condition: `IF INQCUST-INQ-SUCCESS = 'N'` [src/base/cobol_src/DELCUS.cbl:L264]
+      - Resulting Value: COMM-DEL-FAIL-CD = the INQCUST fail code as returned by the linked program via `MOVE INQCUST-INQ-FAIL-CD TO COMM-DEL-FAIL-CD` [src/base/cobol_src/DELCUS.cbl:L266] (terminal: input field)
+
+## inqacccu-success-flag — INQACCCU COMMAREA Success Flag COMM-SUCCESS (`PIC X`) [src/base/cobol_copy/INQACCCU.cpy:L9]
+- inqacccu-success-flag
+  - Rule: Pessimistic initialisation before any read, in `PREMIERE SECTION.` [src/base/cobol_src/INQACCCU.cbl:L194]
+    - Condition: `MOVE 'N' TO COMM-SUCCESS` [src/base/cobol_src/INQACCCU.cbl:L196]
+      - Resulting Value: COMM-SUCCESS = 'N' via `MOVE 'N' TO COMM-SUCCESS` [src/base/cobol_src/INQACCCU.cbl:L196] (terminal: literal)
+- inqacccu-success-flag
+  - Rule: Customer check reported that the customer does not exist, in `PREMIERE SECTION.` [src/base/cobol_src/INQACCCU.cbl:L194]
+    - Condition: `IF CUSTOMER-FOUND = 'N'` [src/base/cobol_src/INQACCCU.cbl:L215]
+      - Resulting Value: COMM-SUCCESS = 'N' via `MOVE 'N' TO COMM-SUCCESS` [src/base/cobol_src/INQACCCU.cbl:L216] (terminal: literal)
+- inqacccu-success-flag
+  - Rule: OPEN of the account cursor failed, in `READ-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/INQACCCU.cbl:L233]
+    - Condition: storm-drain check `* * Check if SQLCODE indicates that Storm Drain processing * is applicable in a workload if activated * PERFORM CHECK-FOR-STORM-DRAIN-DB2` [src/base/cobol_src/INQACCCU.cbl:L255-L259]
+      - Resulting Value: COMM-SUCCESS = 'N' via `MOVE 'N' TO COMM-SUCCESS` [src/base/cobol_src/INQACCCU.cbl:L261] (terminal: literal)
+- inqacccu-success-flag
+  - Rule: CLOSE of the account cursor failed, in `READ-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/INQACCCU.cbl:L233]
+    - Condition: storm-drain check `PERFORM CHECK-FOR-STORM-DRAIN-DB2` [src/base/cobol_src/INQACCCU.cbl:L362]
+      - Resulting Value: COMM-SUCCESS = 'N' via `MOVE 'N' TO COMM-SUCCESS` [src/base/cobol_src/INQACCCU.cbl:L364] (terminal: literal)
+- inqacccu-success-flag
+  - Rule: Account cursor opened and closed cleanly, in `READ-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/INQACCCU.cbl:L233]
+    - Condition: guard tail `END-IF.` [src/base/cobol_src/INQACCCU.cbl:L446]
+      - Resulting Value: COMM-SUCCESS = 'Y' via `MOVE 'Y' TO COMM-SUCCESS.` [src/base/cobol_src/INQACCCU.cbl:L448] (terminal: literal)
+- inqacccu-success-flag
+  - Rule: Cursor exhausted with no rows at all, which is still a successful inquiry, in `FETCH-DATA SECTION.` [src/base/cobol_src/INQACCCU.cbl:L454]
+    - Condition: `IF SQLCODE = +100` [src/base/cobol_src/INQACCCU.cbl:L485]
+      - Resulting Value: COMM-SUCCESS = 'Y' via `MOVE 'Y' TO COMM-SUCCESS` [src/base/cobol_src/INQACCCU.cbl:L486] (terminal: literal)
+- inqacccu-success-flag
+  - Rule: FETCH from the account cursor failed, in `FETCH-DATA SECTION.` [src/base/cobol_src/INQACCCU.cbl:L454]
+    - Condition: `IF SQLCODE NOT = 0` [src/base/cobol_src/INQACCCU.cbl:L490]
+      - Resulting Value: COMM-SUCCESS = 'N' via `MOVE 'N' TO COMM-SUCCESS` [src/base/cobol_src/INQACCCU.cbl:L502] (terminal: literal)
+
+## inqacccu-fail-code — INQACCCU COMMAREA Fail Code COMM-FAIL-CODE (`PIC X`) [src/base/cobol_copy/INQACCCU.cpy:L10]
+- inqacccu-fail-code
+  - Rule: INQACCCU code '0' - pessimistic initialisation, in `PREMIERE SECTION.` [src/base/cobol_src/INQACCCU.cbl:L194]
+    - Condition: `MOVE '0' TO COMM-FAIL-CODE` [src/base/cobol_src/INQACCCU.cbl:L197]
+      - Resulting Value: COMM-FAIL-CODE = '0', scoped to INQACCCU only via `MOVE '0' TO COMM-FAIL-CODE` [src/base/cobol_src/INQACCCU.cbl:L197] (terminal: literal)
+- inqacccu-fail-code
+  - Rule: INQACCCU code '1' - the customer does not exist, in `PREMIERE SECTION.` [src/base/cobol_src/INQACCCU.cbl:L194]
+    - Condition: `IF CUSTOMER-FOUND = 'N'` [src/base/cobol_src/INQACCCU.cbl:L215]
+      - Resulting Value: COMM-FAIL-CODE = '1', scoped to INQACCCU only via `MOVE '1' TO COMM-FAIL-CODE` [src/base/cobol_src/INQACCCU.cbl:L217] (terminal: literal)
+- inqacccu-fail-code
+  - Rule: INQACCCU code '2' - OPEN of the account cursor failed, in `READ-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/INQACCCU.cbl:L233]
+    - Condition: storm-drain check `* * Check if SQLCODE indicates that Storm Drain processing * is applicable in a workload if activated * PERFORM CHECK-FOR-STORM-DRAIN-DB2` [src/base/cobol_src/INQACCCU.cbl:L255-L259]
+      - Resulting Value: COMM-FAIL-CODE = '2', scoped to INQACCCU only via `MOVE '2' TO COMM-FAIL-CODE` [src/base/cobol_src/INQACCCU.cbl:L263] (terminal: literal)
+- inqacccu-fail-code
+  - Rule: INQACCCU code '3' - FETCH from the account cursor failed, in `FETCH-DATA SECTION.` [src/base/cobol_src/INQACCCU.cbl:L454]
+    - Condition: `IF SQLCODE NOT = 0` [src/base/cobol_src/INQACCCU.cbl:L490]
+      - Resulting Value: COMM-FAIL-CODE = '3', scoped to INQACCCU only via `MOVE '3' TO COMM-FAIL-CODE` [src/base/cobol_src/INQACCCU.cbl:L505] (terminal: literal)
+- inqacccu-fail-code
+  - Rule: INQACCCU code '4' - CLOSE of the account cursor failed, in `READ-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/INQACCCU.cbl:L233]
+    - Condition: storm-drain check `PERFORM CHECK-FOR-STORM-DRAIN-DB2` [src/base/cobol_src/INQACCCU.cbl:L362]
+      - Resulting Value: COMM-FAIL-CODE = '4', scoped to INQACCCU only via `MOVE '4' TO COMM-FAIL-CODE` [src/base/cobol_src/INQACCCU.cbl:L366] (terminal: literal)
+
+## inqacccu-customer-found-flag — INQACCCU Customer-Found Flag CUSTOMER-FOUND (`PIC X`) [src/base/cobol_copy/INQACCCU.cpy:L11]
+- inqacccu-customer-found-flag
+  - Rule: Customer number of zero is rejected without any inquiry, in `CUSTOMER-CHECK SECTION.` [src/base/cobol_src/INQACCCU.cbl:L829]
+    - Condition: `IF CUSTOMER-NUMBER IN DFHCOMMAREA = ZERO` [src/base/cobol_src/INQACCCU.cbl:L835]
+      - Resulting Value: CUSTOMER-FOUND = 'N' via `MOVE 'N' TO CUSTOMER-FOUND` [src/base/cobol_src/INQACCCU.cbl:L836] (terminal: literal)
+      - Resulting Value: account count forced to zero on the same path via `MOVE ZERO TO NUMBER-OF-ACCOUNTS` [src/base/cobol_src/INQACCCU.cbl:L837] (terminal: literal)
+- inqacccu-customer-found-flag
+  - Rule: Customer number of all nines is rejected without any inquiry, in `CUSTOMER-CHECK SECTION.` [src/base/cobol_src/INQACCCU.cbl:L829]
+    - Condition: `IF CUSTOMER-NUMBER IN DFHCOMMAREA = '9999999999'` [src/base/cobol_src/INQACCCU.cbl:L841]
+      - Resulting Value: CUSTOMER-FOUND = 'N' via `MOVE 'N' TO CUSTOMER-FOUND` [src/base/cobol_src/INQACCCU.cbl:L842] (terminal: literal)
+- inqacccu-customer-found-flag
+  - Rule: Linked customer inquiry reported success, in `CUSTOMER-CHECK SECTION.` [src/base/cobol_src/INQACCCU.cbl:L829]
+    - Condition: `EXEC CICS LINK PROGRAM('INQCUST ') COMMAREA(INQCUST-COMMAREA) END-EXEC.` [src/base/cobol_src/INQACCCU.cbl:L851-L853]
+    - Condition: `IF INQCUST-INQ-SUCCESS = 'Y'` [src/base/cobol_src/INQACCCU.cbl:L855]
+      - Resulting Value: CUSTOMER-FOUND = 'Y' via `MOVE 'Y' TO CUSTOMER-FOUND` [src/base/cobol_src/INQACCCU.cbl:L856] (terminal: literal)
+      - Resulting Value: INQCUST-INQ-SUCCESS returned by the linked program is the deciding input via `03 INQCUST-INQ-SUCCESS PIC X.` [src/base/cobol_copy/INQCUST.cpy:L21] (terminal: input field)
+- inqacccu-customer-found-flag
+  - Rule: Linked customer inquiry reported failure, in `CUSTOMER-CHECK SECTION.` [src/base/cobol_src/INQACCCU.cbl:L829]
+    - Condition: `ELSE` [src/base/cobol_src/INQACCCU.cbl:L857]
+      - Resulting Value: CUSTOMER-FOUND = 'N' via `MOVE 'N' TO CUSTOMER-FOUND` [src/base/cobol_src/INQACCCU.cbl:L858] (terminal: literal)
+- inqacccu-customer-found-flag
+  - Rule: Cursor OPEN failure also clears the customer-found flag, in `READ-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/INQACCCU.cbl:L233]
+    - Condition: storm-drain check `* * Check if SQLCODE indicates that Storm Drain processing * is applicable in a workload if activated * PERFORM CHECK-FOR-STORM-DRAIN-DB2` [src/base/cobol_src/INQACCCU.cbl:L255-L259]
+      - Resulting Value: CUSTOMER-FOUND = 'N' via `MOVE 'N' TO CUSTOMER-FOUND` [src/base/cobol_src/INQACCCU.cbl:L262] (terminal: literal)
+- inqacccu-customer-found-flag
+  - Rule: Cursor CLOSE failure also clears the customer-found flag, in `READ-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/INQACCCU.cbl:L233]
+    - Condition: storm-drain check `PERFORM CHECK-FOR-STORM-DRAIN-DB2` [src/base/cobol_src/INQACCCU.cbl:L362]
+      - Resulting Value: CUSTOMER-FOUND = 'N' via `MOVE 'N' TO CUSTOMER-FOUND` [src/base/cobol_src/INQACCCU.cbl:L365] (terminal: literal)
+- inqacccu-customer-found-flag
+  - Rule: FETCH failure also clears the customer-found flag, in `FETCH-DATA SECTION.` [src/base/cobol_src/INQACCCU.cbl:L454]
+    - Condition: `IF SQLCODE NOT = 0` [src/base/cobol_src/INQACCCU.cbl:L490]
+      - Resulting Value: CUSTOMER-FOUND = 'N' via `MOVE 'N' TO CUSTOMER-FOUND` [src/base/cobol_src/INQACCCU.cbl:L503] (terminal: literal)
+
+## inqacccu-number-of-accounts — INQACCCU Account-Array OCCURS Control NUMBER-OF-ACCOUNTS (`PIC S9(8) BINARY`) [src/base/cobol_copy/INQACCCU.cpy:L7]
+- inqacccu-number-of-accounts
+  - Rule: Copybook declaration: the counter is the OCCURS DEPENDING ON control for the account array, so it also fixes the length of the returned COMMAREA, in `03 NUMBER-OF-ACCOUNTS PIC S9(8) BINARY.` [src/base/cobol_copy/INQACCCU.cpy:L7]
+    - Condition: `03 NUMBER-OF-ACCOUNTS PIC S9(8) BINARY.` [src/base/cobol_copy/INQACCCU.cpy:L7]
+    - Condition: `03 ACCOUNT-DETAILS OCCURS 1 TO 20 DEPENDING ON NUMBER-OF-ACCOUNTS.` [src/base/cobol_copy/INQACCCU.cpy:L13-L14]
+      - Resulting Value: array bounded by the literals 1 and 20 via `03 ACCOUNT-DETAILS OCCURS 1 TO 20 DEPENDING ON NUMBER-OF-ACCOUNTS.` [src/base/cobol_copy/INQACCCU.cpy:L13-L14] (terminal: literal)
+- inqacccu-number-of-accounts
+  - Rule: Counter reset before the cursor is walked, in `FETCH-DATA SECTION.` [src/base/cobol_src/INQACCCU.cbl:L454]
+    - Condition: `MOVE ZERO TO NUMBER-OF-ACCOUNTS.` [src/base/cobol_src/INQACCCU.cbl:L461]
+      - Resulting Value: NUMBER-OF-ACCOUNTS = 0 via `MOVE ZERO TO NUMBER-OF-ACCOUNTS.` [src/base/cobol_src/INQACCCU.cbl:L461] (terminal: literal)
+- inqacccu-number-of-accounts
+  - Rule: Counter incremented once per fetched ACCOUNT row and used as the array subscript, in `FETCH-DATA SECTION.` [src/base/cobol_src/INQACCCU.cbl:L454]
+    - Condition: `ADD 1 TO NUMBER-OF-ACCOUNTS GIVING NUMBER-OF-ACCOUNTS` [src/base/cobol_src/INQACCCU.cbl:L583]
+    - Condition: `MOVE HV-ACCOUNT-EYECATCHER TO COMM-EYE(NUMBER-OF-ACCOUNTS)` [src/base/cobol_src/INQACCCU.cbl:L587-L588]
+      - Resulting Value: NUMBER-OF-ACCOUNTS = previous value plus the literal increment 1 via `ADD 1 TO NUMBER-OF-ACCOUNTS GIVING NUMBER-OF-ACCOUNTS` [src/base/cobol_src/INQACCCU.cbl:L583] (terminal: literal)
+      - Resulting Value: number of rows returned by the DB2 cursor is the deciding input via `05 ACCOUNT-AVAILABLE-BALANCE PIC S9(10)V99.` [src/base/cobol_copy/ACCOUNT.cpy:L34] (terminal: input field)
+- inqacccu-number-of-accounts
+  - Rule: Counter zeroed on every failure path so the caller never walks a stale array, in `READ-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/INQACCCU.cbl:L233]
+    - Condition: storm-drain check `* * Check if SQLCODE indicates that Storm Drain processing * is applicable in a workload if activated * PERFORM CHECK-FOR-STORM-DRAIN-DB2` [src/base/cobol_src/INQACCCU.cbl:L255-L259]
+      - Resulting Value: NUMBER-OF-ACCOUNTS = 0 via `MOVE ZERO TO NUMBER-OF-ACCOUNTS` [src/base/cobol_src/INQACCCU.cbl:L264] (terminal: literal)
+- inqacccu-number-of-accounts
+  - Rule: CREACC pre-sets the counter to the array maximum before the inquiry, then reads it back as the account-capacity predicate, in `CUSTOMER-ACCOUNT-COUNT SECTION.` [src/base/cobol_src/CREACC.cbl:L1080]
+    - Condition: `MOVE 20 TO NUMBER-OF-ACCOUNTS IN INQACCCU-COMMAREA.` [src/base/cobol_src/CREACC.cbl:L1082]
+    - Condition: `IF NUMBER-OF-ACCOUNTS IN INQACCCU-COMMAREA > 9` [src/base/cobol_src/CREACC.cbl:L347]
+      - Resulting Value: COMM-FAIL-CODE = '8' when more than nine accounts already exist via `MOVE '8' TO COMM-FAIL-CODE IN DFHCOMMAREA` [src/base/cobol_src/CREACC.cbl:L349] (terminal: literal)
+- inqacccu-number-of-accounts
+  - Rule: DELCUS pre-sets the counter to the array maximum, then drives its cascade loop from the returned count, in `GET-ACCOUNTS SECTION.` [src/base/cobol_src/DELCUS.cbl:L322]
+    - Condition: `MOVE 20 TO NUMBER-OF-ACCOUNTS IN INQACCCU-COMMAREA.` [src/base/cobol_src/DELCUS.cbl:L330]
+    - Condition: `EXEC CICS LINK PROGRAM('INQACCCU') COMMAREA(INQACCCU-COMMAREA) SYNCONRETURN END-EXEC.` [src/base/cobol_src/DELCUS.cbl:L334-L337]
+    - Condition: `PERFORM VARYING WS-INDEX FROM 1 BY 1 UNTIL WS-INDEX > NUMBER-OF-ACCOUNTS` [src/base/cobol_src/DELCUS.cbl:L306-L307]
+      - Resulting Value: cascade iterates exactly NUMBER-OF-ACCOUNTS times via `PERFORM VARYING WS-INDEX FROM 1 BY 1 UNTIL WS-INDEX > NUMBER-OF-ACCOUNTS` [src/base/cobol_src/DELCUS.cbl:L306-L307] (terminal: input field)
+
+## delacc-success-flag — DELACC COMMAREA Read Success Flag DELACC-SUCCESS (`PIC X`) [src/base/cobol_copy/DELACC.cpy:L32]
+- delacc-success-flag
+  - Rule: Account row found, so the read flag is blanked and the outcome is carried by the delete flag instead, in `READ-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/DELACC.cbl:L236]
+    - Condition: `IF SQLCODE = 0` [src/base/cobol_src/DELACC.cbl:L363]
+      - Resulting Value: DELACC-SUCCESS = ' ' via `MOVE ' ' TO DELACC-SUCCESS` [src/base/cobol_src/DELACC.cbl:L364] (terminal: literal)
+- delacc-success-flag
+  - Rule: DELETE of the ACCOUNT row failed, and the read flag is blanked again, in `DEL-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/DELACC.cbl:L431]
+    - Condition: `IF SQLCODE NOT = 0` [src/base/cobol_src/DELACC.cbl:L444]
+      - Resulting Value: DELACC-SUCCESS = ' ' via `MOVE ' ' TO DELACC-SUCCESS` [src/base/cobol_src/DELACC.cbl:L445] (terminal: literal)
+- delacc-success-flag
+  - Rule: Determination: the read success flag is only ever set to a space by the one program that COPYs this layout, established by exhaustive case-sensitive search - it never carries 'Y' or 'N', in `03 DELACC-SUCCESS PIC X.` [src/base/cobol_copy/DELACC.cpy:L32]
+    - Condition: layout instantiated at `COPY DELACC REPLACING DELACC-COMMAREA BY DFHCOMMAREA.` [src/base/cobol_src/DELACC.cbl:L200]
+    - Condition: `03 DELACC-SUCCESS PIC X.` [src/base/cobol_copy/DELACC.cpy:L32]
+      - Resulting Value: only the space literal is ever moved into the field via `MOVE ' ' TO DELACC-SUCCESS` [src/base/cobol_src/DELACC.cbl:L364] (terminal: literal)
+
+## delacc-fail-code — DELACC COMMAREA Read Fail Code DELACC-FAIL-CD (`PIC X`) [src/base/cobol_copy/DELACC.cpy:L33]
+- delacc-fail-code
+  - Rule: Copybook declaration of the read fail code, which carries no condition names, in `01 DELACC-COMMAREA.` [src/base/cobol_copy/DELACC.cpy:L7]
+    - Condition: `03 DELACC-FAIL-CD PIC X.` [src/base/cobol_copy/DELACC.cpy:L33]
+      - Resulting Value: single-byte fail code whose value is whatever the caller supplied in the COMMAREA via `03 DELACC-FAIL-CD PIC X.` [src/base/cobol_copy/DELACC.cpy:L33] (terminal: input field)
+- delacc-fail-code
+  - Rule: Determination: DELACC-FAIL-CD is never assigned anywhere in src/base/cobol_src/, established by exhaustive case-sensitive search - the read outcome is signalled through the delete fail code instead, in `03 DELACC-FAIL-CD PIC X.` [src/base/cobol_copy/DELACC.cpy:L33]
+    - Condition: layout instantiated at `COPY DELACC REPLACING DELACC-COMMAREA BY DFHCOMMAREA.` [src/base/cobol_src/DELACC.cbl:L200]
+    - Condition: delete fail code used in its place `MOVE '1' TO DELACC-DEL-FAIL-CD` [src/base/cobol_src/DELACC.cbl:L355]
+      - Resulting Value: value passes through untouched from the caller COMMAREA via `03 DELACC-FAIL-CD PIC X.` [src/base/cobol_copy/DELACC.cpy:L33] (terminal: input field)
+
+## delacc-del-success-flag — DELACC COMMAREA Delete Success Flag DELACC-DEL-SUCCESS (`PIC X`) [src/base/cobol_copy/DELACC.cpy:L34]
+- delacc-del-success-flag
+  - Rule: Account row does not exist, in `READ-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/DELACC.cbl:L236]
+    - Condition: `IF SQLCODE = +100` [src/base/cobol_src/DELACC.cbl:L350]
+      - Resulting Value: DELACC-DEL-SUCCESS = 'N' via `MOVE 'N' TO DELACC-DEL-SUCCESS` [src/base/cobol_src/DELACC.cbl:L354] (terminal: literal)
+- delacc-del-success-flag
+  - Rule: Account row found, in `READ-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/DELACC.cbl:L236]
+    - Condition: `IF SQLCODE = 0` [src/base/cobol_src/DELACC.cbl:L363]
+      - Resulting Value: DELACC-DEL-SUCCESS = 'Y' via `MOVE 'Y' TO DELACC-DEL-SUCCESS` [src/base/cobol_src/DELACC.cbl:L365] (terminal: literal)
+- delacc-del-success-flag
+  - Rule: DELETE of the ACCOUNT row failed, in `DEL-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/DELACC.cbl:L431]
+    - Condition: `EXEC SQL DELETE FROM ACCOUNT WHERE ACCOUNT_SORTCODE = :HV-ACCOUNT-SORTCODE AND ACCOUNT_NUMBER = :HV-ACCOUNT-ACC-NO END-EXEC.` [src/base/cobol_src/DELACC.cbl:L438-L442]
+    - Condition: `IF SQLCODE NOT = 0` [src/base/cobol_src/DELACC.cbl:L444]
+      - Resulting Value: DELACC-DEL-SUCCESS = 'N' via `MOVE 'N' TO DELACC-DEL-SUCCESS` [src/base/cobol_src/DELACC.cbl:L446] (terminal: literal)
+
+## delacc-del-fail-code — DELACC COMMAREA Delete Fail Code DELACC-DEL-FAIL-CD (`PIC X`) [src/base/cobol_copy/DELACC.cpy:L35]
+- delacc-del-fail-code
+  - Rule: DELACC code '1' - the account row does not exist, in `READ-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/DELACC.cbl:L236]
+    - Condition: `IF SQLCODE = +100` [src/base/cobol_src/DELACC.cbl:L350]
+      - Resulting Value: DELACC-DEL-FAIL-CD = '1', scoped to DELACC only via `MOVE '1' TO DELACC-DEL-FAIL-CD` [src/base/cobol_src/DELACC.cbl:L355] (terminal: literal)
+- delacc-del-fail-code
+  - Rule: Cleared delete fail code once the row has been read successfully, in `READ-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/DELACC.cbl:L236]
+    - Condition: `IF SQLCODE = 0` [src/base/cobol_src/DELACC.cbl:L363]
+      - Resulting Value: DELACC-DEL-FAIL-CD = ' ' via `MOVE ' ' TO DELACC-DEL-FAIL-CD` [src/base/cobol_src/DELACC.cbl:L366] (terminal: literal)
+- delacc-del-fail-code
+  - Rule: DELACC code '3' - the DELETE statement failed, in `DEL-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/DELACC.cbl:L431]
+    - Condition: `IF SQLCODE NOT = 0` [src/base/cobol_src/DELACC.cbl:L444]
+      - Resulting Value: DELACC-DEL-FAIL-CD = '3', scoped to DELACC only via `MOVE '3' TO DELACC-DEL-FAIL-CD` [src/base/cobol_src/DELACC.cbl:L447] (terminal: literal)
+
+## delcus-del-success-flag — DELCUS COMMAREA Delete Success Flag COMM-DEL-SUCCESS (`PIC X`) [src/base/cobol_copy/DELCUS.cpy:L23]
+- delcus-del-success-flag
+  - Rule: Linked customer inquiry reported that the customer does not exist, in `PREMIERE SECTION.` [src/base/cobol_src/DELCUS.cbl:L246]
+    - Condition: `EXEC CICS LINK PROGRAM(INQCUST-PROGRAM) COMMAREA(INQCUST-COMMAREA) END-EXEC.` [src/base/cobol_src/DELCUS.cbl:L260-L262]
+    - Condition: `IF INQCUST-INQ-SUCCESS = 'N'` [src/base/cobol_src/DELCUS.cbl:L264]
+      - Resulting Value: COMM-DEL-SUCCESS = 'N' via `MOVE 'N' TO COMM-DEL-SUCCESS` [src/base/cobol_src/DELCUS.cbl:L265] (terminal: literal)
+- delcus-del-success-flag
+  - Rule: Customer read, accounts cascaded and CUSTOMER record deleted, in `PREMIERE SECTION.` [src/base/cobol_src/DELCUS.cbl:L246]
+    - Condition: `MOVE 'Y' TO COMM-DEL-SUCCESS.` [src/base/cobol_src/DELCUS.cbl:L289]
+      - Resulting Value: COMM-DEL-SUCCESS = 'Y' via `MOVE 'Y' TO COMM-DEL-SUCCESS.` [src/base/cobol_src/DELCUS.cbl:L289] (terminal: literal)
+
+## delcus-del-fail-code — DELCUS COMMAREA Delete Fail Code COMM-DEL-FAIL-CD (`PIC X`) [src/base/cobol_copy/DELCUS.cpy:L24]
+- delcus-del-fail-code
+  - Rule: Propagated INQCUST fail code - the only path that writes a non-blank value, so the DELCUS code space is inherited rather than defined, in `PREMIERE SECTION.` [src/base/cobol_src/DELCUS.cbl:L246]
+    - Condition: `IF INQCUST-INQ-SUCCESS = 'N'` [src/base/cobol_src/DELCUS.cbl:L264]
+      - Resulting Value: COMM-DEL-FAIL-CD = the fail code returned by INQCUST via `MOVE INQCUST-INQ-FAIL-CD TO COMM-DEL-FAIL-CD` [src/base/cobol_src/DELCUS.cbl:L266] (terminal: input field)
+      - Resulting Value: INQCUST fail-code field supplying the value via `03 INQCUST-INQ-FAIL-CD PIC X.` [src/base/cobol_copy/INQCUST.cpy:L22] (terminal: input field)
+- delcus-del-fail-code
+  - Rule: Cleared fail code on the success path, in `PREMIERE SECTION.` [src/base/cobol_src/DELCUS.cbl:L246]
+    - Condition: `MOVE 'Y' TO COMM-DEL-SUCCESS.` [src/base/cobol_src/DELCUS.cbl:L289]
+    - Condition: `MOVE ' ' TO COMM-DEL-FAIL-CD.` [src/base/cobol_src/DELCUS.cbl:L290]
+      - Resulting Value: COMM-DEL-FAIL-CD = ' ' via `MOVE ' ' TO COMM-DEL-FAIL-CD.` [src/base/cobol_src/DELCUS.cbl:L290] (terminal: literal)
+
+## updacc-success-flag — UPDACC COMMAREA Success Flag COMM-SUCCESS With No Companion Fail-Code Field (`PIC X`) [src/base/cobol_copy/UPDACC.cpy:L31]
+- updacc-success-flag
+  - Rule: SELECT of the ACCOUNT row failed, in `UPDATE-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/UPDACC.cbl:L180]
+    - Condition: `IF SQLCODE NOT = 0` [src/base/cobol_src/UPDACC.cbl:L225]
+      - Resulting Value: COMM-SUCCESS = 'N' via `MOVE 'N' TO COMM-SUCCESS` [src/base/cobol_src/UPDACC.cbl:L227] (terminal: literal)
+- updacc-success-flag
+  - Rule: Update supplied no product code, so the whole update is refused, in `UPDATE-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/UPDACC.cbl:L180]
+    - Condition: `IF (COMM-ACC-TYPE = SPACES OR COMM-ACC-TYPE(1:1) = ' ')` [src/base/cobol_src/UPDACC.cbl:L267]
+      - Resulting Value: COMM-SUCCESS = 'N' via `MOVE 'N' TO COMM-SUCCESS` [src/base/cobol_src/UPDACC.cbl:L268] (terminal: literal)
+- updacc-success-flag
+  - Rule: UPDATE of the ACCOUNT row failed, in `UPDATE-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/UPDACC.cbl:L180]
+    - Condition: `IF SQLCODE NOT = 0` [src/base/cobol_src/UPDACC.cbl:L290]
+      - Resulting Value: COMM-SUCCESS = 'N' via `MOVE 'N' TO COMM-SUCCESS` [src/base/cobol_src/UPDACC.cbl:L291] (terminal: literal)
+- updacc-success-flag
+  - Rule: Product code, interest rate and overdraft limit updated, in `UPDATE-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/UPDACC.cbl:L180]
+    - Condition: `EXEC SQL UPDATE ACCOUNT SET ACCOUNT_TYPE = :HV-ACCOUNT-ACC-TYPE, ACCOUNT_INTEREST_RATE = :HV-ACCOUNT-INT-RATE, ACCOUNT_OVERDRAFT_LIMIT = :HV-ACCOUNT-OVERDRAFT-LIM WHERE (ACCOUNT_SORTCODE = :HV-ACCOUNT-SORTCODE AND ACCOUNT_NUMBER = :HV-ACCOUNT-ACC-NO) END-EXEC.` [src/base/cobol_src/UPDACC.cbl:L278-L285]
+    - Condition: `MOVE 'Y' TO COMM-SUCCESS.` [src/base/cobol_src/UPDACC.cbl:L327]
+      - Resulting Value: COMM-SUCCESS = 'Y' via `MOVE 'Y' TO COMM-SUCCESS.` [src/base/cobol_src/UPDACC.cbl:L327] (terminal: literal)
+- updacc-success-flag
+  - Rule: Determination: the UPDACC COMMAREA declares no fail-code field, so the single flag carries the entire outcome, in `03 COMM-EYE PIC X(4).` [src/base/cobol_copy/UPDACC.cpy:L7]
+    - Condition: `03 COMM-SUCCESS PIC X.` [src/base/cobol_copy/UPDACC.cpy:L31]
+      - Resulting Value: success flag is the last field in the layout via `03 COMM-SUCCESS PIC X.` [src/base/cobol_copy/UPDACC.cpy:L31] (terminal: input field)
+      - Resulting Value: corroborated in the Spring Boot tier, which turns 'N' straight into a not-found exception with no fail code to inspect via `if (responseObj.getUpdacc().getCommSuccess().equals("N"))` [src/Z-OS-Connect-Customer-Services-Interface/src/main/java/com/ibm/cics/cip/bank/springboot/customerservices/controllers/WebController.java:L677] (terminal: literal)
+
+## updcust-upd-success-flag — UPDCUST COMMAREA Update Success Flag COMM-UPD-SUCCESS (`PIC X`) [src/base/cobol_copy/UPDCUST.cpy:L23]
+- updcust-upd-success-flag
+  - Rule: Invalid customer title rejected before any datastore access, in `PREMIERE SECTION.` [src/base/cobol_src/UPDCUST.cbl:L137]
+    - Condition: title decision `END-EVALUATE.` [src/base/cobol_src/UPDCUST.cbl:L189]
+    - Condition: `IF WS-TITLE-VALID = 'N'` [src/base/cobol_src/UPDCUST.cbl:L191]
+      - Resulting Value: COMM-UPD-SUCCESS = 'N' via `MOVE 'N' TO COMM-UPD-SUCCESS` [src/base/cobol_src/UPDCUST.cbl:L192] (terminal: literal)
+- updcust-upd-success-flag
+  - Rule: READ FOR UPDATE of the CUSTOMER record failed, in `UPDATE-CUSTOMER-VSAM SECTION.` [src/base/cobol_src/UPDCUST.cbl:L211]
+    - Condition: `IF WS-CICS-RESP NOT = DFHRESP(NORMAL)` [src/base/cobol_src/UPDCUST.cbl:L232]
+      - Resulting Value: COMM-UPD-SUCCESS = 'N' via `MOVE 'N' TO COMM-UPD-SUCCESS` [src/base/cobol_src/UPDCUST.cbl:L234] (terminal: literal)
+- updcust-upd-success-flag
+  - Rule: Neither a name nor an address was supplied, so there is nothing to update, in `UPDATE-CUSTOMER-VSAM SECTION.` [src/base/cobol_src/UPDCUST.cbl:L211]
+    - Condition: `IF (COMM-NAME = SPACES OR COMM-NAME(1:1) = ' ') AND (COMM-ADDR = SPACES OR COMM-ADDR(1:1) = ' ')` [src/base/cobol_src/UPDCUST.cbl:L262-L263]
+      - Resulting Value: COMM-UPD-SUCCESS = 'N' via `MOVE 'N' TO COMM-UPD-SUCCESS` [src/base/cobol_src/UPDCUST.cbl:L264] (terminal: literal)
+- updcust-upd-success-flag
+  - Rule: REWRITE of the CUSTOMER record failed, in `UPDATE-CUSTOMER-VSAM SECTION.` [src/base/cobol_src/UPDCUST.cbl:L211]
+    - Condition: `IF WS-CICS-RESP NOT = DFHRESP(NORMAL)` [src/base/cobol_src/UPDCUST.cbl:L306]
+      - Resulting Value: COMM-UPD-SUCCESS = 'N' via `MOVE 'N' TO COMM-UPD-SUCCESS` [src/base/cobol_src/UPDCUST.cbl:L307] (terminal: literal)
+- updcust-upd-success-flag
+  - Rule: Name or address updated and the record rewritten, in `UPDATE-CUSTOMER-VSAM SECTION.` [src/base/cobol_src/UPDCUST.cbl:L211]
+    - Condition: `MOVE CUSTOMER-CREDIT-SCORE OF WS-CUST-DATA TO COMM-CREDIT-SCORE. MOVE CUSTOMER-CS-REVIEW-DATE OF WS-CUST-DATA TO COMM-CS-REVIEW-DATE.` [src/base/cobol_src/UPDCUST.cbl:L328-L331]
+    - Condition: `MOVE 'Y' TO COMM-UPD-SUCCESS.` [src/base/cobol_src/UPDCUST.cbl:L333]
+      - Resulting Value: COMM-UPD-SUCCESS = 'Y' via `MOVE 'Y' TO COMM-UPD-SUCCESS.` [src/base/cobol_src/UPDCUST.cbl:L333] (terminal: literal)
+
+## updcust-upd-fail-code — UPDCUST COMMAREA Update Fail Code COMM-UPD-FAIL-CD (`PIC X`) [src/base/cobol_copy/UPDCUST.cpy:L24]
+- updcust-upd-fail-code
+  - Rule: UPDCUST code 'T' - invalid customer title, the same character CRECUST uses for the same rule in a different program code space, in `PREMIERE SECTION.` [src/base/cobol_src/UPDCUST.cbl:L137]
+    - Condition: `IF WS-TITLE-VALID = 'N'` [src/base/cobol_src/UPDCUST.cbl:L191]
+      - Resulting Value: COMM-UPD-FAIL-CD = 'T', scoped to UPDCUST only via `MOVE 'T' TO COMM-UPD-FAIL-CD` [src/base/cobol_src/UPDCUST.cbl:L193] (terminal: literal)
+- updcust-upd-fail-code
+  - Rule: UPDCUST code '1' - the CUSTOMER record does not exist, in `UPDATE-CUSTOMER-VSAM SECTION.` [src/base/cobol_src/UPDCUST.cbl:L211]
+    - Condition: `IF WS-CICS-RESP NOT = DFHRESP(NORMAL)` [src/base/cobol_src/UPDCUST.cbl:L232]
+    - Condition: `IF WS-CICS-RESP = DFHRESP(NOTFND)` [src/base/cobol_src/UPDCUST.cbl:L236]
+      - Resulting Value: COMM-UPD-FAIL-CD = '1', scoped to UPDCUST only via `MOVE '1' TO COMM-UPD-FAIL-CD` [src/base/cobol_src/UPDCUST.cbl:L237] (terminal: literal)
+- updcust-upd-fail-code
+  - Rule: UPDCUST code '2' - any other READ failure, in `UPDATE-CUSTOMER-VSAM SECTION.` [src/base/cobol_src/UPDCUST.cbl:L211]
+    - Condition: `ELSE` [src/base/cobol_src/UPDCUST.cbl:L238]
+      - Resulting Value: COMM-UPD-FAIL-CD = '2', scoped to UPDCUST only via `MOVE '2' TO COMM-UPD-FAIL-CD` [src/base/cobol_src/UPDCUST.cbl:L239] (terminal: literal)
+- updcust-upd-fail-code
+  - Rule: UPDCUST code '4' - neither a name nor an address was supplied, in `UPDATE-CUSTOMER-VSAM SECTION.` [src/base/cobol_src/UPDCUST.cbl:L211]
+    - Condition: `IF (COMM-NAME = SPACES OR COMM-NAME(1:1) = ' ') AND (COMM-ADDR = SPACES OR COMM-ADDR(1:1) = ' ')` [src/base/cobol_src/UPDCUST.cbl:L262-L263]
+      - Resulting Value: COMM-UPD-FAIL-CD = '4', scoped to UPDCUST only via `MOVE '4' TO COMM-UPD-FAIL-CD` [src/base/cobol_src/UPDCUST.cbl:L266] (terminal: literal)
+- updcust-upd-fail-code
+  - Rule: UPDCUST code '3' - REWRITE of the CUSTOMER record failed, in `UPDATE-CUSTOMER-VSAM SECTION.` [src/base/cobol_src/UPDCUST.cbl:L211]
+    - Condition: `IF WS-CICS-RESP NOT = DFHRESP(NORMAL)` [src/base/cobol_src/UPDCUST.cbl:L306]
+      - Resulting Value: COMM-UPD-FAIL-CD = '3', scoped to UPDCUST only via `MOVE '3' TO COMM-UPD-FAIL-CD` [src/base/cobol_src/UPDCUST.cbl:L308] (terminal: literal)
+
+## procisrt-function-flag — PROCISRT Seven-Value Function Flag PROCISRT-FUNCTION (`PIC X`) [src/base/cobol_copy/PROCISRT.cpy:L8]
+- procisrt-function-flag
+  - Rule: Copybook declaration of the seven-valued function flag, in `01 PROCISRT-COMMAREA.` [src/base/cobol_copy/PROCISRT.cpy:L7]
+    - Condition: `03 PROCISRT-FUNCTION PIC X.` [src/base/cobol_copy/PROCISRT.cpy:L8]
+    - Condition: `88 PROCISRT-DEBIT VALUE '1'.` [src/base/cobol_copy/PROCISRT.cpy:L9]
+      - Resulting Value: PROCISRT-DEBIT = '1' via `88 PROCISRT-DEBIT VALUE '1'.` [src/base/cobol_copy/PROCISRT.cpy:L9] (terminal: literal)
+    - Condition: `88 PROCISRT-CREDIT VALUE '2'.` [src/base/cobol_copy/PROCISRT.cpy:L10]
+      - Resulting Value: PROCISRT-CREDIT = '2' via `88 PROCISRT-CREDIT VALUE '2'.` [src/base/cobol_copy/PROCISRT.cpy:L10] (terminal: literal)
+    - Condition: `88 PROCISRT-XFR-LOCAL VALUE '3'.` [src/base/cobol_copy/PROCISRT.cpy:L11]
+      - Resulting Value: PROCISRT-XFR-LOCAL = '3' via `88 PROCISRT-XFR-LOCAL VALUE '3'.` [src/base/cobol_copy/PROCISRT.cpy:L11] (terminal: literal)
+    - Condition: `88 PROCISRT-DELETE-CUSTOMER VALUE '4'.` [src/base/cobol_copy/PROCISRT.cpy:L12]
+      - Resulting Value: PROCISRT-DELETE-CUSTOMER = '4' via `88 PROCISRT-DELETE-CUSTOMER VALUE '4'.` [src/base/cobol_copy/PROCISRT.cpy:L12] (terminal: literal)
+    - Condition: `88 PROCISRT-CREATE-CUSTOMER VALUE '5'.` [src/base/cobol_copy/PROCISRT.cpy:L13]
+      - Resulting Value: PROCISRT-CREATE-CUSTOMER = '5' via `88 PROCISRT-CREATE-CUSTOMER VALUE '5'.` [src/base/cobol_copy/PROCISRT.cpy:L13] (terminal: literal)
+    - Condition: `88 PROCISRT-DELETE-ACCOUNT VALUE '6'.` [src/base/cobol_copy/PROCISRT.cpy:L14]
+      - Resulting Value: PROCISRT-DELETE-ACCOUNT = '6' via `88 PROCISRT-DELETE-ACCOUNT VALUE '6'.` [src/base/cobol_copy/PROCISRT.cpy:L14] (terminal: literal)
+    - Condition: `88 PROCISRT-CREATE-ACCOUNT VALUE '7'.` [src/base/cobol_copy/PROCISRT.cpy:L15]
+      - Resulting Value: PROCISRT-CREATE-ACCOUNT = '7' via `88 PROCISRT-CREATE-ACCOUNT VALUE '7'.` [src/base/cobol_copy/PROCISRT.cpy:L15] (terminal: literal)
+- procisrt-function-flag
+  - Rule: Determination: the copybook is referenced by no program, no Java class and no service interface anywhere in the repository, established by exhaustive case-sensitive search excluding .git and node_modules - each value is reachable only as the declared literal, in `03 PROCISRT-FUNCTION PIC X.` [src/base/cobol_copy/PROCISRT.cpy:L8]
+    - Condition: layout continues with an IMS PCB pointer at `03 PROCISRT-PCB-POINTER POINTER.` [src/base/cobol_copy/PROCISRT.cpy:L16]
+    - Condition: `03 PROCISRT-DEBIT-STRUCT.` [src/base/cobol_copy/PROCISRT.cpy:L17]
+      - Resulting Value: seven declared literals with no in-repository producer or consumer via `88 PROCISRT-DEBIT VALUE '1'. 88 PROCISRT-CREDIT VALUE '2'. 88 PROCISRT-XFR-LOCAL VALUE '3'. 88 PROCISRT-DELETE-CUSTOMER VALUE '4'. 88 PROCISRT-CREATE-CUSTOMER VALUE '5'. 88 PROCISRT-DELETE-ACCOUNT VALUE '6'. 88 PROCISRT-CREATE-ACCOUNT VALUE '7'.` [src/base/cobol_copy/PROCISRT.cpy:L9-L15] (terminal: literal)
+
+## abndinfo-abend-code — ABNDINFO CICS Abend Code ABND-CODE (`PIC X(4)`) [src/base/cobol_copy/ABNDINFO.cpy:L14]
+- abndinfo-abend-code
+  - Rule: DBCRFUN 'HROL' - rollback after a failed PROCTRAN insert could not be completed, in `ABEND-HANDLING SECTION.` [src/base/cobol_src/DBCRFUN.cbl:L701]
+    - Condition: `IF WS-CICS-RESP NOT = DFHRESP(NORMAL)` [src/base/cobol_src/DBCRFUN.cbl:L569]
+      - Resulting Value: ABND-CODE = 'HROL' via `MOVE 'HROL' TO ABND-CODE` [src/base/cobol_src/DBCRFUN.cbl:L600] (terminal: literal)
+- abndinfo-abend-code
+  - Rule: CRECUST 'HWPT' - PROCTRAN insert failed, in `WRITE-PROCTRAN-DB2 SECTION.` [src/base/cobol_src/CRECUST.cbl:L1187]
+    - Condition: `IF SQLCODE NOT = 0` [src/base/cobol_src/CRECUST.cbl:L1256]
+      - Resulting Value: ABND-CODE = 'HWPT' via `MOVE 'HWPT' TO ABND-CODE` [src/base/cobol_src/CRECUST.cbl:L1288] (terminal: literal)
+- abndinfo-abend-code
+  - Rule: CREACC 'HNCS' - the named-counter CONTROL row could not be read, in `FIND-NEXT-ACCOUNT SECTION.` [src/base/cobol_src/CREACC.cbl:L429]
+    - Condition: `IF SQLCODE IS NOT EQUAL TO ZERO` [src/base/cobol_src/CREACC.cbl:L455]
+      - Resulting Value: ABND-CODE = 'HNCS' via `MOVE 'HNCS' TO ABND-CODE` [src/base/cobol_src/CREACC.cbl:L489] (terminal: literal)
+- abndinfo-abend-code
+  - Rule: CREACC 'HWPT' - PROCTRAN insert failed, in `WRITE-PROCTRAN-DB2 SECTION.` [src/base/cobol_src/CREACC.cbl:L928]
+    - Condition: insert failure tail `INTO ABND-TIME` [src/base/cobol_src/CREACC.cbl:L1035]
+      - Resulting Value: ABND-CODE = 'HWPT' via `MOVE 'HWPT' TO ABND-CODE` [src/base/cobol_src/CREACC.cbl:L1039] (terminal: literal)
+- abndinfo-abend-code
+  - Rule: XFRFUN 'SAME' - transfer requested between one account and itself, in `PREMIERE SECTION.` [src/base/cobol_src/XFRFUN.cbl:L269]
+    - Condition: `IF COMM-FACCNO = COMM-TACCNO AND COMM-FSCODE = COMM-TSCODE` [src/base/cobol_src/XFRFUN.cbl:L316-L317]
+      - Resulting Value: ABND-CODE = 'SAME' via `MOVE 'SAME' TO ABND-CODE` [src/base/cobol_src/XFRFUN.cbl:L348] (terminal: literal)
+- abndinfo-abend-code
+  - Rule: XFRFUN 'FROM' - the from-leg update could not be completed, in `UPDATE-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/XFRFUN.cbl:L308]
+    - Condition: branch `ELSE` [src/base/cobol_src/XFRFUN.cbl:L526]
+      - Resulting Value: ABND-CODE = 'FROM' via `MOVE 'FROM' TO ABND-CODE` [src/base/cobol_src/XFRFUN.cbl:L557] (terminal: literal)
+- abndinfo-abend-code
+  - Rule: XFRFUN 'TO  ' - the to-leg update failed for a reason other than a missing row, in `UPDATE-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/XFRFUN.cbl:L308]
+    - Condition: `IF COMM-FAIL-CODE NOT = '2'` [src/base/cobol_src/XFRFUN.cbl:L766]
+      - Resulting Value: ABND-CODE = 'TO  ' via `MOVE 'TO ' TO ABND-CODE` [src/base/cobol_src/XFRFUN.cbl:L797] (terminal: literal)
+- abndinfo-abend-code
+  - Rule: XFRFUN 'RUF2' - to-leg select failure, including the timeout case, in `UPDATE-ACCOUNT-DB2-TO SECTION.` [src/base/cobol_src/XFRFUN.cbl:L1041]
+    - Condition: `IF SQLERRD(3) = 13172872` [src/base/cobol_src/XFRFUN.cbl:L1529]
+      - Resulting Value: ABND-CODE = 'RUF2' via `MOVE 'RUF2' TO ABND-CODE` [src/base/cobol_src/XFRFUN.cbl:L1522] (terminal: literal)
+- abndinfo-abend-code
+  - Rule: XFRFUN 'WPCD' - PROCTRAN insert failed, in `WRITE-TO-PROCTRAN-DB2 SECTION.` [src/base/cobol_src/XFRFUN.cbl:L1571]
+    - Condition: `IF SQLCODE NOT = 0` [src/base/cobol_src/XFRFUN.cbl:L1646]
+      - Resulting Value: ABND-CODE = 'WPCD' via `MOVE 'WPCD' TO ABND-CODE` [src/base/cobol_src/XFRFUN.cbl:L1679] (terminal: literal)
+- abndinfo-abend-code
+  - Rule: CRDTAGY1 'PLOP' - the randomised delay could not be issued, in `PREMIERE SECTION.` [src/base/cobol_src/CRDTAGY1.cbl:L113]
+    - Condition: `IF WS-CICS-RESP NOT = DFHRESP(NORMAL)` [src/base/cobol_src/CRDTAGY1.cbl:L133]
+      - Resulting Value: ABND-CODE = 'PLOP' via `MOVE 'PLOP' TO ABND-CODE` [src/base/cobol_src/CRDTAGY1.cbl:L164] (terminal: literal)
+- abndinfo-abend-code
+  - Rule: DELACC 'HRAC' - the ACCOUNT read failed for a reason other than a missing row, in `READ-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/DELACC.cbl:L236]
+    - Condition: `IF SQLCODE NOT = 0 AND SQLCODE NOT = +100` [src/base/cobol_src/DELACC.cbl:L282]
+      - Resulting Value: ABND-CODE = 'HRAC' via `MOVE 'HRAC' TO ABND-CODE` [src/base/cobol_src/DELACC.cbl:L315] (terminal: literal)
+- abndinfo-abend-code
+  - Rule: DELACC 'HWPT' - PROCTRAN insert failed, in `WRITE-PROCTRAN-DB2 SECTION.` [src/base/cobol_src/DELACC.cbl:L462]
+    - Condition: `IF SQLCODE NOT = 0` [src/base/cobol_src/DELACC.cbl:L552]
+      - Resulting Value: ABND-CODE = 'HWPT' via `MOVE 'HWPT' TO ABND-CODE` [src/base/cobol_src/DELACC.cbl:L584] (terminal: literal)
+- abndinfo-abend-code
+  - Rule: DELCUS 'WPV6' - the CUSTOMER delete failed, in `DEL-CUST-VSAM SECTION.` [src/base/cobol_src/DELCUS.cbl:L343]
+    - Condition: `IF WS-CICS-RESP NOT = DFHRESP(NORMAL)` [src/base/cobol_src/DELCUS.cbl:L391]
+      - Resulting Value: ABND-CODE = 'WPV6' via `MOVE 'WPV6' TO ABND-CODE` [src/base/cobol_src/DELCUS.cbl:L422] (terminal: literal)
+- abndinfo-abend-code
+  - Rule: DELCUS 'WPV7' - a later step of the CUSTOMER delete failed, in `DEL-CUST-VSAM SECTION.` [src/base/cobol_src/DELCUS.cbl:L343]
+    - Condition: `IF WS-CICS-RESP NOT = DFHRESP(NORMAL)` [src/base/cobol_src/DELCUS.cbl:L517]
+      - Resulting Value: ABND-CODE = 'WPV7' via `MOVE 'WPV7' TO ABND-CODE` [src/base/cobol_src/DELCUS.cbl:L548] (terminal: literal)
+- abndinfo-abend-code
+  - Rule: INQCUST 'CVR1' - the CUSTOMER read failed, in `READ-CUSTOMER-VSAM SECTION.` [src/base/cobol_src/INQCUST.cbl:L258]
+    - Condition: `IF WS-CICS-RESP NOT = DFHRESP(NORMAL)` [src/base/cobol_src/INQCUST.cbl:L357]
+      - Resulting Value: ABND-CODE = 'CVR1' via `MOVE 'CVR1' TO ABND-CODE` [src/base/cobol_src/INQCUST.cbl:L388] (terminal: literal)
+- abndinfo-abend-code
+  - Rule: INQACC propagates the abend code CICS itself assigned, so this path terminates at a CICS-supplied input field rather than at a literal, in `ABEND-HANDLING SECTION.` [src/base/cobol_src/INQACC.cbl:L632]
+    - Condition: `EXEC CICS ASSIGN ABCODE(MY-ABEND-CODE) END-EXEC.` [src/base/cobol_src/INQACC.cbl:L635-L636]
+    - Condition: `IF WS-STORM-DRAIN = 'N'` [src/base/cobol_src/INQACC.cbl:L763]
+      - Resulting Value: ABND-CODE = the abend code assigned by CICS to the failing task via `MOVE MY-ABEND-CODE TO ABND-CODE` [src/base/cobol_src/INQACC.cbl:L794] (terminal: input field)
+
+## abndinfo-respcode — ABNDINFO CICS Response Code ABND-RESPCODE (`PIC S9(8) DISPLAY SIGN LEADING SEPARATE`) [src/base/cobol_copy/ABNDINFO.cpy:L16-L17]
+- abndinfo-respcode
+  - Rule: Copybook declaration spanning two physical lines, in `03 ABND-VSAM-KEY.` [src/base/cobol_copy/ABNDINFO.cpy:L7]
+    - Condition: `03 ABND-RESPCODE PIC S9(8) DISPLAY SIGN LEADING SEPARATE.` [src/base/cobol_copy/ABNDINFO.cpy:L16-L17]
+      - Resulting Value: signed display field carrying a CICS response code via `03 ABND-RESPCODE PIC S9(8) DISPLAY SIGN LEADING SEPARATE.` [src/base/cobol_copy/ABNDINFO.cpy:L16-L17] (terminal: input field)
+- abndinfo-respcode
+  - Rule: DBCRFUN captures the CICS response code before linking to the abend handler, in `ABEND-HANDLING SECTION.` [src/base/cobol_src/DBCRFUN.cbl:L701]
+    - Condition: `IF WS-CICS-RESP NOT = DFHRESP(NORMAL)` [src/base/cobol_src/DBCRFUN.cbl:L569]
+      - Resulting Value: ABND-RESPCODE = EIBRESP as supplied by CICS via `MOVE EIBRESP TO ABND-RESPCODE` [src/base/cobol_src/DBCRFUN.cbl:L577] (terminal: input field)
+- abndinfo-respcode
+  - Rule: CREACC captures the CICS response code on the named-counter failure path, in `FIND-NEXT-ACCOUNT SECTION.` [src/base/cobol_src/CREACC.cbl:L429]
+    - Condition: `IF SQLCODE IS NOT EQUAL TO ZERO` [src/base/cobol_src/CREACC.cbl:L455]
+      - Resulting Value: ABND-RESPCODE = EIBRESP as supplied by CICS via `MOVE EIBRESP TO ABND-RESPCODE` [src/base/cobol_src/CREACC.cbl:L466] (terminal: input field)
+- abndinfo-respcode
+  - Rule: CRDTAGY1 captures the CICS response code when the delay fails, in `PREMIERE SECTION.` [src/base/cobol_src/CRDTAGY1.cbl:L113]
+    - Condition: `IF WS-CICS-RESP NOT = DFHRESP(NORMAL)` [src/base/cobol_src/CRDTAGY1.cbl:L133]
+      - Resulting Value: ABND-RESPCODE = EIBRESP as supplied by CICS via `MOVE EIBRESP TO ABND-RESPCODE` [src/base/cobol_src/CRDTAGY1.cbl:L141] (terminal: input field)
+- abndinfo-respcode
+  - Rule: XFRFUN captures the CICS response code on the same-account guard, in `PREMIERE SECTION.` [src/base/cobol_src/XFRFUN.cbl:L269]
+    - Condition: `IF COMM-FACCNO = COMM-TACCNO AND COMM-FSCODE = COMM-TSCODE` [src/base/cobol_src/XFRFUN.cbl:L316-L317]
+      - Resulting Value: ABND-RESPCODE = EIBRESP as supplied by CICS via `MOVE EIBRESP TO ABND-RESPCODE` [src/base/cobol_src/XFRFUN.cbl:L325] (terminal: input field)
+- abndinfo-respcode
+  - Rule: DELACC zeroes the response code on its DB2 read-failure path instead of capturing EIBRESP, so that path terminates at a literal, in `READ-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/DELACC.cbl:L236]
+    - Condition: `IF SQLCODE NOT = 0 AND SQLCODE NOT = +100` [src/base/cobol_src/DELACC.cbl:L282]
+    - Condition: diagnostic block reset at `INITIALIZE ABNDINFO-REC` [src/base/cobol_src/DELACC.cbl:L290]
+      - Resulting Value: ABND-RESPCODE = ZERO via `MOVE ZERO TO ABND-RESPCODE` [src/base/cobol_src/DELACC.cbl:L291] (terminal: literal)
+
+## abndinfo-resp2code — ABNDINFO CICS Secondary Response Code ABND-RESP2CODE (`PIC S9(8) DISPLAY SIGN LEADING SEPARATE`) [src/base/cobol_copy/ABNDINFO.cpy:L18-L19]
+- abndinfo-resp2code
+  - Rule: Copybook declaration spanning two physical lines, in `03 ABND-VSAM-KEY.` [src/base/cobol_copy/ABNDINFO.cpy:L7]
+    - Condition: `03 ABND-RESP2CODE PIC S9(8) DISPLAY SIGN LEADING SEPARATE.` [src/base/cobol_copy/ABNDINFO.cpy:L18-L19]
+      - Resulting Value: signed display field carrying a CICS secondary response code via `03 ABND-RESP2CODE PIC S9(8) DISPLAY SIGN LEADING SEPARATE.` [src/base/cobol_copy/ABNDINFO.cpy:L18-L19] (terminal: input field)
+- abndinfo-resp2code
+  - Rule: DBCRFUN captures the secondary response code alongside the primary one, in `ABEND-HANDLING SECTION.` [src/base/cobol_src/DBCRFUN.cbl:L701]
+    - Condition: `IF WS-CICS-RESP NOT = DFHRESP(NORMAL)` [src/base/cobol_src/DBCRFUN.cbl:L569]
+      - Resulting Value: ABND-RESP2CODE = EIBRESP2 as supplied by CICS via `MOVE EIBRESP2 TO ABND-RESP2CODE` [src/base/cobol_src/DBCRFUN.cbl:L578] (terminal: input field)
+- abndinfo-resp2code
+  - Rule: CREACC captures the secondary response code on the named-counter failure path, in `FIND-NEXT-ACCOUNT SECTION.` [src/base/cobol_src/CREACC.cbl:L429]
+    - Condition: `IF SQLCODE IS NOT EQUAL TO ZERO` [src/base/cobol_src/CREACC.cbl:L455]
+      - Resulting Value: ABND-RESP2CODE = EIBRESP2 as supplied by CICS via `MOVE EIBRESP2 TO ABND-RESP2CODE` [src/base/cobol_src/CREACC.cbl:L467] (terminal: input field)
+- abndinfo-resp2code
+  - Rule: CRDTAGY1 captures the secondary response code when the delay fails, in `PREMIERE SECTION.` [src/base/cobol_src/CRDTAGY1.cbl:L113]
+    - Condition: `IF WS-CICS-RESP NOT = DFHRESP(NORMAL)` [src/base/cobol_src/CRDTAGY1.cbl:L133]
+      - Resulting Value: ABND-RESP2CODE = EIBRESP2 as supplied by CICS via `MOVE EIBRESP2 TO ABND-RESP2CODE` [src/base/cobol_src/CRDTAGY1.cbl:L142] (terminal: input field)
+- abndinfo-resp2code
+  - Rule: INQCUST captures the secondary response code on the read failure path, in `READ-CUSTOMER-VSAM SECTION.` [src/base/cobol_src/INQCUST.cbl:L258]
+    - Condition: `IF WS-CICS-RESP NOT = DFHRESP(NORMAL)` [src/base/cobol_src/INQCUST.cbl:L357]
+      - Resulting Value: ABND-RESP2CODE = EIBRESP2 as supplied by CICS via `MOVE EIBRESP2 TO ABND-RESP2CODE` [src/base/cobol_src/INQCUST.cbl:L366] (terminal: input field)
+
+## abndinfo-sqlcode — ABNDINFO DB2 SQLCODE ABND-SQLCODE (`PIC S9(8) DISPLAY SIGN LEADING SEPARATE`) [src/base/cobol_copy/ABNDINFO.cpy:L20-L21]
+- abndinfo-sqlcode
+  - Rule: Copybook declaration spanning two physical lines, in `03 ABND-VSAM-KEY.` [src/base/cobol_copy/ABNDINFO.cpy:L7]
+    - Condition: `03 ABND-SQLCODE PIC S9(8) DISPLAY SIGN LEADING SEPARATE.` [src/base/cobol_copy/ABNDINFO.cpy:L20-L21]
+      - Resulting Value: signed display field carrying a DB2 SQLCODE via `03 ABND-SQLCODE PIC S9(8) DISPLAY SIGN LEADING SEPARATE.` [src/base/cobol_copy/ABNDINFO.cpy:L20-L21] (terminal: input field)
+- abndinfo-sqlcode
+  - Rule: CREACC records the actual SQLCODE from the failing statement, in `FIND-NEXT-ACCOUNT SECTION.` [src/base/cobol_src/CREACC.cbl:L429]
+    - Condition: `IF SQLCODE IS NOT EQUAL TO ZERO` [src/base/cobol_src/CREACC.cbl:L455]
+    - Condition: `MOVE SQLCODE TO SQLCODE-DISPLAY` [src/base/cobol_src/CREACC.cbl:L457]
+      - Resulting Value: ABND-SQLCODE = the SQLCODE returned by DB2, reformatted for display via `MOVE SQLCODE-DISPLAY TO ABND-SQLCODE` [src/base/cobol_src/CREACC.cbl:L494] (terminal: input field)
+- abndinfo-sqlcode
+  - Rule: DELACC records the actual SQLCODE from the failing ACCOUNT read, in `READ-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/DELACC.cbl:L236]
+    - Condition: `IF SQLCODE NOT = 0 AND SQLCODE NOT = +100` [src/base/cobol_src/DELACC.cbl:L282]
+      - Resulting Value: ABND-SQLCODE = the SQLCODE returned by DB2, reformatted for display via `MOVE SQLCODE-DISPLAY TO ABND-SQLCODE` [src/base/cobol_src/DELACC.cbl:L320] (terminal: input field)
+- abndinfo-sqlcode
+  - Rule: CRECUST records the actual SQLCODE from the failing PROCTRAN insert, in `WRITE-PROCTRAN-DB2 SECTION.` [src/base/cobol_src/CRECUST.cbl:L1187]
+    - Condition: `IF SQLCODE NOT = 0` [src/base/cobol_src/CRECUST.cbl:L1256]
+      - Resulting Value: ABND-SQLCODE = the SQLCODE returned by DB2, reformatted for display via `MOVE SQLCODE-DISPLAY TO ABND-SQLCODE` [src/base/cobol_src/CRECUST.cbl:L1293] (terminal: input field)
+- abndinfo-sqlcode
+  - Rule: XFRFUN records the actual SQLCODE from the failing PROCTRAN insert, in `WRITE-TO-PROCTRAN-DB2 SECTION.` [src/base/cobol_src/XFRFUN.cbl:L1571]
+    - Condition: `IF SQLCODE NOT = 0` [src/base/cobol_src/XFRFUN.cbl:L1646]
+      - Resulting Value: ABND-SQLCODE = the SQLCODE returned by DB2, reformatted for display via `MOVE WS-SQLCODE-DISP TO ABND-SQLCODE` [src/base/cobol_src/XFRFUN.cbl:L1684] (terminal: input field)
+- abndinfo-sqlcode
+  - Rule: DBCRFUN zeroes the field because the failure it reports is a CICS rollback rather than an SQL error, in `ABEND-HANDLING SECTION.` [src/base/cobol_src/DBCRFUN.cbl:L701]
+    - Condition: `IF WS-CICS-RESP NOT = DFHRESP(NORMAL)` [src/base/cobol_src/DBCRFUN.cbl:L569]
+      - Resulting Value: ABND-SQLCODE = ZEROS via `MOVE ZEROS TO ABND-SQLCODE` [src/base/cobol_src/DBCRFUN.cbl:L605] (terminal: literal)
+- abndinfo-sqlcode
+  - Rule: CRDTAGY1 zeroes the field because no SQL statement is involved, in `PREMIERE SECTION.` [src/base/cobol_src/CRDTAGY1.cbl:L113]
+    - Condition: `IF WS-CICS-RESP NOT = DFHRESP(NORMAL)` [src/base/cobol_src/CRDTAGY1.cbl:L133]
+      - Resulting Value: ABND-SQLCODE = ZEROS via `MOVE ZEROS TO ABND-SQLCODE` [src/base/cobol_src/CRDTAGY1.cbl:L169] (terminal: literal)
+- abndinfo-sqlcode
+  - Rule: INQACC zeroes the field with a numeric literal on its storm-drain path, in `ABEND-HANDLING SECTION.` [src/base/cobol_src/INQACC.cbl:L632]
+    - Condition: `IF WS-CICS-RESP NOT = DFHRESP(NORMAL)` [src/base/cobol_src/INQACC.cbl:L687]
+      - Resulting Value: ABND-SQLCODE = 0 via `MOVE 0 TO ABND-SQLCODE` [src/base/cobol_src/INQACC.cbl:L724] (terminal: literal)
+
+## abndinfo-freeform — ABNDINFO Free-Form Diagnostic Text ABND-FREEFORM (`PIC X(600)`) [src/base/cobol_copy/ABNDINFO.cpy:L22]
+- abndinfo-freeform
+  - Rule: Copybook declaration of the 600-byte diagnostic text field, in `03 ABND-VSAM-KEY.` [src/base/cobol_copy/ABNDINFO.cpy:L7]
+    - Condition: `03 ABND-FREEFORM PIC X(600).` [src/base/cobol_copy/ABNDINFO.cpy:L22]
+      - Resulting Value: 600-byte text field assembled by the reporting program via `03 ABND-FREEFORM PIC X(600).` [src/base/cobol_copy/ABNDINFO.cpy:L22] (terminal: input field)
+- abndinfo-freeform
+  - Rule: DBCRFUN assembles a rollback-integrity message from literals and the two response codes, in `ABEND-HANDLING SECTION.` [src/base/cobol_src/DBCRFUN.cbl:L701]
+    - Condition: `STRING 'WTPD010 - COULD NOT ROLL BACK, POSSIBLE DATA'` [src/base/cobol_src/DBCRFUN.cbl:L607]
+    - Condition: `'FOR ROW:' DELIMITED BY SIZE,` [src/base/cobol_src/DBCRFUN.cbl:L611]
+    - Condition: `'EIBRESP=' DELIMITED BY SIZE,` [src/base/cobol_src/DBCRFUN.cbl:L613]
+      - Resulting Value: ABND-FREEFORM = the concatenated literals plus the captured response codes via `INTO ABND-FREEFORM` [src/base/cobol_src/DBCRFUN.cbl:L617] (terminal: input field)
+- abndinfo-freeform
+  - Rule: CRDTAGY1 assembles a delay-failure message from a literal and the two response codes, in `PREMIERE SECTION.` [src/base/cobol_src/CRDTAGY1.cbl:L113]
+    - Condition: `STRING 'A010 - *** The delay messed up! ***'` [src/base/cobol_src/CRDTAGY1.cbl:L171]
+    - Condition: `' EIBRESP=' DELIMITED BY SIZE,` [src/base/cobol_src/CRDTAGY1.cbl:L173]
+      - Resulting Value: ABND-FREEFORM = the concatenated literal plus the captured response codes via `INTO ABND-FREEFORM` [src/base/cobol_src/CRDTAGY1.cbl:L177] (terminal: input field)
+- abndinfo-freeform
+  - Rule: XFRFUN assembles a timeout-specific message when the to-leg select times out, in `UPDATE-ACCOUNT-DB2-TO SECTION.` [src/base/cobol_src/XFRFUN.cbl:L1041]
+    - Condition: `IF SQLERRD(3) = 13172872` [src/base/cobol_src/XFRFUN.cbl:L1529]
+    - Condition: `STRING 'UAD010-TO(5) - timeout detected ' DELIMITED BY SIZE,` [src/base/cobol_src/XFRFUN.cbl:L1530-L1531]
+      - Resulting Value: ABND-FREEFORM = the timeout literal plus the captured response codes via `INTO ABND-FREEFORM` [src/base/cobol_src/XFRFUN.cbl:L1536] (terminal: input field)
+
+## sortcode-literal — SORTCODE Bank Sort-Code Literal (`PIC 9(6) VALUE 987654`) [src/base/cobol_copy/SORTCODE.cpy:L7]
+- sortcode-literal
+  - Rule: Copybook declaration carries the value in the data item itself, so every consumer inherits the same literal, in `77 SORTCODE PIC 9(6) VALUE 987654.` [src/base/cobol_copy/SORTCODE.cpy:L7]
+    - Condition: `77 SORTCODE PIC 9(6) VALUE 987654.` [src/base/cobol_copy/SORTCODE.cpy:L7]
+      - Resulting Value: SORTCODE = 987654 via `77 SORTCODE PIC 9(6) VALUE 987654.` [src/base/cobol_copy/SORTCODE.cpy:L7] (terminal: literal)
+- sortcode-literal
+  - Rule: DBCRFUN stamps the bank sort code into the payment COMMAREA and the account key, in `PREMIERE SECTION.` [src/base/cobol_src/DBCRFUN.cbl:L199]
+    - Condition: `MOVE SORTCODE TO COMM-SORTC.` [src/base/cobol_src/DBCRFUN.cbl:L211]
+    - Condition: `MOVE SORTCODE TO DESIRED-SORT-CODE.` [src/base/cobol_src/DBCRFUN.cbl:L212]
+      - Resulting Value: COMM-SORTC and the desired account key both take the literal sort code via `MOVE SORTCODE TO COMM-SORTC.` [src/base/cobol_src/DBCRFUN.cbl:L211] (terminal: literal)
+- sortcode-literal
+  - Rule: XFRFUN stamps the same literal into both transfer legs, in `PREMIERE SECTION.` [src/base/cobol_src/XFRFUN.cbl:L269]
+    - Condition: `MOVE SORTCODE TO COMM-FSCODE COMM-TSCODE.` [src/base/cobol_src/XFRFUN.cbl:L281]
+    - Condition: `MOVE SORTCODE TO DESIRED-SORT-CODE.` [src/base/cobol_src/XFRFUN.cbl:L283]
+      - Resulting Value: COMM-FSCODE and COMM-TSCODE both take the literal sort code via `MOVE SORTCODE TO COMM-FSCODE COMM-TSCODE.` [src/base/cobol_src/XFRFUN.cbl:L281] (terminal: literal)
+- sortcode-literal
+  - Rule: CREACC stamps the literal into the ACCOUNT row it inserts, in `WRITE-ACCOUNT-DB2 SECTION.` [src/base/cobol_src/CREACC.cbl:L774]
+    - Condition: `MOVE SORTCODE TO HV-ACCOUNT-SORTCODE.` [src/base/cobol_src/CREACC.cbl:L780]
+      - Resulting Value: ACCOUNT_SORTCODE takes the literal sort code via `MOVE SORTCODE TO HV-ACCOUNT-SORTCODE.` [src/base/cobol_src/CREACC.cbl:L780] (terminal: literal)
+- sortcode-literal
+  - Rule: BANKDATA stamps the literal into every seeded ACCOUNT row and CUSTOMER record, in `POPULATE-ACC SECTION.` [src/base/cobol_src/BANKDATA.cbl:L716]
+    - Condition: `MOVE SORTCODE TO HV-ACCOUNT-SORT-CODE OF HOST-ACCOUNT-ROW.` [src/base/cobol_src/BANKDATA.cbl:L744-L745]
+      - Resulting Value: ACCOUNT_SORTCODE takes the literal sort code via `MOVE SORTCODE TO HV-ACCOUNT-SORT-CODE OF HOST-ACCOUNT-ROW.` [src/base/cobol_src/BANKDATA.cbl:L744-L745] (terminal: literal)
+    - Condition: `MOVE SORTCODE TO CUSTOMER-SORTCODE` [src/base/cobol_src/BANKDATA.cbl:L530-L531]
+      - Resulting Value: CUSTOMER-SORTCODE takes the literal sort code via `MOVE SORTCODE TO CUSTOMER-SORTCODE` [src/base/cobol_src/BANKDATA.cbl:L530-L531] (terminal: literal)
+- sortcode-literal
+  - Rule: GETSCODE renames the copybook item on COPY so the literal can be returned without a name clash with the wire field, in `PROCEDURE DIVISION USING DFHCOMMAREA.` [src/base/cobol_src/GETSCODE.cbl:L36]
+    - Condition: `COPY SORTCODE REPLACING ==SORTCODE== BY ==LITERAL-SORTCODE==.` [src/base/cobol_src/GETSCODE.cbl:L28]
+    - Condition: `MOVE LITERAL-SORTCODE TO SORTCODE OF DFHCOMMAREA.` [src/base/cobol_src/GETSCODE.cbl:L39-L40]
+      - Resulting Value: wire sort code takes the renamed literal via `MOVE LITERAL-SORTCODE TO SORTCODE OF DFHCOMMAREA.` [src/base/cobol_src/GETSCODE.cbl:L39-L40] (terminal: literal)
+
+## getcompy-company-name — GETCOMPY Company-Name Reference Value (`pic x(40)`) [src/base/cobol_copy/GETCOMPY.cpy:L8]
+- getcompy-company-name
+  - Rule: Copybook declaration of the company-name wire field, in `03 GETCompanyOperation.` [src/base/cobol_copy/GETCOMPY.cpy:L7]
+    - Condition: `03 GETCompanyOperation.` [src/base/cobol_copy/GETCOMPY.cpy:L7]
+    - Condition: `06 company-name pic x(40).` [src/base/cobol_copy/GETCOMPY.cpy:L8]
+      - Resulting Value: 40-byte alphanumeric wire field via `06 company-name pic x(40).` [src/base/cobol_copy/GETCOMPY.cpy:L8] (terminal: input field)
+- getcompy-company-name
+  - Rule: GETCOMPY returns a hard-coded company name, so the value terminates at a literal in the program, in `PREMIERE SECTION.` [src/base/cobol_src/GETCOMPY.cbl:L36]
+    - Condition: `COPY GETCOMPY.` [src/base/cobol_src/GETCOMPY.cbl:L31]
+    - Condition: `move 'CICS Bank Sample Application' to COMPANY-NAME.` [src/base/cobol_src/GETCOMPY.cbl:L38]
+      - Resulting Value: COMPANY-NAME = 'CICS Bank Sample Application' via `move 'CICS Bank Sample Application' to COMPANY-NAME.` [src/base/cobol_src/GETCOMPY.cbl:L38] (terminal: literal)
+
+## getscode-sortcode — GETSCODE Sort-Code Wire Field With Anomalous Mixed-Case PICTURE (`pic xXXXXX`) [src/base/cobol_copy/GETSCODE.cpy:L8]
+- getscode-sortcode
+  - Rule: Copybook declaration of the sort-code wire field, whose PICTURE mixes cases and is recorded exactly as found, in `03 GETSORTCODEOperation.` [src/base/cobol_copy/GETSCODE.cpy:L7]
+    - Condition: `03 GETSORTCODEOperation.` [src/base/cobol_copy/GETSCODE.cpy:L7]
+    - Condition: `06 SORTCODE pic xXXXXX.` [src/base/cobol_copy/GETSCODE.cpy:L8]
+      - Resulting Value: six-character alphanumeric wire field declared as a mixed-case PICTURE via `06 SORTCODE pic xXXXXX.` [src/base/cobol_copy/GETSCODE.cpy:L8] (terminal: input field)
+- getscode-sortcode
+  - Rule: GETSCODE moves the renamed SORTCODE literal into the wire field, in `PROCEDURE DIVISION USING DFHCOMMAREA.` [src/base/cobol_src/GETSCODE.cbl:L36]
+    - Condition: `COPY SORTCODE REPLACING ==SORTCODE== BY ==LITERAL-SORTCODE==.` [src/base/cobol_src/GETSCODE.cbl:L28]
+    - Condition: `COPY GETSCODE.` [src/base/cobol_src/GETSCODE.cbl:L33]
+    - Condition: `MOVE LITERAL-SORTCODE TO SORTCODE OF DFHCOMMAREA.` [src/base/cobol_src/GETSCODE.cbl:L39-L40]
+      - Resulting Value: wire sort code = the SORTCODE copybook literal 987654 via `77 SORTCODE PIC 9(6) VALUE 987654.` [src/base/cobol_copy/SORTCODE.cpy:L7] (terminal: literal)
+
+## stcustno-customer-number-key — STCUSTNO Customer-Number VSAM Key CNO-KEY (`PIC 9(10) DISPLAY`) [src/base/cobol_copy/STCUSTNO.cpy:L8]
+- stcustno-customer-number-key
+  - Rule: Copybook declaration of the customer-number VSAM key, in `05 Customer-Number-Key.` [src/base/cobol_copy/STCUSTNO.cpy:L7]
+    - Condition: `05 Customer-Number-Key.` [src/base/cobol_copy/STCUSTNO.cpy:L7]
+    - Condition: `10 CNO-KEY PIC 9(10) DISPLAY.` [src/base/cobol_copy/STCUSTNO.cpy:L8]
+      - Resulting Value: ten-digit display key whose value is whatever the caller supplies via `10 CNO-KEY PIC 9(10) DISPLAY.` [src/base/cobol_copy/STCUSTNO.cpy:L8] (terminal: input field)
+- stcustno-customer-number-key
+  - Rule: Determination: the copybook is referenced by no program, no Java class and no service interface anywhere in the repository, established by exhaustive case-sensitive search excluding .git and node_modules - the live key with the same meaning is the CUSTOMER record key, in `10 CNO-KEY PIC 9(10) DISPLAY.` [src/base/cobol_copy/STCUSTNO.cpy:L8]
+    - Condition: live equivalent `05 CUSTOMER-KEY.` [src/base/cobol_copy/CUSTOMER.cpy:L10]
+    - Condition: live equivalent `07 CUSTOMER-NUMBER PIC 9(10) DISPLAY.` [src/base/cobol_copy/CUSTOMER.cpy:L12]
+      - Resulting Value: customer number allocated by the control-record increment, not by this layout via `ADD 1 TO LAST-CUSTOMER-NUMBER IN CUSTOMER-CONTROL GIVING LAST-CUSTOMER-NUMBER IN CUSTOMER-CONTROL` [src/base/cobol_src/CRECUST.cbl:L1381-L1382] (terminal: input field)
